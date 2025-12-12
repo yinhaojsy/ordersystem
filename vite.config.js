@@ -1,7 +1,2 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
-})
+// This file is kept for compatibility. The real config lives in vite.config.ts.
+export { default } from "./vite.config.ts";

@@ -1,0 +1,255 @@
+import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
+import type {
+  Currency,
+  Customer,
+  User,
+  Role,
+  Order,
+  OrderInput,
+  OrderStatus,
+} from "../types";
+
+const baseQuery = fetchBaseQuery({
+  baseUrl: "/api",
+});
+
+export const api = createApi({
+  reducerPath: "api",
+  baseQuery,
+  tagTypes: ["Currency", "Customer", "User", "Role", "Order"],
+  refetchOnReconnect: true,
+  endpoints: (builder) => ({
+    getCurrencies: builder.query<Currency[], void>({
+      query: () => "currencies",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Currency" as const, id })),
+              { type: "Currency" as const, id: "LIST" },
+            ]
+          : [{ type: "Currency" as const, id: "LIST" }],
+    }),
+    addCurrency: builder.mutation<Currency, Omit<Currency, "id">>({
+      query: (body) => ({
+        url: "currencies",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Currency", id: "LIST" }],
+    }),
+    deleteCurrency: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `currencies/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Currency", id },
+        { type: "Currency", id: "LIST" },
+      ],
+    }),
+    updateCurrency: builder.mutation<
+      Currency,
+      { id: number; data: Partial<Currency> }
+    >({
+      query: ({ id, data }) => ({
+        url: `currencies/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Currency", id },
+        { type: "Currency", id: "LIST" },
+      ],
+    }),
+    getCustomers: builder.query<Customer[], void>({
+      query: () => "customers",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Customer" as const, id })),
+              { type: "Customer" as const, id: "LIST" },
+            ]
+          : [{ type: "Customer" as const, id: "LIST" }],
+    }),
+    addCustomer: builder.mutation<
+      Customer,
+      Omit<Customer, "id"> & { id?: number }
+    >({
+      query: (body) => ({
+        url: "customers",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Customer", id: "LIST" }],
+    }),
+    updateCustomer: builder.mutation<
+      Customer,
+      { id: number; data: Partial<Customer> }
+    >({
+      query: ({ id, data }) => ({
+        url: `customers/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Customer", id },
+        { type: "Customer", id: "LIST" },
+      ],
+    }),
+    deleteCustomer: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `customers/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Customer", id },
+        { type: "Customer", id: "LIST" },
+      ],
+    }),
+    getUsers: builder.query<User[], void>({
+      query: () => "users",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "User" as const, id })),
+              { type: "User" as const, id: "LIST" },
+            ]
+          : [{ type: "User" as const, id: "LIST" }],
+    }),
+    addUser: builder.mutation<User, Omit<User, "id">>({
+      query: (body) => ({
+        url: "users",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "User", id: "LIST" }],
+    }),
+    updateUser: builder.mutation<User, { id: number; data: Partial<User> }>({
+      query: ({ id, data }) => ({
+        url: `users/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "User", id },
+        { type: "User", id: "LIST" },
+      ],
+    }),
+    deleteUser: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `users/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "User", id },
+        { type: "User", id: "LIST" },
+      ],
+    }),
+    getRoles: builder.query<Role[], void>({
+      query: () => "roles",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Role" as const, id })),
+              { type: "Role" as const, id: "LIST" },
+            ]
+          : [{ type: "Role", id: "LIST" }],
+    }),
+    addRole: builder.mutation<Role, Omit<Role, "id">>({
+      query: (body) => ({
+        url: "roles",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Role", id: "LIST" }],
+    }),
+    updateRole: builder.mutation<Role, { id: number; data: Partial<Role> }>({
+      query: ({ id, data }) => ({
+        url: `roles/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Role", id },
+        { type: "Role", id: "LIST" },
+      ],
+    }),
+    deleteRole: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `roles/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Role", id },
+        { type: "Role", id: "LIST" },
+      ],
+    }),
+    getOrders: builder.query<Order[], void>({
+      query: () => "orders",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Order" as const, id })),
+              { type: "Order" as const, id: "LIST" },
+            ]
+          : [{ type: "Order", id: "LIST" }],
+    }),
+    addOrder: builder.mutation<Order, OrderInput>({
+      query: (body) => ({
+        url: "orders",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Order", id: "LIST" }],
+    }),
+    updateOrderStatus: builder.mutation<
+      Order,
+      { id: number; status: OrderStatus }
+    >({
+      query: ({ id, status }) => ({
+        url: `orders/${id}/status`,
+        method: "PATCH",
+        body: { status },
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
+      ],
+    }),
+    deleteOrder: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `orders/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
+      ],
+    }),
+  }),
+});
+
+export const {
+  useGetCurrenciesQuery,
+  useAddCurrencyMutation,
+  useUpdateCurrencyMutation,
+  useDeleteCurrencyMutation,
+  useGetCustomersQuery,
+  useAddCustomerMutation,
+  useUpdateCustomerMutation,
+  useDeleteCustomerMutation,
+  useGetUsersQuery,
+  useAddUserMutation,
+  useUpdateUserMutation,
+  useDeleteUserMutation,
+  useGetRolesQuery,
+  useAddRoleMutation,
+  useUpdateRoleMutation,
+  useDeleteRoleMutation,
+  useGetOrdersQuery,
+  useAddOrderMutation,
+  useUpdateOrderStatusMutation,
+  useDeleteOrderMutation,
+} = api;
+
+
