@@ -198,35 +198,43 @@ const seedData = () => {
 
   const orderCount = db.prepare("SELECT COUNT(*) as count FROM orders").get().count;
   if (orderCount === 0) {
-    const insert = db.prepare(
-      `INSERT INTO orders (customerId, fromCurrency, toCurrency, amountBuy, amountSell, rate, status, createdAt)
-       VALUES (@customerId, @fromCurrency, @toCurrency, @amountBuy, @amountSell, @rate, @status, @createdAt);`,
-    );
-    const nowIso = () => new Date().toISOString();
-    const seed = [
-      {
-        customerId: 1,
-        fromCurrency: "USD",
-        toCurrency: "EUR",
-        amountBuy: 5400,
-        amountSell: 5000,
-        rate: 1.08,
-        status: "pending",
-        createdAt: nowIso(),
-      },
-      {
-        customerId: 2,
-        fromCurrency: "GBP",
-        toCurrency: "USD",
-        amountBuy: 4000,
-        amountSell: 3200,
-        rate: 1.25,
-        status: "completed",
-        createdAt: nowIso(),
-      },
-    ];
-    const insertMany = db.transaction((rows) => rows.forEach((row) => insert.run(row)));
-    insertMany(seed);
+    // Get actual customer IDs from the database
+    const getCustomerId = db.prepare("SELECT id FROM customers WHERE email = ?");
+    const customer1 = getCustomerId.get("john@example.com");
+    const customer2 = getCustomerId.get("sophie@example.com");
+    
+    // Only seed orders if we have at least 2 customers
+    if (customer1 && customer2) {
+      const insert = db.prepare(
+        `INSERT INTO orders (customerId, fromCurrency, toCurrency, amountBuy, amountSell, rate, status, createdAt)
+         VALUES (@customerId, @fromCurrency, @toCurrency, @amountBuy, @amountSell, @rate, @status, @createdAt);`,
+      );
+      const nowIso = () => new Date().toISOString();
+      const seed = [
+        {
+          customerId: customer1.id,
+          fromCurrency: "USD",
+          toCurrency: "EUR",
+          amountBuy: 5400,
+          amountSell: 5000,
+          rate: 1.08,
+          status: "pending",
+          createdAt: nowIso(),
+        },
+        {
+          customerId: customer2.id,
+          fromCurrency: "GBP",
+          toCurrency: "USD",
+          amountBuy: 4000,
+          amountSell: 3200,
+          rate: 1.25,
+          status: "completed",
+          createdAt: nowIso(),
+        },
+      ];
+      const insertMany = db.transaction((rows) => rows.forEach((row) => insert.run(row)));
+      insertMany(seed);
+    }
   }
 };
 
