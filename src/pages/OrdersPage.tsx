@@ -21,6 +21,7 @@ export default function OrdersPage() {
   const [updateOrderStatus] = useUpdateOrderStatusMutation();
   const [deleteOrder, { isLoading: isDeleting }] = useDeleteOrderMutation();
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
 
   const [form, setForm] = useState({
@@ -54,6 +55,7 @@ export default function OrdersPage() {
       rate: "",
       status: "pending",
     });
+    setIsModalOpen(false);
   };
 
   const setStatus = async (id: number, status: OrderStatus) => {
@@ -93,7 +95,17 @@ export default function OrdersPage() {
       <SectionCard
         title="Orders"
         description="Live orders with quick status updates."
-        actions={isLoading ? "Loading..." : `${orders.length} orders`}
+        actions={
+          <div className="flex items-center gap-4">
+            {isLoading ? "Loading..." : `${orders.length} orders`}
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
+            >
+              Create Order
+            </button>
+          </div>
+        }
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -201,106 +213,141 @@ export default function OrdersPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Create order">
-        <form className="grid gap-3 md:grid-cols-2" onSubmit={submit}>
-          <select
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            value={form.customerId}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, customerId: e.target.value }))
-            }
-            required
+      {/* Create Order Modal */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
           >
-            <option value="">Select customer</option>
-            {customers.map((customer) => (
-              <option value={customer.id} key={customer.id}>
-                {customer.name}
-              </option>
-            ))}
-          </select>
-          <div className="grid grid-cols-2 gap-3">
-            <select
-              className="rounded-lg border border-slate-200 px-3 py-2"
-              value={form.fromCurrency}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, fromCurrency: e.target.value }))
-              }
-              required
-            >
-              <option value="">From</option>
-              {currencies.map((currency) => (
-                <option key={currency.id} value={currency.code}>
-                  {currency.code}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded-lg border border-slate-200 px-3 py-2"
-              value={form.toCurrency}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, toCurrency: e.target.value }))
-              }
-              required
-            >
-              <option value="">To</option>
-              {currencies.map((currency) => (
-                <option key={currency.id} value={currency.code}>
-                  {currency.code}
-                </option>
-              ))}
-            </select>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">
+                Create Order
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label="Close"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <form className="grid gap-3 md:grid-cols-2" onSubmit={submit}>
+              <select
+                className="rounded-lg border border-slate-200 px-3 py-2"
+                value={form.customerId}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, customerId: e.target.value }))
+                }
+                required
+              >
+                <option value="">Select customer</option>
+                {customers.map((customer) => (
+                  <option value={customer.id} key={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  className="rounded-lg border border-slate-200 px-3 py-2"
+                  value={form.fromCurrency}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, fromCurrency: e.target.value }))
+                  }
+                  required
+                >
+                  <option value="">From</option>
+                  {currencies.map((currency) => (
+                    <option key={currency.id} value={currency.code}>
+                      {currency.code}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="rounded-lg border border-slate-200 px-3 py-2"
+                  value={form.toCurrency}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, toCurrency: e.target.value }))
+                  }
+                  required
+                >
+                  <option value="">To</option>
+                  {currencies.map((currency) => (
+                    <option key={currency.id} value={currency.code}>
+                      {currency.code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder="Amount buy"
+                  value={form.amountBuy}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, amountBuy: e.target.value }))
+                  }
+                  required
+                  type="number"
+                />
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder="Amount sell"
+                  value={form.amountSell}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, amountSell: e.target.value }))
+                  }
+                  required
+                  type="number"
+                />
+              </div>
+              <input
+                className="rounded-lg border border-slate-200 px-3 py-2"
+                placeholder="Rate"
+                value={form.rate}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, rate: e.target.value }))
+                }
+                required
+                type="number"
+                step="0.0001"
+              />
+              <div className="col-span-full flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                >
+                  {isSaving ? "Saving..." : "Save order"}
+                </button>
+              </div>
+            </form>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Amount buy"
-              value={form.amountBuy}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, amountBuy: e.target.value }))
-              }
-              required
-              type="number"
-            />
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Amount sell"
-              value={form.amountSell}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, amountSell: e.target.value }))
-              }
-              required
-              type="number"
-            />
-          </div>
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Rate"
-            value={form.rate}
-            onChange={(e) => setForm((p) => ({ ...p, rate: e.target.value }))}
-            required
-            type="number"
-            step="0.0001"
-          />
-          <select
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            value={form.status}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, status: e.target.value as OrderStatus }))
-            }
-          >
-            <option value="pending">Pending</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="col-span-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
-          >
-            {isSaving ? "Saving..." : "Save order"}
-          </button>
-        </form>
-      </SectionCard>
+        </div>
+      )}
     </div>
   );
 }
