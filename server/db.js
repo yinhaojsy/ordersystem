@@ -64,8 +64,54 @@ const ensureSchema = () => {
       amountSell REAL NOT NULL,
       rate REAL NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
+      handlerId INTEGER,
+      paymentType TEXT,
+      networkChain TEXT,
+      walletAddresses TEXT,
+      bankDetails TEXT,
       createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(customerId) REFERENCES customers(id)
+      FOREIGN KEY(customerId) REFERENCES customers(id),
+      FOREIGN KEY(handlerId) REFERENCES users(id)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS order_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      orderId INTEGER NOT NULL,
+      imagePath TEXT NOT NULL,
+      amount REAL NOT NULL,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS order_beneficiaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      orderId INTEGER NOT NULL,
+      paymentType TEXT NOT NULL,
+      networkChain TEXT,
+      walletAddresses TEXT,
+      bankName TEXT,
+      accountTitle TEXT,
+      accountNumber TEXT,
+      accountIban TEXT,
+      swiftCode TEXT,
+      bankAddress TEXT,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS order_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      orderId INTEGER NOT NULL,
+      imagePath TEXT NOT NULL,
+      amount REAL NOT NULL,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE
     );`,
   ).run();
 };
@@ -238,8 +284,35 @@ const seedData = () => {
   }
 };
 
+const migrateDatabase = () => {
+  // Check if new columns exist, if not add them
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(orders)").all();
+    const columnNames = tableInfo.map((col) => col.name);
+    
+    if (!columnNames.includes("handlerId")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN handlerId INTEGER REFERENCES users(id)").run();
+    }
+    if (!columnNames.includes("paymentType")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN paymentType TEXT").run();
+    }
+    if (!columnNames.includes("networkChain")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN networkChain TEXT").run();
+    }
+    if (!columnNames.includes("walletAddresses")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN walletAddresses TEXT").run();
+    }
+    if (!columnNames.includes("bankDetails")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN bankDetails TEXT").run();
+    }
+  } catch (error) {
+    console.error("Migration error:", error);
+  }
+};
+
 export const initDatabase = () => {
   ensureSchema();
+  migrateDatabase();
   seedData();
 };
 

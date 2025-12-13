@@ -44,7 +44,11 @@ export const updateCurrency = (req, res, next) => {
 export const deleteCurrency = (req, res, next) => {
   try {
     const { id } = req.params;
-    db.prepare("DELETE FROM currencies WHERE id = ?;").run(id);
+    const stmt = db.prepare("DELETE FROM currencies WHERE id = ?;");
+    const result = stmt.run(id);
+    if (result.changes === 0) {
+      return res.status(404).json({ message: "Currency not found" });
+    }
     res.status(204).send();
   } catch (error) {
     next(error);

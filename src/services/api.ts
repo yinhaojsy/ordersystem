@@ -7,6 +7,9 @@ import type {
   Order,
   OrderInput,
   OrderStatus,
+  OrderReceipt,
+  OrderBeneficiary,
+  OrderPayment,
 } from "../types";
 
 const baseQuery = fetchBaseQuery({
@@ -226,6 +229,97 @@ export const api = createApi({
         { type: "Order", id: "LIST" },
       ],
     }),
+    getOrderDetails: builder.query<
+      {
+        order: Order;
+        receipts: OrderReceipt[];
+        beneficiaries: OrderBeneficiary[];
+        payments: OrderPayment[];
+        totalReceiptAmount: number;
+        totalPaymentAmount: number;
+        receiptBalance: number;
+        paymentBalance: number;
+      },
+      number
+    >({
+      query: (id) => `orders/${id}/details`,
+      providesTags: (_res, _err, id) => [{ type: "Order", id }],
+    }),
+    processOrder: builder.mutation<
+      Order,
+      {
+        id: number;
+        handlerId: number;
+        paymentType: "CRYPTO" | "FIAT";
+        networkChain?: string;
+        walletAddresses?: string[];
+        bankDetails?: {
+          bankName?: string;
+          accountTitle?: string;
+          accountNumber?: string;
+          accountIban?: string;
+          swiftCode?: string;
+          bankAddress?: string;
+        };
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `orders/${id}/process`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
+      ],
+    }),
+    addReceipt: builder.mutation<
+      OrderReceipt,
+      { id: number; imagePath: string; amount: number }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `orders/${id}/receipts`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [{ type: "Order", id }],
+    }),
+    addBeneficiary: builder.mutation<
+      OrderBeneficiary,
+      {
+        id: number;
+        paymentType: "CRYPTO" | "FIAT";
+        networkChain?: string;
+        walletAddresses?: string[];
+        bankName?: string;
+        accountTitle?: string;
+        accountNumber?: string;
+        accountIban?: string;
+        swiftCode?: string;
+        bankAddress?: string;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `orders/${id}/beneficiaries`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
+      ],
+    }),
+    addPayment: builder.mutation<
+      OrderPayment,
+      { id: number; imagePath: string; amount: number }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `orders/${id}/payments`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [{ type: "Order", id }],
+    }),
   }),
 });
 
@@ -250,6 +344,11 @@ export const {
   useAddOrderMutation,
   useUpdateOrderStatusMutation,
   useDeleteOrderMutation,
+  useGetOrderDetailsQuery,
+  useProcessOrderMutation,
+  useAddReceiptMutation,
+  useAddBeneficiaryMutation,
+  useAddPaymentMutation,
 } = api;
 
 

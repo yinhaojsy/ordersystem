@@ -42,7 +42,11 @@ export const updateUser = (req, res, next) => {
 export const deleteUser = (req, res, next) => {
   try {
     const { id } = req.params;
-    db.prepare("DELETE FROM users WHERE id = ?;").run(id);
+    const stmt = db.prepare("DELETE FROM users WHERE id = ?;");
+    const result = stmt.run(id);
+    if (result.changes === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
     res.status(204).send();
   } catch (error) {
     next(error);

@@ -28,6 +28,11 @@ import {
   createOrder,
   updateOrderStatus,
   deleteOrder,
+  getOrderDetails,
+  processOrder,
+  addReceipt,
+  addBeneficiary,
+  addPayment,
 } from "../controllers/ordersController.js";
 
 const router = Router();
@@ -56,7 +61,14 @@ router.delete("/roles/:id", deleteRole);
 
 router.get("/orders", listOrders);
 router.post("/orders", createOrder);
+// More specific routes must come before less specific ones
+router.get("/orders/:id/details", getOrderDetails);
+router.post("/orders/:id/process", processOrder);
+router.post("/orders/:id/receipts", addReceipt);
+router.post("/orders/:id/beneficiaries", addBeneficiary);
+router.post("/orders/:id/payments", addPayment);
 router.patch("/orders/:id/status", updateOrderStatus);
+// DELETE must come last as it matches /orders/:id
 router.delete("/orders/:id", deleteOrder);
 
 export default router;

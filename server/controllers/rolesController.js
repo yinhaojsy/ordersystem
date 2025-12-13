@@ -55,7 +55,11 @@ export const updateRole = (req, res, next) => {
 export const deleteRole = (req, res, next) => {
   try {
     const { id } = req.params;
-    db.prepare("DELETE FROM roles WHERE id = ?;").run(id);
+    const stmt = db.prepare("DELETE FROM roles WHERE id = ?;");
+    const result = stmt.run(id);
+    if (result.changes === 0) {
+      return res.status(404).json({ message: "Role not found" });
+    }
     res.status(204).send();
   } catch (error) {
     next(error);

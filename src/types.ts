@@ -35,7 +35,7 @@ export interface Role {
   permissions: RolePermissions;
 }
 
-export type OrderStatus = "pending" | "completed" | "cancelled";
+export type OrderStatus = "pending" | "waiting_for_receipt" | "waiting_for_payment" | "completed" | "cancelled";
 
 export interface Order {
   id: number;
@@ -47,6 +47,51 @@ export interface Order {
   amountSell: number;
   rate: number;
   status: OrderStatus;
+  handlerId?: number;
+  handlerName?: string;
+  paymentType?: "CRYPTO" | "FIAT";
+  networkChain?: string;
+  walletAddresses?: string[];
+  bankDetails?: {
+    bankName?: string;
+    accountTitle?: string;
+    accountNumber?: string;
+    accountIban?: string;
+    swiftCode?: string;
+    bankAddress?: string;
+  };
+  hasBeneficiaries?: boolean;
+  createdAt: string;
+}
+
+export interface OrderReceipt {
+  id: number;
+  orderId: number;
+  imagePath: string;
+  amount: number;
+  createdAt: string;
+}
+
+export interface OrderBeneficiary {
+  id: number;
+  orderId: number;
+  paymentType: "CRYPTO" | "FIAT";
+  networkChain?: string;
+  walletAddresses?: string[];
+  bankName?: string;
+  accountTitle?: string;
+  accountNumber?: string;
+  accountIban?: string;
+  swiftCode?: string;
+  bankAddress?: string;
+  createdAt: string;
+}
+
+export interface OrderPayment {
+  id: number;
+  orderId: number;
+  imagePath: string;
+  amount: number;
   createdAt: string;
 }
 
