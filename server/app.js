@@ -24,10 +24,18 @@ app.use("/api", apiRouter);
 
 // Serve static files from React app in production only
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../dist")));
+  const distPath = path.join(__dirname, "../dist");
+  app.use(express.static(distPath));
   
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "../dist/index.html"));
+  // Catch-all handler: send back React's index.html file for all non-API routes
+  // Use middleware approach for Express 5 compatibility
+  app.use((req, res, next) => {
+    // Skip API routes
+    if (req.path.startsWith("/api")) {
+      return next();
+    }
+    // For all other routes, serve index.html (SPA routing)
+    res.sendFile(path.join(distPath, "index.html"));
   });
 }
 
