@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 
-const dataDir = path.join(process.cwd(), "server", "data");
+// Use Railway's persistent volume path, or fallback to local path
+const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "server", "data");
 const dbPath = path.join(dataDir, "app.db");
 
 fs.mkdirSync(dataDir, { recursive: true });
