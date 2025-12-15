@@ -53,4 +53,153 @@ export const deleteCustomer = (req, res, next) => {
   }
 };
 
+export const listCustomerBeneficiaries = (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const rows = db
+      .prepare("SELECT * FROM customer_beneficiaries WHERE customerId = ? ORDER BY createdAt ASC;")
+      .all(id);
+
+    const normalized = rows.map((row) => ({
+      ...row,
+      walletAddresses: row.walletAddresses ? JSON.parse(row.walletAddresses) : null,
+    }));
+
+    res.json(normalized);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addCustomerBeneficiary = (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const {
+      paymentType,
+      networkChain,
+      walletAddresses,
+      bankName,
+      accountTitle,
+      accountNumber,
+      accountIban,
+      swiftCode,
+      bankAddress,
+    } = req.body;
+
+    if (!paymentType) {
+      return res.status(400).json({ message: "Payment type is required" });
+    }
+
+    const stmt = db.prepare(
+      `INSERT INTO customer_beneficiaries
+       (customerId, paymentType, networkChain, walletAddresses, bankName, accountTitle, accountNumber, accountIban, swiftCode, bankAddress, createdAt)
+       VALUES (@customerId, @paymentType, @networkChain, @walletAddresses, @bankName, @accountTitle, @accountNumber, @accountIban, @swiftCode, @bankAddress, @createdAt);`,
+    );
+
+    const result = stmt.run({
+      customerId: id,
+      paymentType,
+      networkChain: networkChain || null,
+      walletAddresses: walletAddresses ? JSON.stringify(walletAddresses) : null,
+      bankName: bankName || null,
+      accountTitle: accountTitle || null,
+      accountNumber: accountNumber || null,
+      accountIban: accountIban || null,
+      swiftCode: swiftCode || null,
+      bankAddress: bankAddress || null,
+      createdAt: new Date().toISOString(),
+    });
+
+    const beneficiary = db
+      .prepare("SELECT * FROM customer_beneficiaries WHERE id = ?;")
+      .get(result.lastInsertRowid);
+
+    res.json({
+      ...beneficiary,
+      walletAddresses: beneficiary.walletAddresses ? JSON.parse(beneficiary.walletAddresses) : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateCustomerBeneficiary = (req, res, next) => {
+  try {
+    const { id: customerId, beneficiaryId } = req.params;
+    const {
+      paymentType,
+      networkChain,
+      walletAddresses,
+      bankName,
+      accountTitle,
+      accountNumber,
+      accountIban,
+      swiftCode,
+      bankAddress,
+    } = req.body;
+
+    if (!paymentType) {
+      return res.status(400).json({ message: "Payment type is required" });
+    }
+
+    db.prepare(
+      `UPDATE customer_beneficiaries
+       SET paymentType=@paymentType,
+           networkChain=@networkChain,
+           walletAddresses=@walletAddresses,
+           bankName=@bankName,
+           accountTitle=@accountTitle,
+           accountNumber=@accountNumber,
+           accountIban=@accountIban,
+           swiftCode=@swiftCode,
+           bankAddress=@bankAddress
+       WHERE id=@beneficiaryId AND customerId=@customerId;`,
+    ).run({
+      paymentType,
+      networkChain: networkChain || null,
+      walletAddresses: walletAddresses ? JSON.stringify(walletAddresses) : null,
+      bankName: bankName || null,
+      accountTitle: accountTitle || null,
+      accountNumber: accountNumber || null,
+      accountIban: accountIban || null,
+      swiftCode: swiftCode || null,
+      bankAddress: bankAddress || null,
+      beneficiaryId,
+      customerId,
+    });
+
+    const updated = db
+      .prepare("SELECT * FROM customer_beneficiaries WHERE id = ? AND customerId = ?;")
+      .get(beneficiaryId, customerId);
+
+    if (!updated) {
+      return res.status(404).json({ message: "Beneficiary not found" });
+    }
+
+    res.json({
+      ...updated,
+      walletAddresses: updated.walletAddresses ? JSON.parse(updated.walletAddresses) : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteCustomerBeneficiary = (req, res, next) => {
+  try {
+    const { id: customerId, beneficiaryId } = req.params;
+    const result = db
+      .prepare("DELETE FROM customer_beneficiaries WHERE id = ? AND customerId = ?;")
+      .run(beneficiaryId, customerId);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ message: "Beneficiary not found" });
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
 

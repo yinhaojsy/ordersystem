@@ -21,6 +21,14 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  password?: string | null;
+}
+
+export interface AuthResponse {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
 }
 
 export interface RolePermissions {
@@ -92,6 +100,21 @@ export interface OrderPayment {
   orderId: number;
   imagePath: string;
   amount: number;
+  createdAt: string;
+}
+
+export interface CustomerBeneficiary {
+  id: number;
+  customerId: number;
+  paymentType: "CRYPTO" | "FIAT";
+  networkChain?: string;
+  walletAddresses?: string[];
+  bankName?: string;
+  accountTitle?: string;
+  accountNumber?: string;
+  accountIban?: string;
+  swiftCode?: string;
+  bankAddress?: string;
   createdAt: string;
 }
 

@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import {
@@ -10,18 +11,22 @@ import {
 import type { RolePermissions } from "../types";
 
 const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders"];
-const ACTION_OPTIONS = [
-  { key: "createCurrency", label: "Create currency" },
-  { key: "createCustomer", label: "Create customer" },
-  { key: "createUser", label: "Create user" },
-  { key: "createOrder", label: "Create order" },
-  { key: "editCurrency", label: "Edit currency" },
-  { key: "processOrder", label: "Process order" },
-  { key: "cancelOrder", label: "Cancel order" },
-];
 
 export default function RolesPage() {
+  const { t } = useTranslation();
   const { data: roles = [], isLoading } = useGetRolesQuery();
+  
+  const ACTION_OPTIONS = [
+    { key: "createCurrency", labelKey: "roles.createCurrency" },
+    { key: "createCustomer", labelKey: "roles.createCustomer" },
+    { key: "createUser", labelKey: "roles.createUser" },
+    { key: "createOrder", labelKey: "roles.createOrder" },
+    { key: "editCurrency", labelKey: "roles.editCurrency" },
+    { key: "processOrder", labelKey: "roles.processOrder" },
+    { key: "cancelOrder", labelKey: "roles.cancelOrder" },
+    { key: "deleteOrder", labelKey: "roles.deleteOrder" },
+    { key: "deleteManyOrders", labelKey: "roles.deleteManyOrders" },
+  ];
   const [addRole, { isLoading: isSaving }] = useAddRoleMutation();
   const [updateRole] = useUpdateRoleMutation();
   const [deleteRole, { isLoading: isDeleting }] = useDeleteRoleMutation();
@@ -91,19 +96,19 @@ export default function RolesPage() {
   return (
     <div className="space-y-6">
       <SectionCard
-        title="Roles & permissions"
-        description="Granular access control per section and action."
-        actions={isLoading ? "Loading..." : `${roles.length} roles`}
+        title={t("roles.title")}
+        description={t("roles.description")}
+        actions={isLoading ? t("common.loading") : `${roles.length} ${t("roles.roles")}`}
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Name</th>
-                <th className="py-2">Display</th>
-                <th className="py-2">Sections</th>
-                <th className="py-2">Actions</th>
-                <th className="py-2">Manage</th>
+                <th className="py-2">{t("roles.name")}</th>
+                <th className="py-2">{t("roles.display")}</th>
+                <th className="py-2">{t("roles.sections")}</th>
+                <th className="py-2">{t("roles.actions")}</th>
+                <th className="py-2">{t("roles.manage")}</th>
               </tr>
             </thead>
             <tbody>
@@ -124,11 +129,14 @@ export default function RolesPage() {
                     <div className="flex flex-wrap gap-1">
                       {Object.entries(role.permissions.actions || {})
                         .filter(([, allowed]) => allowed)
-                        .map(([actionKey]) => (
-                          <Badge key={actionKey} tone="emerald">
-                            {actionKey}
-                          </Badge>
-                        ))}
+                        .map(([actionKey]) => {
+                          const actionOption = ACTION_OPTIONS.find(opt => opt.key === actionKey);
+                          return (
+                            <Badge key={actionKey} tone="emerald">
+                              {actionOption ? t(actionOption.labelKey) : actionKey}
+                            </Badge>
+                          );
+                        })}
                     </div>
                   </td>
                   <td className="py-2">
@@ -137,14 +145,14 @@ export default function RolesPage() {
                         className="text-amber-600 hover:text-amber-700"
                         onClick={() => startEdit(role.id)}
                       >
-                        Edit
+                        {t("common.edit")}
                       </button>
                       <button
                         className="text-rose-600 hover:text-rose-700"
                         onClick={() => remove(role.id)}
                         disabled={isDeleting}
                       >
-                        Delete
+                        {t("common.delete")}
                       </button>
                     </div>
                   </td>
@@ -153,7 +161,7 @@ export default function RolesPage() {
               {!roles.length && (
                 <tr>
                   <td className="py-4 text-sm text-slate-500" colSpan={5}>
-                    No roles yet.
+                    {t("roles.noRoles")}
                   </td>
                 </tr>
               )}
@@ -164,22 +172,22 @@ export default function RolesPage() {
 
       {editingId && editForm && (
         <SectionCard
-          title="Edit role (Admin)"
-          description="Adjust permissions and labels."
-          actions={<button onClick={cancelEdit} className="text-sm text-slate-600">Cancel</button>}
+          title={t("roles.editTitle")}
+          description={t("roles.editDesc")}
+          actions={<button onClick={cancelEdit} className="text-sm text-slate-600">{t("common.cancel")}</button>}
         >
           <form className="space-y-4" onSubmit={submitEdit}>
             <div className="grid gap-3 md:grid-cols-2">
               <input
                 className="rounded-lg border border-slate-200 px-3 py-2"
-                placeholder="Name (identifier)"
+                placeholder={t("roles.namePlaceholder")}
                 value={editForm.name}
                 onChange={(e) => setEditForm((p) => (p ? { ...p, name: e.target.value } : p))}
                 required
               />
               <input
                 className="rounded-lg border border-slate-200 px-3 py-2"
-                placeholder="Display name"
+                placeholder={t("roles.displayNamePlaceholder")}
                 value={editForm.displayName}
                 onChange={(e) =>
                   setEditForm((p) => (p ? { ...p, displayName: e.target.value } : p))
@@ -189,7 +197,7 @@ export default function RolesPage() {
             </div>
 
             <div>
-              <div className="mb-2 text-sm font-semibold text-slate-700">Sections</div>
+              <div className="mb-2 text-sm font-semibold text-slate-700">{t("roles.sectionsLabel")}</div>
               <div className="flex flex-wrap gap-3">
                 {SECTION_OPTIONS.map((section) => (
                   <label key={section} className="flex items-center gap-2 text-sm text-slate-700">
@@ -217,7 +225,7 @@ export default function RolesPage() {
             </div>
 
             <div>
-              <div className="mb-2 text-sm font-semibold text-slate-700">Actions</div>
+              <div className="mb-2 text-sm font-semibold text-slate-700">{t("roles.actionsLabel")}</div>
               <div className="flex flex-wrap gap-3">
                 {ACTION_OPTIONS.map((action) => (
                   <label key={action.key} className="flex items-center gap-2 text-sm text-slate-700">
@@ -241,7 +249,7 @@ export default function RolesPage() {
                         });
                       }}
                     />
-                    {action.label}
+                    {t(action.labelKey)}
                   </label>
                 ))}
               </div>
@@ -251,25 +259,25 @@ export default function RolesPage() {
               type="submit"
               className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700"
             >
-              Update role
+              {t("roles.updateRole")}
             </button>
           </form>
         </SectionCard>
       )}
 
-      <SectionCard title="Add role">
+      <SectionCard title={t("roles.addTitle")}>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="grid gap-3 md:grid-cols-2">
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Name (identifier)"
+              placeholder={t("roles.namePlaceholder")}
               value={form.name}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
               required
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Display name"
+              placeholder={t("roles.displayNamePlaceholder")}
               value={form.displayName}
               onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))}
               required
@@ -277,7 +285,7 @@ export default function RolesPage() {
           </div>
 
           <div>
-            <div className="mb-2 text-sm font-semibold text-slate-700">Sections</div>
+            <div className="mb-2 text-sm font-semibold text-slate-700">{t("roles.sectionsLabel")}</div>
             <div className="flex flex-wrap gap-3">
               {SECTION_OPTIONS.map((section) => (
                 <label key={section} className="flex items-center gap-2 text-sm text-slate-700">
@@ -304,7 +312,7 @@ export default function RolesPage() {
           </div>
 
           <div>
-            <div className="mb-2 text-sm font-semibold text-slate-700">Actions</div>
+            <div className="mb-2 text-sm font-semibold text-slate-700">{t("roles.actionsLabel")}</div>
             <div className="flex flex-wrap gap-3">
               {ACTION_OPTIONS.map((action) => (
                 <label key={action.key} className="flex items-center gap-2 text-sm text-slate-700">
@@ -325,7 +333,7 @@ export default function RolesPage() {
                       }));
                     }}
                   />
-                  {action.label}
+                  {t(action.labelKey)}
                 </label>
               ))}
             </div>
@@ -336,7 +344,7 @@ export default function RolesPage() {
             disabled={isSaving}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
           >
-            {isSaving ? "Saving..." : "Save role"}
+            {isSaving ? t("common.saving") : t("roles.saveRole")}
           </button>
         </form>
       </SectionCard>

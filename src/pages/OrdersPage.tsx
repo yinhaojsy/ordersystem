@@ -1,4 +1,5 @@
 import { useState, type FormEvent, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import {
@@ -14,11 +15,19 @@ import {
   useAddReceiptMutation,
   useAddBeneficiaryMutation,
   useAddPaymentMutation,
+  useGetCustomerBeneficiariesQuery,
+  useAddCustomerBeneficiaryMutation,
 } from "../services/api";
+import { useGetRolesQuery } from "../services/api";
+import { useAppSelector } from "../app/hooks";
 import type { OrderStatus } from "../types";
 import { formatDate } from "../utils/format";
 
 export default function OrdersPage() {
+  const { t } = useTranslation();
+  const authUser = useAppSelector((s) => s.auth.user);
+  const { data: roles = [] } = useGetRolesQuery();
+
   const { data: orders = [], isLoading, refetch: refetchOrders } = useGetOrdersQuery();
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: currencies = [] } = useGetCurrenciesQuery();
@@ -31,8 +40,10 @@ export default function OrdersPage() {
   const [addReceipt] = useAddReceiptMutation();
   const [addBeneficiary] = useAddBeneficiaryMutation();
   const [addPayment] = useAddPaymentMutation();
+  const [addCustomerBeneficiary] = useAddCustomerBeneficiaryMutation();
 
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processModalOrderId, setProcessModalOrderId] = useState<number | null>(null);
   const [viewModalOrderId, setViewModalOrderId] = useState<number | null>(null);
@@ -79,6 +90,43 @@ export default function OrdersPage() {
     swiftCode: "",
     bankAddress: "",
   });
+  const [saveBeneficiaryToCustomer, setSaveBeneficiaryToCustomer] = useState(false);
+  const [selectedCustomerBeneficiaryId, setSelectedCustomerBeneficiaryId] = useState<number | "">(
+    "",
+  );
+
+  const applyCustomerBeneficiaryToForm = (beneficiaryId: number) => {
+    const selected = customerBeneficiaries.find((b) => b.id === beneficiaryId);
+    if (!selected) return;
+
+    if (selected.paymentType === "CRYPTO") {
+      setBeneficiaryForm({
+        paymentType: "CRYPTO",
+        networkChain: selected.networkChain || "",
+        walletAddresses: selected.walletAddresses && selected.walletAddresses.length > 0
+          ? selected.walletAddresses
+          : [""],
+        bankName: "",
+        accountTitle: "",
+        accountNumber: "",
+        accountIban: "",
+        swiftCode: "",
+        bankAddress: "",
+      });
+    } else {
+      setBeneficiaryForm({
+        paymentType: "FIAT",
+        networkChain: "",
+        walletAddresses: [""],
+        bankName: selected.bankName || "",
+        accountTitle: selected.accountTitle || "",
+        accountNumber: selected.accountNumber || "",
+        accountIban: selected.accountIban || "",
+        swiftCode: selected.swiftCode || "",
+        bankAddress: selected.bankAddress || "",
+      });
+    }
+  };
 
   const [receiptUploads, setReceiptUploads] = useState<Array<{ image: string; amount: string }>>([{ image: "", amount: "" }]);
   const [paymentUploads, setPaymentUploads] = useState<Array<{ image: string; amount: string }>>([{ image: "", amount: "" }]);
@@ -127,29 +175,121 @@ export default function OrdersPage() {
       swiftCode: "",
       bankAddress: "",
     });
+    setSaveBeneficiaryToCustomer(false);
+    setSelectedCustomerBeneficiaryId("");
   };
+ /*  // When fromCurrency or toCurrency changes, fetch the buy and sell rates for the selected non-USDT currency (rates are against USDT)
+  useEffect(() => {
+    const fetchConversionRates = async () => {
+      let currency = null;
+      // Only fetch for the currency that is NOT USDT, and only if one is USDT and one is not
+      if (form.fromCurrency === "USDT" && form.toCurrency && form.toCurrency !== "USDT") {
+        currency = form.toCurrency;
+      } else if (form.toCurrency === "USDT" && form.fromCurrency && form.fromCurrency !== "USDT") {
+        currency = form.fromCurrency;
+      } else {
+        // If both are USDT or both are non-USDT or missing, do nothing
+        return;
+      }
+      try {
+        // Replace with your actual endpoint or API method
+        const response = await fetch(`/api/exchange-rates/${currency}`);
+        if (!response.ok) {
+          // Handles HTTP 404s or others gracefully
+          console.warn(`Exchange rates endpoint not found for: ${currency}`);
+          return;
+        }
+        // Attempt to parse only if the response is JSON
+        const contentType = response.headers.get("Content-Type");
+        if (!contentType || !contentType.includes("application/json")) {
+          console.warn(`Exchange rates response for ${currency} is not valid JSON`);
+          return;
+        }
+        const data = await response.json();
+        // Suppose the response structure is { buy: 284.5, sell: 286 }
+        if (data && typeof data.buy !== 'undefined' && typeof data.sell !== 'undefined') {
+          console.log(`Buy rate for ${currency} against USDT: ${data.buy}`);
+          console.log(`Sell rate for ${currency} against USDT: ${data.sell}`);
+        } else {
+          console.log(`Could not fetch valid conversion rates for ${currency} against USDT`);
+        }
+      } catch (error) {
+        console.log(`Error fetching conversion rates for ${currency} against USDT:`, error);
+      }
+    };
+    fetchConversionRates();
+  }, [form.fromCurrency, form.toCurrency]); */
+
+
 
   // Auto-calculate amount when rate or source amount changes
   useEffect(() => {
     if (!form.rate || form.rate === "0" || !calculatedField) return;
+    if (!form.fromCurrency || !form.toCurrency) return;
 
     const rate = Number(form.rate);
     if (isNaN(rate) || rate <= 0) return;
 
+    // Determine which side is the "stronger" currency so we know which way to apply the rate.
+    // Heuristic: USDT (or any currency with rate <= 1) is the base; otherwise pick the currency with the smaller rate.
+    const getCurrencyRate = (code: string) => {
+      const currency = currencies.find((c) => c.code === code);
+      const candidate =
+        currency?.conversionRateBuy ??
+        currency?.baseRateBuy ??
+        currency?.baseRateSell ??
+        currency?.conversionRateSell;
+      return typeof candidate === "number" ? candidate : null;
+    };
+
+    const fromRate = getCurrencyRate(form.fromCurrency);
+    const toRate = getCurrencyRate(form.toCurrency);
+
+    const inferredFromIsUSDT = fromRate !== null ? fromRate <= 1 : form.fromCurrency === "USDT";
+    const inferredToIsUSDT = toRate !== null ? toRate <= 1 : form.toCurrency === "USDT";
+
+    // If both sides look like USDT (rate <= 1), nothing to auto-calc
+    if (inferredFromIsUSDT && inferredToIsUSDT) return;
+
+    let baseIsFrom: boolean | null = null;
+    if (inferredFromIsUSDT !== inferredToIsUSDT) {
+      // One side is USDT (or behaves like it)
+      baseIsFrom = inferredFromIsUSDT;
+    } else if (!inferredFromIsUSDT && !inferredToIsUSDT && fromRate !== null && toRate !== null) {
+      // Neither is USDT: pick the currency with the smaller rate as the stronger/base currency
+      baseIsFrom = fromRate < toRate;
+    } else {
+      return;
+    }
+
     if (calculatedField === "buy" && form.amountBuy) {
       const buyAmount = Number(form.amountBuy);
       if (!isNaN(buyAmount) && buyAmount > 0) {
-        const sellAmount = (buyAmount / rate).toFixed(2);
+        let sellAmount: string;
+        if (baseIsFrom) {
+          // Stronger/base currency → weaker: multiply by rate
+          sellAmount = (buyAmount * rate).toFixed(2);
+        } else {
+          // Weaker → stronger/base: divide by rate
+          sellAmount = (buyAmount / rate).toFixed(2);
+        }
         setForm((prev) => ({ ...prev, amountSell: sellAmount }));
       }
     } else if (calculatedField === "sell" && form.amountSell) {
       const sellAmount = Number(form.amountSell);
       if (!isNaN(sellAmount) && sellAmount > 0) {
-        const buyAmount = (sellAmount * rate).toFixed(2);
+        let buyAmount: string;
+        if (baseIsFrom) {
+          // Stronger/base currency → weaker: divide to get base amount
+          buyAmount = (sellAmount / rate).toFixed(2);
+        } else {
+          // Weaker → stronger/base: multiply to get base amount
+          buyAmount = (sellAmount * rate).toFixed(2);
+        }
         setForm((prev) => ({ ...prev, amountBuy: buyAmount }));
       }
     }
-  }, [form.rate, form.amountBuy, form.amountSell, calculatedField]);
+  }, [form.rate, form.amountBuy, form.amountSell, calculatedField, form.fromCurrency, form.toCurrency, currencies]);
 
   const closeModal = () => {
     resetForm();
@@ -175,6 +315,8 @@ export default function OrdersPage() {
   const closeMakePaymentModal = () => {
     resetBeneficiaryForm();
     setMakePaymentModalOrderId(null);
+    setSaveBeneficiaryToCustomer(false);
+    setSelectedCustomerBeneficiaryId("");
   };
 
   const submit = async (event: FormEvent) => {
@@ -284,6 +426,11 @@ export default function OrdersPage() {
     }
 
     await addBeneficiary(payload);
+    if (saveBeneficiaryToCustomer && makePaymentOrder?.customerId) {
+      const customerPayload = { ...payload, customerId: makePaymentOrder.customerId };
+      delete customerPayload.id;
+      await addCustomerBeneficiary(customerPayload);
+    }
     resetBeneficiaryForm();
     const orderId = makePaymentModalOrderId;
     setMakePaymentModalOrderId(null);
@@ -358,11 +505,16 @@ export default function OrdersPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (window.confirm("Are you sure you want to delete this order?")) {
+    if (window.confirm(t("orders.confirmDeleteOrder"))) {
       await deleteOrder(id);
       setOpenMenuId(null);
     }
   };
+
+  const currentRole = roles.find((r) => r.name === authUser?.role);
+  const canCancelOrder = Boolean(currentRole?.permissions?.actions?.cancelOrder);
+  const canDeleteOrder = Boolean(currentRole?.permissions?.actions?.deleteOrder);
+  const canDeleteManyOrders = Boolean(currentRole?.permissions?.actions?.deleteManyOrders);
 
   const getActionButtons = (order: typeof orders[0]) => {
     const buttons = [];
@@ -377,7 +529,7 @@ export default function OrdersPage() {
             setOpenMenuId(null);
           }}
         >
-          Process
+          {t("orders.process")}
         </button>
       );
     }
@@ -392,7 +544,7 @@ export default function OrdersPage() {
             setOpenMenuId(null);
           }}
         >
-          View
+          {t("orders.view")}
         </button>
       );
     }
@@ -409,7 +561,7 @@ export default function OrdersPage() {
               setOpenMenuId(null);
             }}
           >
-            View
+            {t("orders.view")}
           </button>
         );
       } else {
@@ -423,13 +575,13 @@ export default function OrdersPage() {
               setOpenMenuId(null);
             }}
           >
-            Make Payment
+            {t("orders.makePayment")}
           </button>
         );
       }
     }
 
-    if (order.status === "completed") {
+    if (order.status === "completed" || order.status === "cancelled") {
       buttons.push(
         <button
           key="view"
@@ -439,26 +591,25 @@ export default function OrdersPage() {
             setOpenMenuId(null);
           }}
         >
-          View
+          {t("orders.view")}
         </button>
       );
     }
 
-    // Don't show Cancel button for completed or cancelled orders
-    if (order.status !== "completed" && order.status !== "cancelled") {
+    // Don't show Cancel button for completed or cancelled orders or when role lacks permission
+    if (canCancelOrder && order.status !== "completed" && order.status !== "cancelled") {
       buttons.push(
         <button
           key="cancel"
           className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-slate-50"
           onClick={() => setStatus(order.id, "cancelled")}
         >
-          Cancel
+          {t("orders.cancel")}
         </button>
       );
     }
 
-    const isAdmin = true;
-    if (isAdmin) {
+    if (canDeleteOrder) {
       buttons.push(
         <button
           key="delete"
@@ -466,7 +617,7 @@ export default function OrdersPage() {
           onClick={() => handleDelete(order.id)}
           disabled={isDeleting}
         >
-          {isDeleting ? "Deleting..." : "Delete"}
+          {isDeleting ? t("common.deleting") : t("orders.delete")}
         </button>
       );
     }
@@ -507,43 +658,117 @@ export default function OrdersPage() {
   }, [openMenuId]);
 
   const currentOrder = orders.find((o) => o.id === viewModalOrderId);
+  const makePaymentOrder = orders.find((o) => o.id === makePaymentModalOrderId);
   const isWaitingForReceipt = currentOrder?.status === "waiting_for_receipt";
   const isWaitingForPayment = currentOrder?.status === "waiting_for_payment";
+
+  const { data: customerBeneficiaries = [] } = useGetCustomerBeneficiariesQuery(
+    makePaymentOrder?.customerId ?? 0,
+    { skip: !makePaymentOrder?.customerId },
+  );
 
   return (
     <div className="space-y-6">
       <SectionCard
-        title="Orders"
-        description="Live orders with quick status updates."
+        title={t("orders.title")}
+        description={t("orders.description")}
         actions={
           <div className="flex items-center gap-4">
-            {isLoading ? "Loading..." : `${orders.length} orders`}
+            {isLoading ? t("common.loading") : `${orders.length} ${t("orders.orders")}`}
             <button
               onClick={() => setIsModalOpen(true)}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
             >
-              Create Order
+              {t("orders.createOrder")}
             </button>
+            {canDeleteManyOrders && (
+              <button
+                onClick={async () => {
+                  if (!selectedOrderIds.length) return;
+                  if (!window.confirm(t("orders.confirmDeleteOrder"))) return;
+                  await Promise.all(selectedOrderIds.map((id) => deleteOrder(id).unwrap()));
+                  setSelectedOrderIds([]);
+                  await refetchOrders();
+                }}
+                disabled={isDeleting || !selectedOrderIds.length}
+                className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+              >
+                {isDeleting ? t("common.deleting") : t("orders.deleteSelected")}
+              </button>
+            )}
           </div>
         }
       >
+{/* REMOVE THE BELOW DIV TO THIS ONE IF DON'T WANT HEIGHT FULL
         <div className="overflow-x-auto">
+         */}
+        <div className="overflow-x-auto min-h-[60vh]">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Customer</th>
-                <th className="py-2">Pair</th>
-                <th className="py-2">Buy</th>
-                <th className="py-2">Sell</th>
-                <th className="py-2">Rate</th>
-                <th className="py-2">Date</th>
-                <th className="py-2">Status</th>
-                <th className="py-2">Actions</th>
+                {canDeleteManyOrders && (
+                  <th className="py-2 w-8">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={
+                        !!orders.length &&
+                        selectedOrderIds.length === orders.length
+                      }
+                      onChange={(e) =>
+                        setSelectedOrderIds(
+                          e.target.checked ? orders.map((o) => o.id) : [],
+                        )
+                      }
+                    />
+                  </th>
+                )}
+                <th className="py-2">{t("orders.date")}</th>
+                <th className="py-2">{t("orders.handler")}</th>
+                <th className="py-2">{t("orders.customer")}</th>
+                <th className="py-2">{t("orders.pair")}</th>
+                <th className="py-2">{t("orders.buy")}</th>
+                <th className="py-2">{t("orders.sell")}</th>
+                <th className="py-2">{t("orders.rate")}</th>
+                <th className="py-2">{t("orders.status")}</th>
+                <th className="py-2">{t("orders.actions")}</th>
               </tr>
             </thead>
             <tbody>
               {orders.map((order) => (
                 <tr key={order.id} className="border-b border-slate-100">
+                  {canDeleteManyOrders && (
+                    <td className="py-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={selectedOrderIds.includes(order.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedOrderIds((prev) =>
+                              prev.includes(order.id)
+                                ? prev
+                                : [...prev, order.id],
+                            );
+                          } else {
+                            setSelectedOrderIds((prev) =>
+                              prev.filter((id) => id !== order.id),
+                            );
+                          }
+                        }}
+                      />
+                    </td>
+                  )}
+                  <td className="py-2">{formatDate(order.createdAt)}</td>
+                  <td className="py-2">
+                    {order.handlerName ? (
+                      order.handlerName
+                    ) : (
+                      <span className="text-rose-600">
+                        {t("orders.noHandlerAssigned") ?? "No Handler Assigned"}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 font-semibold">
                     {order.customerName || order.customerId}
                   </td>
@@ -553,10 +778,9 @@ export default function OrdersPage() {
                   <td className="py-2">{order.amountBuy}</td>
                   <td className="py-2">{order.amountSell}</td>
                   <td className="py-2">{order.rate}</td>
-                  <td className="py-2">{formatDate(order.createdAt)}</td>
                   <td className="py-2">
                     <Badge tone={getStatusTone(order.status)}>
-                      {order.status.replace(/_/g, " ")}
+                      {t(`orders.${order.status}`)}
                     </Badge>
                   </td>
                   <td className="py-2">
@@ -570,7 +794,7 @@ export default function OrdersPage() {
                         className="flex items-center justify-center p-1 hover:bg-slate-100 rounded transition-colors"
                         onClick={() =>
                           setOpenMenuId(
-                            openMenuId === order.id ? null : order.id
+                            openMenuId === order.id ? null : order.id,
                           )
                         }
                         aria-label="Actions"
@@ -596,7 +820,7 @@ export default function OrdersPage() {
               {!orders.length && (
                 <tr>
                   <td className="py-4 text-sm text-slate-500" colSpan={8}>
-                    No orders yet.
+                    {t("orders.noOrders")}
                   </td>
                 </tr>
               )}
@@ -607,22 +831,19 @@ export default function OrdersPage() {
 
       {/* Create Order Modal */}
       {isModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-          onClick={closeModal}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div
             className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-slate-900">
-                Create Order
+                {t("orders.createOrderTitle")}
               </h2>
               <button
                 onClick={closeModal}
                 className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label="Close"
+                aria-label={t("common.close")}
               >
                 <svg
                   className="w-6 h-6"
@@ -648,7 +869,7 @@ export default function OrdersPage() {
                 }
                 required
               >
-                <option value="">Select customer</option>
+                <option value="">{t("orders.selectCustomer")}</option>
                 {customers.map((customer) => (
                   <option value={customer.id} key={customer.id}>
                     {customer.name}
@@ -664,12 +885,14 @@ export default function OrdersPage() {
                   }
                   required
                 >
-                  <option value="">From</option>
-                  {currencies.map((currency) => (
-                    <option key={currency.id} value={currency.code}>
-                      {currency.code}
-                    </option>
-                  ))}
+                  <option value="">{t("orders.from")}</option>
+                  {currencies
+                    .filter((currency) => Boolean(currency.active) && currency.code !== form.toCurrency)
+                    .map((currency) => (
+                      <option key={currency.id} value={currency.code}>
+                        {currency.code}
+                      </option>
+                    ))}
                 </select>
                 <select
                   className="rounded-lg border border-slate-200 px-3 py-2"
@@ -679,17 +902,19 @@ export default function OrdersPage() {
                   }
                   required
                 >
-                  <option value="">To</option>
-                  {currencies.map((currency) => (
-                    <option key={currency.id} value={currency.code}>
-                      {currency.code}
-                    </option>
-                  ))}
+                  <option value="">{t("orders.to")}</option>
+                  {currencies
+                    .filter((currency) => Boolean(currency.active) && currency.code !== form.fromCurrency)
+                    .map((currency) => (
+                      <option key={currency.id} value={currency.code}>
+                        {currency.code}
+                      </option>
+                    ))}
                 </select>
               </div>
               <input
                 className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                placeholder="Exchange Rate"
+                placeholder={t("orders.exchangeRate")}
                 value={form.rate}
                 onChange={(e) => {
                   const value = e.target.value;
@@ -709,7 +934,7 @@ export default function OrdersPage() {
                       ? "bg-slate-50 cursor-not-allowed"
                       : ""
                   }`}
-                  placeholder="Amount buy"
+                  placeholder={t("orders.amountBuy")}
                   value={form.amountBuy}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -739,7 +964,7 @@ export default function OrdersPage() {
                       ? "bg-slate-50 cursor-not-allowed"
                       : ""
                   }`}
-                  placeholder="Amount sell"
+                  placeholder={t("orders.amountSell")}
                   value={form.amountSell}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -770,14 +995,14 @@ export default function OrdersPage() {
                   onClick={closeModal}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
                 >
-                  {isSaving ? "Saving..." : "Save order"}
+                  {isSaving ? t("common.saving") : t("orders.saveOrder")}
                 </button>
               </div>
             </form>
@@ -787,22 +1012,19 @@ export default function OrdersPage() {
 
       {/* Process Order Modal */}
       {processModalOrderId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-          onClick={closeProcessModal}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div
             className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-slate-900">
-                Process Order
+                {t("orders.processOrderTitle")}
               </h2>
               <button
                 onClick={closeProcessModal}
                 className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label="Close"
+                aria-label={t("common.close")}
               >
                 <svg
                   className="w-6 h-6"
@@ -828,7 +1050,7 @@ export default function OrdersPage() {
                 }
                 required
               >
-                <option value="">Select Handler</option>
+                <option value="">{t("orders.selectHandler")}</option>
                 {users.map((user) => (
                   <option value={user.id} key={user.id}>
                     {user.name}
@@ -838,7 +1060,7 @@ export default function OrdersPage() {
 
               <div className="col-span-full">
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Payment Type
+                  {t("orders.paymentType")}
                 </label>
                 <div className="flex gap-4">
                   <label className="flex items-center">
@@ -855,7 +1077,7 @@ export default function OrdersPage() {
                       }
                       className="mr-2"
                     />
-                    CRYPTO
+                    {t("orders.crypto")}
                   </label>
                   <label className="flex items-center">
                     <input
@@ -871,7 +1093,7 @@ export default function OrdersPage() {
                       }
                       className="mr-2"
                     />
-                    FIAT
+                    {t("orders.fiat")}
                   </label>
                 </div>
               </div>
@@ -887,9 +1109,9 @@ export default function OrdersPage() {
                         networkChain: e.target.value,
                       }))
                     }
-                    required
+                    // required
                   >
-                    <option value="">Select Network Chain</option>
+                    <option value="">{t("orders.selectNetworkChain")}</option>
                     <option value="TRC20">TRC20</option>
                     <option value="ERC20">ERC20</option>
                     <option value="BEP20">BEP20</option>
@@ -897,14 +1119,14 @@ export default function OrdersPage() {
                   </select>
                   <div className="col-span-full">
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Wallet Addresses
+                      {t("orders.walletAddresses")}
                     </label>
                     {processForm.walletAddresses.map((addr, index) => (
                       <div key={index} className="mb-2">
                         <input
                           type="text"
                           className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                          placeholder="Wallet Address"
+                          placeholder={t("orders.walletAddress")}
                           value={addr}
                           onChange={(e) => {
                             const newAddresses = [...processForm.walletAddresses];
@@ -927,7 +1149,7 @@ export default function OrdersPage() {
                       }
                       className="text-sm text-blue-600 hover:underline"
                     >
-                      + Add Another Address
+                      {t("orders.addAnotherAddress")}
                     </button>
                   </div>
                 </>
@@ -936,7 +1158,7 @@ export default function OrdersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder="Bank Name"
+                    placeholder={t("orders.bankName")}
                     value={processForm.bankName}
                     onChange={(e) =>
                       setProcessForm((p) => ({
@@ -948,7 +1170,7 @@ export default function OrdersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder="Account Title"
+                    placeholder={t("orders.accountTitle")}
                     value={processForm.accountTitle}
                     onChange={(e) =>
                       setProcessForm((p) => ({
@@ -960,7 +1182,7 @@ export default function OrdersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder="Account Number"
+                    placeholder={t("orders.accountNumber")}
                     value={processForm.accountNumber}
                     onChange={(e) =>
                       setProcessForm((p) => ({
@@ -972,7 +1194,7 @@ export default function OrdersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder="Account IBAN"
+                    placeholder={t("orders.accountIban")}
                     value={processForm.accountIban}
                     onChange={(e) =>
                       setProcessForm((p) => ({
@@ -984,7 +1206,7 @@ export default function OrdersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder="Swift Code"
+                    placeholder={t("orders.swiftCode")}
                     value={processForm.swiftCode}
                     onChange={(e) =>
                       setProcessForm((p) => ({
@@ -995,7 +1217,7 @@ export default function OrdersPage() {
                   />
                   <textarea
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder="Bank Address"
+                    placeholder={t("orders.bankAddress")}
                     value={processForm.bankAddress}
                     onChange={(e) =>
                       setProcessForm((p) => ({
@@ -1014,13 +1236,13 @@ export default function OrdersPage() {
                   onClick={closeProcessModal}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="submit"
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
                 >
-                  Process Order
+                  {t("orders.processOrder")}
                 </button>
               </div>
             </form>
@@ -1040,12 +1262,12 @@ export default function OrdersPage() {
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-slate-900">
-                Order Details
+                {t("orders.orderDetails")}
               </h2>
               <button
                 onClick={closeViewModal}
                 className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label="Close"
+                aria-label={t("common.close")}
               >
                 <svg
                   className="w-6 h-6"
@@ -1068,18 +1290,18 @@ export default function OrdersPage() {
                 <>
                   <div className="border-b pb-4">
                     <h3 className="font-semibold text-slate-900 mb-2">
-                      Handler Information
+                      {t("orders.handlerInformation")}
                     </h3>
                     <p className="text-sm text-slate-600">
-                      Handler: {orderDetails.order.handlerName || "N/A"}
+                      {t("orders.handler")}: {orderDetails.order.handlerName || "N/A"}
                     </p>
                     {orderDetails.order.paymentType === "CRYPTO" ? (
                       <div className="mt-2">
                         <p className="text-sm text-slate-600">
-                          Network: {orderDetails.order.networkChain || "N/A"}
+                          {t("orders.network")}: {orderDetails.order.networkChain || "N/A"}
                         </p>
                         <p className="text-sm text-slate-600 mt-1">
-                          Wallet Addresses:
+                          {t("orders.walletAddresses")}:
                         </p>
                         <ul className="list-disc list-inside text-sm text-slate-600 ml-4">
                           {orderDetails.order.walletAddresses?.map(
@@ -1093,12 +1315,12 @@ export default function OrdersPage() {
                       <div className="mt-2 text-sm text-slate-600">
                         {orderDetails.order.bankDetails && (
                           <>
-                            <p>Bank: {orderDetails.order.bankDetails.bankName || "N/A"}</p>
-                            <p>Account Title: {orderDetails.order.bankDetails.accountTitle || "N/A"}</p>
-                            <p>Account Number: {orderDetails.order.bankDetails.accountNumber || "N/A"}</p>
-                            <p>IBAN: {orderDetails.order.bankDetails.accountIban || "N/A"}</p>
-                            <p>Swift Code: {orderDetails.order.bankDetails.swiftCode || "N/A"}</p>
-                            <p>Bank Address: {orderDetails.order.bankDetails.bankAddress || "N/A"}</p>
+                            <p>{t("orders.bankName")}: {orderDetails.order.bankDetails.bankName || "N/A"}</p>
+                            <p>{t("orders.accountTitle")}: {orderDetails.order.bankDetails.accountTitle || "N/A"}</p>
+                            <p>{t("orders.accountNumber")}: {orderDetails.order.bankDetails.accountNumber || "N/A"}</p>
+                            <p>{t("orders.accountIban")}: {orderDetails.order.bankDetails.accountIban || "N/A"}</p>
+                            <p>{t("orders.swiftCode")}: {orderDetails.order.bankDetails.swiftCode || "N/A"}</p>
+                            <p>{t("orders.bankAddress")}: {orderDetails.order.bankDetails.bankAddress || "N/A"}</p>
                           </>
                         )}
                       </div>
@@ -1107,16 +1329,16 @@ export default function OrdersPage() {
 
                   <div className="border-b pb-4">
                     <h3 className="font-semibold text-slate-900 mb-2">
-                      Receipt Uploads
+                      {t("orders.receiptUploads")}
                     </h3>
                     <div className="text-sm text-slate-600 mb-2">
-                      Amount Buy: {orderDetails.order.amountBuy}
+                      {t("orders.amountBuy")}: {orderDetails.order.amountBuy}
                     </div>
                     <div className="text-sm text-slate-600 mb-2">
-                      Amount Received: {orderDetails.totalReceiptAmount.toFixed(2)}
+                      {t("orders.amountReceived")}: {orderDetails.totalReceiptAmount.toFixed(2)}
                     </div>
                     <div className="text-sm text-slate-600 mb-4">
-                      Balance: {orderDetails.receiptBalance.toFixed(2)}
+                      {t("orders.balance")}: {orderDetails.receiptBalance.toFixed(2)}
                     </div>
 
                     {orderDetails.receipts.map((receipt) => (
@@ -1130,7 +1352,7 @@ export default function OrdersPage() {
                           className="max-w-full h-auto mb-2"
                         />
                         <p className="text-sm text-slate-600">
-                          Amount: {receipt.amount}
+                          {t("orders.amount")}: {receipt.amount}
                         </p>
                       </div>
                     ))}
@@ -1163,7 +1385,7 @@ export default function OrdersPage() {
                           <input
                             type="number"
                             step="0.01"
-                            placeholder="Amount"
+                            placeholder={t("orders.amount")}
                             value={upload.amount}
                             onChange={(e) => {
                               const newUploads = [...receiptUploads];
@@ -1187,13 +1409,13 @@ export default function OrdersPage() {
                         }
                         className="text-sm text-blue-600 hover:underline mb-2"
                       >
-                        + Add Another Receipt
+                        {t("orders.addAnotherReceipt")}
                       </button>
                       <button
                         type="submit"
                         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
                       >
-                        Upload Receipt(s)
+                        {t("orders.uploadReceipts")}
                       </button>
                     </form>
                   </div>
@@ -1204,15 +1426,15 @@ export default function OrdersPage() {
                 <>
                   <div className="border-b pb-4">
                     <h3 className="font-semibold text-slate-900 mb-2">
-                      Customer Beneficiary Details
+                      {t("orders.customerBeneficiaryDetails")}
                     </h3>
                     {orderDetails.beneficiaries.map((beneficiary) => (
                       <div key={beneficiary.id} className="mb-4">
                         {beneficiary.paymentType === "CRYPTO" ? (
                           <div className="text-sm text-slate-600">
-                            <p>Type: CRYPTO</p>
-                            <p>Network: {beneficiary.networkChain || "N/A"}</p>
-                            <p>Wallet Addresses:</p>
+                            <p>{t("orders.type")}: {t("orders.crypto")}</p>
+                            <p>{t("orders.network")}: {beneficiary.networkChain || "N/A"}</p>
+                            <p>{t("orders.walletAddresses")}:</p>
                             <ul className="list-disc list-inside ml-4">
                               {beneficiary.walletAddresses?.map((addr, idx) => (
                                 <li key={idx}>{addr}</li>
@@ -1221,13 +1443,13 @@ export default function OrdersPage() {
                           </div>
                         ) : (
                           <div className="text-sm text-slate-600">
-                            <p>Type: FIAT</p>
-                            <p>Bank: {beneficiary.bankName || "N/A"}</p>
-                            <p>Account Title: {beneficiary.accountTitle || "N/A"}</p>
-                            <p>Account Number: {beneficiary.accountNumber || "N/A"}</p>
-                            <p>IBAN: {beneficiary.accountIban || "N/A"}</p>
-                            <p>Swift Code: {beneficiary.swiftCode || "N/A"}</p>
-                            <p>Bank Address: {beneficiary.bankAddress || "N/A"}</p>
+                            <p>{t("orders.type")}: {t("orders.fiat")}</p>
+                            <p>{t("orders.bankName")}: {beneficiary.bankName || "N/A"}</p>
+                            <p>{t("orders.accountTitle")}: {beneficiary.accountTitle || "N/A"}</p>
+                            <p>{t("orders.accountNumber")}: {beneficiary.accountNumber || "N/A"}</p>
+                            <p>{t("orders.accountIban")}: {beneficiary.accountIban || "N/A"}</p>
+                            <p>{t("orders.swiftCode")}: {beneficiary.swiftCode || "N/A"}</p>
+                            <p>{t("orders.bankAddress")}: {beneficiary.bankAddress || "N/A"}</p>
                           </div>
                         )}
                       </div>
@@ -1236,16 +1458,16 @@ export default function OrdersPage() {
 
                   <div className="border-b pb-4">
                     <h3 className="font-semibold text-slate-900 mb-2">
-                      Payment Uploads
+                      {t("orders.paymentUploads")}
                     </h3>
                     <div className="text-sm text-slate-600 mb-2">
-                      Amount Sell: {orderDetails.order.amountSell}
+                      {t("orders.amountSell")}: {orderDetails.order.amountSell}
                     </div>
                     <div className="text-sm text-slate-600 mb-2">
-                      Amount Paid: {orderDetails.totalPaymentAmount.toFixed(2)}
+                      {t("orders.amountPaid")}: {orderDetails.totalPaymentAmount.toFixed(2)}
                     </div>
                     <div className="text-sm text-slate-600 mb-4">
-                      Balance: {orderDetails.paymentBalance.toFixed(2)}
+                      {t("orders.balance")}: {orderDetails.paymentBalance.toFixed(2)}
                     </div>
 
                     {orderDetails.payments.map((payment) => (
@@ -1292,7 +1514,7 @@ export default function OrdersPage() {
                           <input
                             type="number"
                             step="0.01"
-                            placeholder="Amount"
+                            placeholder={t("orders.amount")}
                             value={upload.amount}
                             onChange={(e) => {
                               const newUploads = [...paymentUploads];
@@ -1316,13 +1538,13 @@ export default function OrdersPage() {
                         }
                         className="text-sm text-blue-600 hover:underline mb-2"
                       >
-                        + Add Another Payment
+                        {t("orders.addAnotherPayment")}
                       </button>
                       <button
                         type="submit"
                         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
                       >
-                        Upload Payment(s)
+                        {t("orders.uploadPayments")}
                       </button>
                     </form>
                   </div>
@@ -1333,56 +1555,56 @@ export default function OrdersPage() {
                 <>
                   <div className="border-b pb-4">
                     <h3 className="font-semibold text-slate-900 mb-3">
-                      Order Summary
+                      {t("orders.orderSummary")}
                     </h3>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div className="space-y-2">
                         <div>
-                          <span className="text-slate-500">Status:</span>
+                          <span className="text-slate-500">{t("orders.status")}:</span>
                           <span className="ml-2 font-semibold text-slate-900 capitalize">
-                            {orderDetails.order.status.replace(/_/g, " ")}
+                            {t(`orders.${orderDetails.order.status}`)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-slate-500">Customer:</span>
+                          <span className="text-slate-500">{t("orders.customer")}:</span>
                           <span className="ml-2 text-slate-700">
                             {orderDetails.order.customerName || orderDetails.order.customerId}
                           </span>
                         </div>
                         <div>
-                          <span className="text-slate-500">Currency Pair:</span>
+                          <span className="text-slate-500">{t("orders.currencyPair")}:</span>
                           <span className="ml-2 text-slate-700">
                             {orderDetails.order.fromCurrency} → {orderDetails.order.toCurrency}
                           </span>
                         </div>
                         <div>
-                          <span className="text-slate-500">Exchange Rate:</span>
+                          <span className="text-slate-500">{t("orders.exchangeRate")}:</span>
                           <span className="ml-2 text-slate-700">{orderDetails.order.rate}</span>
                         </div>
                       </div>
                       <div className="space-y-2">
                         <div>
-                          <span className="text-slate-500">Amount Buy:</span>
+                          <span className="text-slate-500">{t("orders.amountBuy")}:</span>
                           <span className="ml-2 font-semibold text-slate-900">
                             {orderDetails.order.amountBuy}
                           </span>
                         </div>
                         <div>
-                          <span className="text-slate-500">Amount Sell:</span>
+                          <span className="text-slate-500">{t("orders.amountSell")}:</span>
                           <span className="ml-2 font-semibold text-slate-900">
                             {orderDetails.order.amountSell}
                           </span>
                         </div>
                         {orderDetails.order.handlerName && (
                           <div>
-                            <span className="text-slate-500">Handler:</span>
+                            <span className="text-slate-500">{t("orders.handler")}:</span>
                             <span className="ml-2 text-slate-700">
                               {orderDetails.order.handlerName}
                             </span>
                           </div>
                         )}
                         <div>
-                          <span className="text-slate-500">Date:</span>
+                          <span className="text-slate-500">{t("orders.date")}:</span>
                           <span className="ml-2 text-slate-700">
                             {formatDate(orderDetails.order.createdAt)}
                           </span>
@@ -1449,7 +1671,7 @@ export default function OrdersPage() {
                               <p>Network: {beneficiary.networkChain || "N/A"}</p>
                               {beneficiary.walletAddresses && beneficiary.walletAddresses.length > 0 && (
                                 <>
-                                  <p>Wallet Addresses:</p>
+                                  <p>{t("orders.walletAddresses")}:</p>
                                   <ul className="list-disc list-inside ml-4">
                                     {beneficiary.walletAddresses.map((addr, idx) => (
                                       <li key={idx}>{addr}</li>
@@ -1534,22 +1756,19 @@ export default function OrdersPage() {
 
       {/* Make Payment Modal */}
       {makePaymentModalOrderId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-          onClick={closeMakePaymentModal}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div
             className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-slate-900">
-                Make Payment - Customer Beneficiary Details
+                {t("orders.makePaymentTitle")}
               </h2>
               <button
                 onClick={closeMakePaymentModal}
                 className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label="Close"
+                aria-label={t("common.close")}
               >
                 <svg
                   className="w-6 h-6"
@@ -1567,9 +1786,37 @@ export default function OrdersPage() {
               </button>
             </div>
             <form className="grid gap-3" onSubmit={handleAddBeneficiary}>
+              {customerBeneficiaries.length > 0 && (
+                <div className="col-span-full">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    {t("orders.savedBeneficiary") ?? "Saved beneficiary for this customer"}
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                    value={selectedCustomerBeneficiaryId}
+                    onChange={(e) => {
+                      const val = e.target.value ? Number(e.target.value) : "";
+                      setSelectedCustomerBeneficiaryId(val);
+                      if (val) {
+                        applyCustomerBeneficiaryToForm(val);
+                      }
+                    }}
+                  >
+                    <option value="">{t("orders.selectSavedBeneficiary") ?? "Select saved beneficiary (optional)"}</option>
+                    {customerBeneficiaries.map((beneficiary) => (
+                      <option key={beneficiary.id} value={beneficiary.id}>
+                        {beneficiary.paymentType === "CRYPTO"
+                          ? `Crypto - ${beneficiary.networkChain || "Network"}`
+                          : `Fiat - ${beneficiary.bankName || "Bank"}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="col-span-full">
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Payment Type
+                  {t("orders.paymentType")}
                 </label>
                 <div className="flex gap-4">
                   <label className="flex items-center">
@@ -1586,7 +1833,7 @@ export default function OrdersPage() {
                       }
                       className="mr-2"
                     />
-                    CRYPTO
+                    {t("orders.crypto")}
                   </label>
                   <label className="flex items-center">
                     <input
@@ -1602,7 +1849,7 @@ export default function OrdersPage() {
                       }
                       className="mr-2"
                     />
-                    FIAT
+                    {t("orders.fiat")}
                   </label>
                 </div>
               </div>
@@ -1739,6 +1986,19 @@ export default function OrdersPage() {
                 </>
               )}
 
+              <div className="col-span-full flex items-center gap-3">
+                <input
+                  id="save-beneficiary-to-customer"
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={saveBeneficiaryToCustomer}
+                  onChange={(e) => setSaveBeneficiaryToCustomer(e.target.checked)}
+                />
+                <label htmlFor="save-beneficiary-to-customer" className="text-sm text-slate-700">
+                  {t("orders.saveBeneficiaryToCustomer") ?? "Save this beneficiary to customer profile"}
+                </label>
+              </div>
+
               <div className="col-span-full flex gap-3 justify-end">
                 <button
                   type="button"
@@ -1747,12 +2007,12 @@ export default function OrdersPage() {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-                >
-                  Submit
-                </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
+                  >
+                    {t("common.submit")}
+                  </button>
               </div>
             </form>
           </div>

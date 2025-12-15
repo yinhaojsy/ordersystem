@@ -10,6 +10,8 @@ import type {
   OrderReceipt,
   OrderBeneficiary,
   OrderPayment,
+  CustomerBeneficiary,
+  AuthResponse,
 } from "../types";
 
 const baseQuery = fetchBaseQuery({
@@ -19,7 +21,7 @@ const baseQuery = fetchBaseQuery({
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Currency", "Customer", "User", "Role", "Order"],
+  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth"],
   refetchOnReconnect: true,
   endpoints: (builder) => ({
     getCurrencies: builder.query<Currency[], void>({
@@ -108,6 +110,90 @@ export const api = createApi({
         { type: "Customer", id },
         { type: "Customer", id: "LIST" },
       ],
+    }),
+    getCustomerBeneficiaries: builder.query<CustomerBeneficiary[], number>({
+      query: (id) => `customers/${id}/beneficiaries`,
+      providesTags: (result, _err, id) =>
+        result
+          ? [
+              ...result.map(({ id: beneficiaryId }) => ({
+                type: "CustomerBeneficiary" as const,
+                id: beneficiaryId,
+              })),
+              { type: "CustomerBeneficiary" as const, id: `LIST-${id}` },
+            ]
+          : [{ type: "CustomerBeneficiary" as const, id: `LIST-${id}` }],
+    }),
+    addCustomerBeneficiary: builder.mutation<
+      CustomerBeneficiary,
+      {
+        customerId: number;
+        paymentType: "CRYPTO" | "FIAT";
+        networkChain?: string;
+        walletAddresses?: string[];
+        bankName?: string;
+        accountTitle?: string;
+        accountNumber?: string;
+        accountIban?: string;
+        swiftCode?: string;
+        bankAddress?: string;
+      }
+    >({
+      query: ({ customerId, ...body }) => ({
+        url: `customers/${customerId}/beneficiaries`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { customerId }) => [
+        { type: "CustomerBeneficiary", id: `LIST-${customerId}` },
+      ],
+    }),
+    updateCustomerBeneficiary: builder.mutation<
+      CustomerBeneficiary,
+      {
+        customerId: number;
+        beneficiaryId: number;
+        paymentType: "CRYPTO" | "FIAT";
+        networkChain?: string;
+        walletAddresses?: string[];
+        bankName?: string;
+        accountTitle?: string;
+        accountNumber?: string;
+        accountIban?: string;
+        swiftCode?: string;
+        bankAddress?: string;
+      }
+    >({
+      query: ({ customerId, beneficiaryId, ...body }) => ({
+        url: `customers/${customerId}/beneficiaries/${beneficiaryId}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { customerId, beneficiaryId }) => [
+        { type: "CustomerBeneficiary", id: beneficiaryId },
+        { type: "CustomerBeneficiary", id: `LIST-${customerId}` },
+      ],
+    }),
+    deleteCustomerBeneficiary: builder.mutation<
+      { success?: boolean },
+      { customerId: number; beneficiaryId: number }
+    >({
+      query: ({ customerId, beneficiaryId }) => ({
+        url: `customers/${customerId}/beneficiaries/${beneficiaryId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, { customerId, beneficiaryId }) => [
+        { type: "CustomerBeneficiary", id: beneficiaryId },
+        { type: "CustomerBeneficiary", id: `LIST-${customerId}` },
+      ],
+    }),
+    login: builder.mutation<AuthResponse, { email: string; password: string }>({
+      query: (body) => ({
+        url: "auth/login",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Auth", id: "CURRENT" }],
     }),
     getUsers: builder.query<User[], void>({
       query: () => "users",
@@ -330,6 +416,11 @@ export const {
   useDeleteCurrencyMutation,
   useGetCustomersQuery,
   useAddCustomerMutation,
+  useGetCustomerBeneficiariesQuery,
+  useAddCustomerBeneficiaryMutation,
+  useUpdateCustomerBeneficiaryMutation,
+  useDeleteCustomerBeneficiaryMutation,
+  useLoginMutation,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
   useGetUsersQuery,

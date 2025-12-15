@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../services/api";
 
 export default function CurrenciesPage() {
+  const { t } = useTranslation();
   const { data: currencies = [], isLoading } = useGetCurrenciesQuery();
   const [addCurrency, { isLoading: isSaving }] = useAddCurrencyMutation();
   const [updateCurrency] = useUpdateCurrencyMutation();
@@ -101,20 +103,20 @@ export default function CurrenciesPage() {
   return (
     <div className="space-y-6">
       <SectionCard
-        title="Currencies"
-        description="Backed by SQLite. Toggle active status or add a new pair."
-        actions={isLoading ? "Loading..." : `${currencies.length} items`}
+        title={t("currencies.title")}
+        description={t("currencies.description")}
+        actions={isLoading ? t("common.loading") : `${currencies.length} ${t("currencies.items")}`}
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Code</th>
-                <th className="py-2">Name</th>
-                <th className="py-2">Buy</th>
-                <th className="py-2">Sell</th>
-                <th className="py-2">Status</th>
-                <th className="py-2">Action</th>
+                <th className="py-2">{t("currencies.code")}</th>
+                <th className="py-2">{t("currencies.name")}</th>
+                <th className="py-2">{t("currencies.buy")}</th>
+                <th className="py-2">{t("currencies.sell")}</th>
+                <th className="py-2">{t("currencies.status")}</th>
+                <th className="py-2">{t("currencies.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -126,7 +128,7 @@ export default function CurrenciesPage() {
                   <td className="py-2">{currency.baseRateSell}</td>
                   <td className="py-2">
                     <Badge tone={currency.active ? "emerald" : "slate"}>
-                      {currency.active ? "Active" : "Inactive"}
+                      {currency.active ? t("common.active") : t("common.inactive")}
                     </Badge>
                   </td>
                   <td className="py-2">
@@ -135,20 +137,20 @@ export default function CurrenciesPage() {
                         className="text-blue-600 hover:text-blue-700"
                         onClick={() => toggleActive(currency.id, Boolean(currency.active))}
                       >
-                        Set {currency.active ? "inactive" : "active"}
+                        {currency.active ? t("currencies.setInactive") : t("currencies.setActive")}
                       </button>
                       <button
                         className="text-amber-600 hover:text-amber-700"
                         onClick={() => startEdit(currency.id)}
                       >
-                        Edit
+                        {t("common.edit")}
                       </button>
                       <button
                         className="text-rose-600 hover:text-rose-700"
                         onClick={() => remove(currency.id)}
                         disabled={isDeleting}
                       >
-                        Delete
+                        {t("common.delete")}
                       </button>
                     </div>
                   </td>
@@ -157,7 +159,7 @@ export default function CurrenciesPage() {
               {!currencies.length && (
                 <tr>
                   <td className="py-4 text-sm text-slate-500" colSpan={6}>
-                    No currencies yet.
+                    {t("currencies.noCurrencies")}
                   </td>
                 </tr>
               )}
@@ -168,28 +170,28 @@ export default function CurrenciesPage() {
 
       {editingId && editForm && (
         <SectionCard
-          title="Edit currency (Admin)"
-          description="Only admins should edit or delete."
-          actions={<button onClick={cancelEdit} className="text-sm text-slate-600">Cancel</button>}
+          title={t("currencies.editTitle")}
+          description={t("currencies.editDesc")}
+          actions={<button onClick={cancelEdit} className="text-sm text-slate-600">{t("common.cancel")}</button>}
         >
           <form className="grid gap-3 md:grid-cols-2" onSubmit={submitEdit}>
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Code (e.g. USD)"
+              placeholder={t("currencies.codePlaceholder")}
               value={editForm.code}
               onChange={(e) => setEditForm((p) => (p ? { ...p, code: e.target.value } : p))}
               required
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Name"
+              placeholder={t("currencies.namePlaceholder")}
               value={editForm.name}
               onChange={(e) => setEditForm((p) => (p ? { ...p, name: e.target.value } : p))}
               required
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Base rate buy"
+              placeholder={t("currencies.baseRateBuyPlaceholder")}
               value={editForm.baseRateBuy}
               onChange={(e) =>
                 setEditForm((p) => (p ? { ...p, baseRateBuy: e.target.value } : p))
@@ -200,7 +202,7 @@ export default function CurrenciesPage() {
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Base rate sell"
+              placeholder={t("currencies.baseRateSellPlaceholder")}
               value={editForm.baseRateSell}
               onChange={(e) =>
                 setEditForm((p) => (p ? { ...p, baseRateSell: e.target.value } : p))
@@ -211,7 +213,7 @@ export default function CurrenciesPage() {
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Conversion rate buy"
+              placeholder={t("currencies.conversionRateBuyPlaceholder")}
               value={editForm.conversionRateBuy}
               onChange={(e) =>
                 setEditForm((p) => (p ? { ...p, conversionRateBuy: e.target.value } : p))
@@ -221,7 +223,7 @@ export default function CurrenciesPage() {
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Conversion rate sell"
+              placeholder={t("currencies.conversionRateSellPlaceholder")}
               value={editForm.conversionRateSell}
               onChange={(e) =>
                 setEditForm((p) => (p ? { ...p, conversionRateSell: e.target.value } : p))
@@ -237,40 +239,40 @@ export default function CurrenciesPage() {
                   setEditForm((p) => (p ? { ...p, active: e.target.checked } : p))
                 }
               />
-              Active
+              {t("common.active")}
             </label>
             <button
               type="submit"
               className="col-span-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700"
             >
-              Update currency
+              {t("currencies.updateCurrency")}
             </button>
           </form>
         </SectionCard>
       )}
 
       <SectionCard
-        title="Add currency"
-        description="Saved directly to the embedded database."
+        title={t("currencies.addTitle")}
+        description={t("currencies.addDesc")}
       >
         <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSubmit}>
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Code (e.g. USD)"
+            placeholder={t("currencies.codePlaceholder")}
             value={form.code}
             onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
             required
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Name"
+            placeholder={t("currencies.namePlaceholder")}
             value={form.name}
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
             required
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Base rate buy"
+            placeholder={t("currencies.baseRateBuyPlaceholder")}
             value={form.baseRateBuy}
             onChange={(e) => setForm((p) => ({ ...p, baseRateBuy: e.target.value }))}
             required
@@ -279,7 +281,7 @@ export default function CurrenciesPage() {
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Base rate sell"
+            placeholder={t("currencies.baseRateSellPlaceholder")}
             value={form.baseRateSell}
             onChange={(e) => setForm((p) => ({ ...p, baseRateSell: e.target.value }))}
             required
@@ -288,7 +290,7 @@ export default function CurrenciesPage() {
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Conversion rate buy"
+            placeholder={t("currencies.conversionRateBuyPlaceholder")}
             value={form.conversionRateBuy}
             onChange={(e) =>
               setForm((p) => ({ ...p, conversionRateBuy: e.target.value }))
@@ -298,7 +300,7 @@ export default function CurrenciesPage() {
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Conversion rate sell"
+            placeholder={t("currencies.conversionRateSellPlaceholder")}
             value={form.conversionRateSell}
             onChange={(e) =>
               setForm((p) => ({ ...p, conversionRateSell: e.target.value }))
@@ -312,14 +314,14 @@ export default function CurrenciesPage() {
               checked={form.active}
               onChange={(e) => setForm((p) => ({ ...p, active: e.target.checked }))}
             />
-            Active
+            {t("common.active")}
           </label>
           <button
             type="submit"
             disabled={isSaving}
             className="col-span-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
           >
-            {isSaving ? "Saving..." : "Save currency"}
+            {isSaving ? t("common.saving") : t("currencies.saveCurrency")}
           </button>
         </form>
       </SectionCard>

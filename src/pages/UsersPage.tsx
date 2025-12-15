@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../services/api";
 
 export default function UsersPage() {
+  const { t } = useTranslation();
   const { data: users = [], isLoading } = useGetUsersQuery();
   const [addUser, { isLoading: isSaving }] = useAddUserMutation();
   const [updateUser] = useUpdateUserMutation();
@@ -17,6 +19,7 @@ export default function UsersPage() {
   const [form, setForm] = useState({
     name: "",
     email: "",
+    password: "",
     role: "manager",
   });
 
@@ -24,7 +27,7 @@ export default function UsersPage() {
     event.preventDefault();
     if (!form.name || !form.email) return;
     await addUser(form);
-    setForm({ name: "", email: "", role: "manager" });
+    setForm({ name: "", email: "", password: "", role: "manager" });
   };
 
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -37,6 +40,7 @@ export default function UsersPage() {
     setEditForm({
       name: current.name,
       email: current.email,
+      password: "",
       role: current.role,
     });
   };
@@ -49,29 +53,45 @@ export default function UsersPage() {
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
     if (!editingId || !editForm) return;
-    await updateUser({ id: editingId, data: editForm });
+    const payload: any = { ...editForm };
+    if (!payload.password) {
+      delete payload.password;
+    }
+    await updateUser({ id: editingId, data: payload });
     cancelEdit();
   };
 
   const remove = async (id: number) => {
-    await deleteUser(id);
+    try {
+      await deleteUser(id).unwrap();
+    } catch (err: any) {
+      // Surface backend validation errors (e.g. foreign key constraint)
+      const message =
+        (err && (err as any).data && (err as any).data.message) ||
+        "Cannot delete user while they are assigned to existing orders.";
+      // Simple feedback for now; can be replaced with nicer UI later
+      alert(message);
+      // Also log for debugging
+      // eslint-disable-next-line no-console
+      console.error("Failed to delete user", err);
+    }
   };
 
   return (
     <div className="space-y-6">
       <SectionCard
-        title="Users"
-        description="Team members with roles."
-        actions={isLoading ? "Loading..." : `${users.length} users`}
+        title={t("users.title")}
+        description={t("users.description")}
+        actions={isLoading ? t("common.loading") : `${users.length} ${t("users.users")}`}
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Name</th>
-                <th className="py-2">Email</th>
-                <th className="py-2">Role</th>
-                <th className="py-2">Actions</th>
+                <th className="py-2">{t("users.name")}</th>
+                <th className="py-2">{t("users.email")}</th>
+                <th className="py-2">{t("users.role")}</th>
+                <th className="py-2">{t("users.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -88,14 +108,14 @@ export default function UsersPage() {
                         className="text-amber-600 hover:text-amber-700"
                         onClick={() => startEdit(user.id)}
                       >
-                        Edit
+                        {t("common.edit")}
                       </button>
                       <button
                         className="text-rose-600 hover:text-rose-700"
                         onClick={() => remove(user.id)}
                         disabled={isDeleting}
                       >
-                        Delete
+                        {t("common.delete")}
                       </button>
                     </div>
                   </td>
@@ -104,7 +124,7 @@ export default function UsersPage() {
               {!users.length && (
                 <tr>
                   <td className="py-4 text-sm text-slate-500" colSpan={4}>
-                    No users yet.
+                    {t("users.noUsers")}
                   </td>
                 </tr>
               )}
@@ -115,20 +135,20 @@ export default function UsersPage() {
 
       {editingId && editForm && (
         <SectionCard
-          title="Edit user (Admin)"
-          actions={<button onClick={cancelEdit} className="text-sm text-slate-600">Cancel</button>}
+          title={t("users.editTitle")}
+          actions={<button onClick={cancelEdit} className="text-sm text-slate-600">{t("common.cancel")}</button>}
         >
           <form className="grid gap-3 md:grid-cols-3" onSubmit={submitEdit}>
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Name"
+              placeholder={t("users.namePlaceholder")}
               value={editForm.name}
               onChange={(e) => setEditForm((p) => (p ? { ...p, name: e.target.value } : p))}
               required
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Email"
+              placeholder={t("users.emailPlaceholder")}
               type="email"
               value={editForm.email}
               onChange={(e) => setEditForm((p) => (p ? { ...p, email: e.target.value } : p))}
@@ -139,32 +159,39 @@ export default function UsersPage() {
               value={editForm.role}
               onChange={(e) => setEditForm((p) => (p ? { ...p, role: e.target.value } : p))}
             >
-              <option value="admin">Admin</option>
-              <option value="manager">Manager</option>
-              <option value="viewer">Viewer</option>
+              <option value="admin">{t("users.admin")}</option>
+              <option value="manager">{t("users.manager")}</option>
+              <option value="viewer">{t("users.viewer")}</option>
             </select>
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2"
+              placeholder={t("users.passwordPlaceholder") ?? "Password (leave blank to keep current)"}
+              type="password"
+              value={editForm.password}
+              onChange={(e) => setEditForm((p) => (p ? { ...p, password: e.target.value } : p))}
+            />
             <button
               type="submit"
               className="col-span-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700"
             >
-              Update user
+              {t("users.updateUser")}
             </button>
           </form>
         </SectionCard>
       )}
 
-      <SectionCard title="Add user">
+      <SectionCard title={t("users.addTitle")}>
         <form className="grid gap-3 md:grid-cols-3" onSubmit={handleSubmit}>
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Name"
+            placeholder={t("users.namePlaceholder")}
             value={form.name}
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
             required
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Email"
+            placeholder={t("users.emailPlaceholder")}
             type="email"
             value={form.email}
             onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
@@ -175,16 +202,24 @@ export default function UsersPage() {
             value={form.role}
             onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
           >
-            <option value="admin">Admin</option>
-            <option value="manager">Manager</option>
-            <option value="viewer">Viewer</option>
+            <option value="admin">{t("users.admin")}</option>
+            <option value="manager">{t("users.manager")}</option>
+            <option value="viewer">{t("users.viewer")}</option>
           </select>
+          <input
+            className="rounded-lg border border-slate-200 px-3 py-2"
+            placeholder={t("users.passwordPlaceholder") ?? "Password"}
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+            required
+          />
           <button
             type="submit"
             disabled={isSaving}
             className="col-span-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
           >
-            {isSaving ? "Saving..." : "Save user"}
+            {isSaving ? t("common.saving") : t("users.saveUser")}
           </button>
         </form>
       </SectionCard>

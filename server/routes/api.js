@@ -5,11 +5,16 @@ import {
   updateCurrency,
   deleteCurrency,
 } from "../controllers/currenciesController.js";
+import { getExchangeRates } from "../controllers/exchangeRatesController.js";
 import {
   listCustomers,
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  listCustomerBeneficiaries,
+  addCustomerBeneficiary,
+  updateCustomerBeneficiary,
+  deleteCustomerBeneficiary,
 } from "../controllers/customersController.js";
 import {
   listUsers,
@@ -17,6 +22,7 @@ import {
   updateUser,
   deleteUser,
 } from "../controllers/usersController.js";
+import { login } from "../controllers/authController.js";
 import {
   listRoles,
   createRole,
@@ -44,15 +50,22 @@ router.post("/currencies", createCurrency);
 router.put("/currencies/:id", updateCurrency);
 router.delete("/currencies/:id", deleteCurrency);
 
+router.get("/exchange-rates/:currency", getExchangeRates);
+
 router.get("/customers", listCustomers);
 router.post("/customers", createCustomer);
 router.put("/customers/:id", updateCustomer);
 router.delete("/customers/:id", deleteCustomer);
+router.get("/customers/:id/beneficiaries", listCustomerBeneficiaries);
+router.post("/customers/:id/beneficiaries", addCustomerBeneficiary);
+router.put("/customers/:id/beneficiaries/:beneficiaryId", updateCustomerBeneficiary);
+router.delete("/customers/:id/beneficiaries/:beneficiaryId", deleteCustomerBeneficiary);
 
 router.get("/users", listUsers);
 router.post("/users", createUser);
 router.put("/users/:id", updateUser);
 router.delete("/users/:id", deleteUser);
+router.post("/auth/login", login);
 
 router.get("/roles", listRoles);
 router.post("/roles", createRole);

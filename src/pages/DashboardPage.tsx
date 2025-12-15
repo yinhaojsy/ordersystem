@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import StatCard from "../components/common/StatCard";
@@ -9,15 +10,23 @@ import {
   useGetUsersQuery,
 } from "../services/api";
 import { formatDate } from "../utils/format";
+import { OrderStatus } from "../types";
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: users = [] } = useGetUsersQuery();
   const { data: orders = [], isLoading } = useGetOrdersQuery();
 
   const stats = useMemo(() => {
-    const pending = orders.filter((o) => o.status === "pending").length;
+    const pendingStatuses: OrderStatus[] = [
+      "pending",
+      "waiting_for_payment",
+      "waiting_for_receipt",
+    ];
+
+    const pending = orders.filter((o) => pendingStatuses.includes(o.status)).length;
     const completed = orders.filter((o) => o.status === "completed").length;
     const cancelled = orders.filter((o) => o.status === "cancelled").length;
 
@@ -34,34 +43,47 @@ export default function DashboardPage() {
 
   const recentOrders = orders.slice(0, 5);
 
+  const getStatusTone = (status: OrderStatus) => {
+    switch (status) {
+      case "pending":
+      case "waiting_for_payment":
+      case "waiting_for_receipt":
+        return "amber";
+      case "completed":
+        return "emerald";
+      default:
+        return "rose";
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Currencies" value={stats.currencies} tone="blue" />
-        <StatCard label="Customers" value={stats.customers} tone="emerald" />
-        <StatCard label="Users" value={stats.users} tone="slate" />
-        <StatCard label="Orders" value={stats.orders} tone="amber" />
-        <StatCard label="Pending" value={stats.pending} tone="amber" />
-        <StatCard label="Completed" value={stats.completed} tone="emerald" />
-        <StatCard label="Cancelled" value={stats.cancelled} tone="rose" />
+        <StatCard label={t("dashboard.currencies")} value={stats.currencies} tone="blue" />
+        <StatCard label={t("dashboard.customers")} value={stats.customers} tone="emerald" />
+        <StatCard label={t("dashboard.users")} value={stats.users} tone="slate" />
+        <StatCard label={t("dashboard.orders")} value={stats.orders} tone="amber" />
+        <StatCard label={t("dashboard.pending")} value={stats.pending} tone="amber" />
+        <StatCard label={t("dashboard.completed")} value={stats.completed} tone="emerald" />
+        <StatCard label={t("dashboard.cancelled")} value={stats.cancelled} tone="rose" />
       </div>
 
       <SectionCard
-        title="Recent orders"
-        description="Latest activity across customers and pairs."
-        actions={isLoading ? "Loading..." : `${recentOrders.length} shown`}
+        title={t("dashboard.recentOrders")}
+        description={t("dashboard.recentOrdersDesc")}
+        actions={isLoading ? t("common.loading") : `${recentOrders.length} ${t("dashboard.shown")}`}
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Customer</th>
-                <th className="py-2">Pair</th>
-                <th className="py-2">Buy</th>
-                <th className="py-2">Sell</th>
-                <th className="py-2">Rate</th>
-                <th className="py-2">Date</th>
-                <th className="py-2">Status</th>
+                <th className="py-2">{t("dashboard.customer")}</th>
+                <th className="py-2">{t("dashboard.pair")}</th>
+                <th className="py-2">{t("dashboard.buy")}</th>
+                <th className="py-2">{t("dashboard.sell")}</th>
+                <th className="py-2">{t("dashboard.rate")}</th>
+                <th className="py-2">{t("dashboard.date")}</th>
+                <th className="py-2">{t("dashboard.status")}</th>
               </tr>
             </thead>
             <tbody>
@@ -79,15 +101,9 @@ export default function DashboardPage() {
                   <td className="py-2">{formatDate(order.createdAt)}</td>
                   <td className="py-2">
                     <Badge
-                      tone={
-                        order.status === "pending"
-                          ? "amber"
-                          : order.status === "completed"
-                            ? "emerald"
-                            : "rose"
-                      }
+                      tone={getStatusTone(order.status)}
                     >
-                      {order.status}
+                      {t(`orders.${order.status}`)}
                     </Badge>
                   </td>
                 </tr>
@@ -95,7 +111,7 @@ export default function DashboardPage() {
               {!recentOrders.length && (
                 <tr>
                   <td className="py-4 text-sm text-slate-500" colSpan={7}>
-                    No orders yet.
+                    {t("dashboard.noOrders")}
                   </td>
                 </tr>
               )}

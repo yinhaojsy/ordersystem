@@ -37,6 +37,24 @@ const ensureSchema = () => {
   ).run();
 
   db.prepare(
+    `CREATE TABLE IF NOT EXISTS customer_beneficiaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customerId INTEGER NOT NULL,
+      paymentType TEXT NOT NULL,
+      networkChain TEXT,
+      walletAddresses TEXT,
+      bankName TEXT,
+      accountTitle TEXT,
+      accountNumber TEXT,
+      accountIban TEXT,
+      swiftCode TEXT,
+      bankAddress TEXT,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(customerId) REFERENCES customers(id) ON DELETE CASCADE
+    );`,
+  ).run();
+
+  db.prepare(
     `CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -44,6 +62,13 @@ const ensureSchema = () => {
       role TEXT NOT NULL
     );`,
   ).run();
+
+  // Ensure password column exists for legacy databases
+  const userColumns = db.prepare("PRAGMA table_info(users);").all();
+  const hasPasswordColumn = userColumns.some((col) => col.name === "password");
+  if (!hasPasswordColumn) {
+    db.prepare("ALTER TABLE users ADD COLUMN password TEXT;").run();
+  }
 
   db.prepare(
     `CREATE TABLE IF NOT EXISTS roles (
@@ -173,12 +198,12 @@ const seedData = () => {
   const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
   if (userCount === 0) {
     const insert = db.prepare(
-      `INSERT INTO users (name, email, role) VALUES (@name, @email, @role);`,
+      `INSERT INTO users (name, email, password, role) VALUES (@name, @email, @password, @role);`,
     );
     const seed = [
-      { name: "Alice", email: "alice@fx.com", role: "admin" },
-      { name: "Ben", email: "ben@fx.com", role: "manager" },
-      { name: "Cara", email: "cara@fx.com", role: "viewer" },
+      { name: "Alice", email: "alice@fx.com", password: "$2a$10$7zYd9Yz0Q7qZfyq/BKUKee9ZCBAWNRwJj4tUNsGrD/qVUKPTySGfa", role: "admin" }, // password: admin123
+      { name: "Ben", email: "ben@fx.com", password: "$2a$10$7zYd9Yz0Q7qZfyq/BKUKee9ZCBAWNRwJj4tUNsGrD/qVUKPTySGfa", role: "manager" },
+      { name: "Cara", email: "cara@fx.com", password: "$2a$10$7zYd9Yz0Q7qZfyq/BKUKee9ZCBAWNRwJj4tUNsGrD/qVUKPTySGfa", role: "viewer" },
     ];
     const insertMany = db.transaction((rows) => rows.forEach((row) => insert.run(row)));
     insertMany(seed);
@@ -203,6 +228,8 @@ const seedData = () => {
             editCurrency: true,
             processOrder: true,
             cancelOrder: true,
+            deleteOrder: true,
+            deleteManyOrders: true,
           },
         },
       },
