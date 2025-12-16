@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
@@ -7,11 +7,13 @@ import {
   useDeleteUserMutation,
   useGetUsersQuery,
   useUpdateUserMutation,
+  useGetRolesQuery,
 } from "../services/api";
 
 export default function UsersPage() {
   const { t } = useTranslation();
   const { data: users = [], isLoading } = useGetUsersQuery();
+  const { data: roles = [] } = useGetRolesQuery();
   const [addUser, { isLoading: isSaving }] = useAddUserMutation();
   const [updateUser] = useUpdateUserMutation();
   const [deleteUser, { isLoading: isDeleting }] = useDeleteUserMutation();
@@ -22,6 +24,17 @@ export default function UsersPage() {
     password: "",
     role: "manager",
   });
+
+  // When roles are loaded, ensure the create-user form defaults to a valid role
+  useEffect(() => {
+    if (!roles.length) return;
+    setForm((prev) => {
+      // If the current role isn't in the roles list, default to the first role
+      const hasCurrent = roles.some((r) => r.name === prev.role);
+      if (hasCurrent) return prev;
+      return { ...prev, role: roles[0]?.name ?? prev.role };
+    });
+  }, [roles]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -159,9 +172,19 @@ export default function UsersPage() {
               value={editForm.role}
               onChange={(e) => setEditForm((p) => (p ? { ...p, role: e.target.value } : p))}
             >
-              <option value="admin">{t("users.admin")}</option>
-              <option value="manager">{t("users.manager")}</option>
-              <option value="viewer">{t("users.viewer")}</option>
+              {roles.length
+                ? roles.map((role) => (
+                    <option key={role.id} value={role.name}>
+                      {role.displayName}
+                    </option>
+                  ))
+                : (
+                    <>
+                      <option value="admin">{t("users.admin")}</option>
+                      <option value="manager">{t("users.manager")}</option>
+                      <option value="viewer">{t("users.viewer")}</option>
+                    </>
+                  )}
             </select>
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
@@ -202,9 +225,19 @@ export default function UsersPage() {
             value={form.role}
             onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
           >
-            <option value="admin">{t("users.admin")}</option>
-            <option value="manager">{t("users.manager")}</option>
-            <option value="viewer">{t("users.viewer")}</option>
+            {roles.length
+              ? roles.map((role) => (
+                  <option key={role.id} value={role.name}>
+                    {role.displayName}
+                  </option>
+                ))
+              : (
+                  <>
+                    <option value="admin">{t("users.admin")}</option>
+                    <option value="manager">{t("users.manager")}</option>
+                    <option value="viewer">{t("users.viewer")}</option>
+                  </>
+                )}
           </select>
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
