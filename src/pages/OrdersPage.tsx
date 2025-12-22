@@ -130,6 +130,9 @@ export default function OrdersPage() {
 
   const [receiptUploads, setReceiptUploads] = useState<Array<{ image: string; amount: string }>>([{ image: "", amount: "" }]);
   const [paymentUploads, setPaymentUploads] = useState<Array<{ image: string; amount: string }>>([{ image: "", amount: "" }]);
+  const [receiptDragOver, setReceiptDragOver] = useState(false);
+  const [paymentDragOver, setPaymentDragOver] = useState(false);
+  const [activeUploadType, setActiveUploadType] = useState<"receipt" | "payment" | null>(null);
 
   const { data: orderDetails, refetch: refetchOrderDetails } = useGetOrderDetailsQuery(viewModalOrderId || 0, {
     skip: !viewModalOrderId,
@@ -479,6 +482,12 @@ export default function OrdersPage() {
   };
 
   const handleImageUpload = (file: File, index: number, type: "receipt" | "payment") => {
+    // Check if file is an image
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file');
+      return;
+    }
+    
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result as string;
@@ -498,6 +507,125 @@ export default function OrdersPage() {
     };
     reader.readAsDataURL(file);
   };
+
+  const handleDrop = (e: React.DragEvent, index: number, type: "receipt" | "payment") => {
+    e.preventDefault();
+    if (type === "receipt") {
+      setReceiptDragOver(false);
+    } else {
+      setPaymentDragOver(false);
+    }
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length > 0) {
+      handleImageUpload(imageFiles[0], index, type);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent, type: "receipt" | "payment") => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (type === "receipt") {
+      setReceiptDragOver(true);
+    } else {
+      setPaymentDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent, type: "receipt" | "payment") => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (type === "receipt") {
+      setReceiptDragOver(false);
+    } else {
+      setPaymentDragOver(false);
+    }
+  };
+
+  // Handle paste event
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      // Only handle paste when modal is open
+      if (!viewModalOrderId && !makePaymentModalOrderId) return;
+      
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            // Determine which upload type is active based on which modal is open
+            const uploadType = activeUploadType || (viewModalOrderId ? "receipt" : "payment");
+            
+            if (uploadType === "receipt") {
+              setReceiptUploads((prev) => {
+                const emptyIndex = prev.findIndex(u => !u.image);
+                const targetIndex = emptyIndex !== -1 ? emptyIndex : prev.length;
+                
+                // Process the image upload
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64 = reader.result as string;
+                  setReceiptUploads((current) => {
+                    const updated = [...current];
+                    if (!updated[targetIndex]) {
+                      updated[targetIndex] = { image: "", amount: "" };
+                    }
+                    updated[targetIndex] = { ...updated[targetIndex], image: base64 };
+                    return updated;
+                  });
+                };
+                reader.readAsDataURL(file);
+                
+                // If no empty slot, add a new one
+                if (emptyIndex === -1) {
+                  return [...prev, { image: "", amount: "" }];
+                }
+                return prev;
+              });
+            } else {
+              setPaymentUploads((prev) => {
+                const emptyIndex = prev.findIndex(u => !u.image);
+                const targetIndex = emptyIndex !== -1 ? emptyIndex : prev.length;
+                
+                // Process the image upload
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64 = reader.result as string;
+                  setPaymentUploads((current) => {
+                    const updated = [...current];
+                    if (!updated[targetIndex]) {
+                      updated[targetIndex] = { image: "", amount: "" };
+                    }
+                    updated[targetIndex] = { ...updated[targetIndex], image: base64 };
+                    return updated;
+                  });
+                };
+                reader.readAsDataURL(file);
+                
+                // If no empty slot, add a new one
+                if (emptyIndex === -1) {
+                  return [...prev, { image: "", amount: "" }];
+                }
+                return prev;
+              });
+            }
+          }
+          break;
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [viewModalOrderId, makePaymentModalOrderId, activeUploadType]);
 
   const setStatus = async (id: number, status: OrderStatus) => {
     await updateOrderStatus({ id, status });
@@ -1349,7 +1477,7 @@ export default function OrdersPage() {
                         <img
                           src={receipt.imagePath}
                           alt="Receipt"
-                          className="max-w-full h-auto mb-2"
+                          className="max-w-full max-h-96 w-auto h-auto mb-2 object-contain rounded"
                         />
                         <p className="text-sm text-slate-600">
                           {t("orders.amount")}: {receipt.amount}
@@ -1359,7 +1487,33 @@ export default function OrdersPage() {
 
                     <form onSubmit={handleAddReceipt} className="mt-4">
                       {receiptUploads.map((upload, index) => (
-                        <div key={`${receiptUploadKey}-${index}`} className="mb-4 p-3 border border-slate-200 rounded-lg">
+                        <div
+                          key={`${receiptUploadKey}-${index}`}
+                          className={`mb-4 p-3 border-2 border-dashed rounded-lg transition-colors ${
+                            receiptDragOver && index === receiptUploads.length - 1
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-slate-200"
+                          }`}
+                          onDrop={(e) => {
+                            handleDrop(e, index, "receipt");
+                            setActiveUploadType(null);
+                          }}
+                          onDragOver={(e) => {
+                            handleDragOver(e, "receipt");
+                            setActiveUploadType("receipt");
+                          }}
+                          onDragLeave={(e) => {
+                            handleDragLeave(e, "receipt");
+                            setActiveUploadType(null);
+                          }}
+                          onFocus={() => setActiveUploadType("receipt")}
+                          onClick={() => setActiveUploadType("receipt")}
+                        >
+                          {!upload.image && (
+                            <div className="text-center py-4 text-slate-500 text-sm">
+                              <p className="mb-2">Drag & drop image here, paste (Ctrl+V), or</p>
+                            </div>
+                          )}
                           <input
                             type="file"
                             accept="image/*"
@@ -1373,13 +1527,13 @@ export default function OrdersPage() {
                                 handleImageUpload(file, index, "receipt");
                               }
                             }}
-                            className="mb-2"
+                            className="mb-2 w-full"
                           />
                           {upload.image && (
                             <img
                               src={upload.image}
                               alt="Preview"
-                              className="max-w-full h-auto mb-2"
+                              className="max-w-full max-h-96 w-auto h-auto mb-2 object-contain rounded"
                             />
                           )}
                           <input
@@ -1478,7 +1632,7 @@ export default function OrdersPage() {
                         <img
                           src={payment.imagePath}
                           alt="Payment"
-                          className="max-w-full h-auto mb-2"
+                          className="max-w-full max-h-96 w-auto h-auto mb-2 object-contain rounded"
                         />
                         <p className="text-sm text-slate-600">
                           Amount: {payment.amount}
@@ -1488,7 +1642,33 @@ export default function OrdersPage() {
 
                     <form onSubmit={handleAddPayment} className="mt-4">
                       {paymentUploads.map((upload, index) => (
-                        <div key={`${paymentUploadKey}-${index}`} className="mb-4 p-3 border border-slate-200 rounded-lg">
+                        <div
+                          key={`${paymentUploadKey}-${index}`}
+                          className={`mb-4 p-3 border-2 border-dashed rounded-lg transition-colors ${
+                            paymentDragOver && index === paymentUploads.length - 1
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-slate-200"
+                          }`}
+                          onDrop={(e) => {
+                            handleDrop(e, index, "payment");
+                            setActiveUploadType(null);
+                          }}
+                          onDragOver={(e) => {
+                            handleDragOver(e, "payment");
+                            setActiveUploadType("payment");
+                          }}
+                          onDragLeave={(e) => {
+                            handleDragLeave(e, "payment");
+                            setActiveUploadType(null);
+                          }}
+                          onFocus={() => setActiveUploadType("payment")}
+                          onClick={() => setActiveUploadType("payment")}
+                        >
+                          {!upload.image && (
+                            <div className="text-center py-4 text-slate-500 text-sm">
+                              <p className="mb-2">Drag & drop image here, paste (Ctrl+V), or</p>
+                            </div>
+                          )}
                           <input
                             type="file"
                             accept="image/*"
@@ -1502,13 +1682,13 @@ export default function OrdersPage() {
                                 handleImageUpload(file, index, "payment");
                               }
                             }}
-                            className="mb-2"
+                            className="mb-2 w-full"
                           />
                           {upload.image && (
                             <img
                               src={upload.image}
                               alt="Preview"
-                              className="max-w-full h-auto mb-2"
+                              className="max-w-full max-h-96 w-auto h-auto mb-2 object-contain rounded"
                             />
                           )}
                           <input
@@ -1712,7 +1892,7 @@ export default function OrdersPage() {
                           <img
                             src={receipt.imagePath}
                             alt="Receipt"
-                            className="max-w-full h-auto mb-2"
+                            className="max-w-full max-h-96 w-auto h-auto mb-2 object-contain rounded"
                           />
                           <p className="text-sm text-slate-600">
                             Amount: {receipt.amount}
@@ -1738,7 +1918,7 @@ export default function OrdersPage() {
                           <img
                             src={payment.imagePath}
                             alt="Payment"
-                            className="max-w-full h-auto mb-2"
+                            className="max-w-full max-h-96 w-auto h-auto mb-2 object-contain rounded"
                           />
                           <p className="text-sm text-slate-600">
                             Amount: {payment.amount}

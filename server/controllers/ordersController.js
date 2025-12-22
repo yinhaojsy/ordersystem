@@ -228,6 +228,16 @@ export const addReceipt = (req, res, next) => {
       return res.status(400).json({ message: "Image path and amount are required" });
     }
 
+    if (typeof imagePath !== 'string' || imagePath.trim().length === 0) {
+      return res.status(400).json({ message: "Invalid image path" });
+    }
+
+    // Check if order exists first
+    const order = db.prepare("SELECT amountBuy FROM orders WHERE id = ?;").get(id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
     const stmt = db.prepare(
       `INSERT INTO order_receipts (orderId, imagePath, amount, createdAt)
        VALUES (@orderId, @imagePath, @amount, @createdAt);`
@@ -249,7 +259,6 @@ export const addReceipt = (req, res, next) => {
       .prepare("SELECT * FROM order_receipts WHERE orderId = ?;")
       .all(id);
     const totalAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
-    const order = db.prepare("SELECT amountBuy FROM orders WHERE id = ?;").get(id);
 
     if (totalAmount >= order.amountBuy) {
       db.prepare("UPDATE orders SET status = 'waiting_for_payment' WHERE id = ?;").run(id);
@@ -257,6 +266,7 @@ export const addReceipt = (req, res, next) => {
 
     res.json(receipt);
   } catch (error) {
+    console.error("Error adding receipt:", error);
     next(error);
   }
 };
@@ -312,6 +322,16 @@ export const addPayment = (req, res, next) => {
       return res.status(400).json({ message: "Image path and amount are required" });
     }
 
+    if (typeof imagePath !== 'string' || imagePath.trim().length === 0) {
+      return res.status(400).json({ message: "Invalid image path" });
+    }
+
+    // Check if order exists first
+    const order = db.prepare("SELECT amountSell FROM orders WHERE id = ?;").get(id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
     const stmt = db.prepare(
       `INSERT INTO order_payments (orderId, imagePath, amount, createdAt)
        VALUES (@orderId, @imagePath, @amount, @createdAt);`
@@ -333,7 +353,6 @@ export const addPayment = (req, res, next) => {
       .prepare("SELECT * FROM order_payments WHERE orderId = ?;")
       .all(id);
     const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
-    const order = db.prepare("SELECT amountSell FROM orders WHERE id = ?;").get(id);
 
     if (totalAmount >= order.amountSell) {
       db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(id);
@@ -341,6 +360,7 @@ export const addPayment = (req, res, next) => {
 
     res.json(payment);
   } catch (error) {
+    console.error("Error adding payment:", error);
     next(error);
   }
 };
