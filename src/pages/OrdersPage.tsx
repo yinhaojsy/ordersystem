@@ -8,6 +8,7 @@ import {
   useGetCustomersQuery,
   useGetOrdersQuery,
   useGetUsersQuery,
+  useUpdateOrderMutation,
   useUpdateOrderStatusMutation,
   useDeleteOrderMutation,
   useGetOrderDetailsQuery,
@@ -17,6 +18,8 @@ import {
   useAddPaymentMutation,
   useGetCustomerBeneficiariesQuery,
   useAddCustomerBeneficiaryMutation,
+  useGetAccountsQuery,
+  useAddCustomerMutation,
 } from "../services/api";
 import { useGetRolesQuery } from "../services/api";
 import { useAppSelector } from "../app/hooks";
@@ -32,10 +35,13 @@ export default function OrdersPage() {
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: users = [] } = useGetUsersQuery();
+  const { data: accounts = [] } = useGetAccountsQuery();
 
   const [addOrder, { isLoading: isSaving }] = useAddOrderMutation();
+  const [updateOrder] = useUpdateOrderMutation();
   const [updateOrderStatus] = useUpdateOrderStatusMutation();
   const [deleteOrder, { isLoading: isDeleting }] = useDeleteOrderMutation();
+  const [addCustomer, { isLoading: isCreatingCustomer }] = useAddCustomerMutation();
   const [processOrder] = useProcessOrderMutation();
   const [addReceipt] = useAddReceiptMutation();
   const [addBeneficiary] = useAddBeneficiaryMutation();
@@ -45,6 +51,8 @@ export default function OrdersPage() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateCustomerModalOpen, setIsCreateCustomerModalOpen] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const [processModalOrderId, setProcessModalOrderId] = useState<number | null>(null);
   const [viewModalOrderId, setViewModalOrderId] = useState<number | null>(null);
   const [makePaymentModalOrderId, setMakePaymentModalOrderId] = useState<number | null>(null);
@@ -66,29 +74,39 @@ export default function OrdersPage() {
     status: "pending" as OrderStatus,
   });
 
+  const [customerForm, setCustomerForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+  });
+
   const [processForm, setProcessForm] = useState({
     handlerId: "",
-    paymentType: "CRYPTO" as "CRYPTO" | "FIAT",
-    networkChain: "",
-    walletAddresses: [""],
-    bankName: "",
-    accountTitle: "",
-    accountNumber: "",
-    accountIban: "",
-    swiftCode: "",
-    bankAddress: "",
+    receiptAccountId: "",
+    // Commented out for future use:
+    // paymentType: "CRYPTO" as "CRYPTO" | "FIAT",
+    // networkChain: "",
+    // walletAddresses: [""],
+    // bankName: "",
+    // accountTitle: "",
+    // accountNumber: "",
+    // accountIban: "",
+    // swiftCode: "",
+    // bankAddress: "",
   });
 
   const [beneficiaryForm, setBeneficiaryForm] = useState({
-    paymentType: "CRYPTO" as "CRYPTO" | "FIAT",
-    networkChain: "",
-    walletAddresses: [""],
-    bankName: "",
-    accountTitle: "",
-    accountNumber: "",
-    accountIban: "",
-    swiftCode: "",
-    bankAddress: "",
+    paymentAccountId: "",
+    // Commented out for future use:
+    // paymentType: "CRYPTO" as "CRYPTO" | "FIAT",
+    // networkChain: "",
+    // walletAddresses: [""],
+    // bankName: "",
+    // accountTitle: "",
+    // accountNumber: "",
+    // accountIban: "",
+    // swiftCode: "",
+    // bankAddress: "",
   });
   const [saveBeneficiaryToCustomer, setSaveBeneficiaryToCustomer] = useState(false);
   const [selectedCustomerBeneficiaryId, setSelectedCustomerBeneficiaryId] = useState<number | "">(
@@ -96,36 +114,36 @@ export default function OrdersPage() {
   );
 
   const applyCustomerBeneficiaryToForm = (beneficiaryId: number) => {
-    const selected = customerBeneficiaries.find((b) => b.id === beneficiaryId);
-    if (!selected) return;
-
-    if (selected.paymentType === "CRYPTO") {
-      setBeneficiaryForm({
-        paymentType: "CRYPTO",
-        networkChain: selected.networkChain || "",
-        walletAddresses: selected.walletAddresses && selected.walletAddresses.length > 0
-          ? selected.walletAddresses
-          : [""],
-        bankName: "",
-        accountTitle: "",
-        accountNumber: "",
-        accountIban: "",
-        swiftCode: "",
-        bankAddress: "",
-      });
-    } else {
-      setBeneficiaryForm({
-        paymentType: "FIAT",
-        networkChain: "",
-        walletAddresses: [""],
-        bankName: selected.bankName || "",
-        accountTitle: selected.accountTitle || "",
-        accountNumber: selected.accountNumber || "",
-        accountIban: selected.accountIban || "",
-        swiftCode: selected.swiftCode || "",
-        bankAddress: selected.bankAddress || "",
-      });
-    }
+    // Commented out for future use - beneficiary details
+    // const selected = customerBeneficiaries.find((b) => b.id === beneficiaryId);
+    // if (!selected) return;
+    // if (selected.paymentType === "CRYPTO") {
+    //   setBeneficiaryForm({
+    //     paymentType: "CRYPTO",
+    //     networkChain: selected.networkChain || "",
+    //     walletAddresses: selected.walletAddresses && selected.walletAddresses.length > 0
+    //       ? selected.walletAddresses
+    //       : [""],
+    //     bankName: "",
+    //     accountTitle: "",
+    //     accountNumber: "",
+    //     accountIban: "",
+    //     swiftCode: "",
+    //     bankAddress: "",
+    //   });
+    // } else {
+    //   setBeneficiaryForm({
+    //     paymentType: "FIAT",
+    //     networkChain: "",
+    //     walletAddresses: [""],
+    //     bankName: selected.bankName || "",
+    //     accountTitle: selected.accountTitle || "",
+    //     accountNumber: selected.accountNumber || "",
+    //     accountIban: selected.accountIban || "",
+    //     swiftCode: selected.swiftCode || "",
+    //     bankAddress: selected.bankAddress || "",
+    //   });
+    // }
   };
 
   const [receiptUploads, setReceiptUploads] = useState<Array<{ image: string; amount: string }>>([{ image: "", amount: "" }]);
@@ -154,29 +172,33 @@ export default function OrdersPage() {
   const resetProcessForm = () => {
     setProcessForm({
       handlerId: "",
-      paymentType: "CRYPTO",
-      networkChain: "",
-      walletAddresses: [""],
-      bankName: "",
-      accountTitle: "",
-      accountNumber: "",
-      accountIban: "",
-      swiftCode: "",
-      bankAddress: "",
+      receiptAccountId: "",
+      // Commented out for future use:
+      // paymentType: "CRYPTO",
+      // networkChain: "",
+      // walletAddresses: [""],
+      // bankName: "",
+      // accountTitle: "",
+      // accountNumber: "",
+      // accountIban: "",
+      // swiftCode: "",
+      // bankAddress: "",
     });
   };
 
   const resetBeneficiaryForm = () => {
     setBeneficiaryForm({
-      paymentType: "CRYPTO",
-      networkChain: "",
-      walletAddresses: [""],
-      bankName: "",
-      accountTitle: "",
-      accountNumber: "",
-      accountIban: "",
-      swiftCode: "",
-      bankAddress: "",
+      paymentAccountId: "",
+      // Commented out for future use:
+      // paymentType: "CRYPTO",
+      // networkChain: "",
+      // walletAddresses: [""],
+      // bankName: "",
+      // accountTitle: "",
+      // accountNumber: "",
+      // accountIban: "",
+      // swiftCode: "",
+      // bankAddress: "",
     });
     setSaveBeneficiaryToCustomer(false);
     setSelectedCustomerBeneficiaryId("");
@@ -297,6 +319,57 @@ export default function OrdersPage() {
   const closeModal = () => {
     resetForm();
     setIsModalOpen(false);
+    setEditingOrderId(null);
+  };
+
+  const resetCustomerForm = () => {
+    setCustomerForm({
+      name: "",
+      email: "",
+      phone: "",
+    });
+  };
+
+  const handleCreateCustomer = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!customerForm.name) return;
+    
+    try {
+      const newCustomer = await addCustomer({
+        name: customerForm.name,
+        email: customerForm.email || "",
+        phone: customerForm.phone || "",
+        id: undefined,
+      }).unwrap();
+      
+      // Select the newly created customer
+      if (newCustomer?.id) {
+        setForm((p) => ({ ...p, customerId: String(newCustomer.id) }));
+      }
+      
+      resetCustomerForm();
+      setIsCreateCustomerModalOpen(false);
+    } catch (error) {
+      console.error("Error creating customer:", error);
+    }
+  };
+
+  const startEdit = (orderId: number) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || order.status !== "pending") return;
+    
+    setEditingOrderId(orderId);
+    setForm({
+      customerId: String(order.customerId),
+      fromCurrency: order.fromCurrency,
+      toCurrency: order.toCurrency,
+      amountBuy: String(order.amountBuy),
+      amountSell: String(order.amountSell),
+      rate: String(order.rate),
+      status: order.status,
+    });
+    setIsModalOpen(true);
+    setOpenMenuId(null);
   };
 
   const closeProcessModal = () => {
@@ -345,27 +418,28 @@ export default function OrdersPage() {
 
   const handleProcess = async (event: FormEvent) => {
     event.preventDefault();
-    if (!processModalOrderId || !processForm.handlerId) return;
+    if (!processModalOrderId || !processForm.handlerId || !processForm.receiptAccountId) return;
 
     const payload: any = {
       id: processModalOrderId,
       handlerId: Number(processForm.handlerId),
-      paymentType: processForm.paymentType,
+      receiptAccountId: Number(processForm.receiptAccountId),
+      // Commented out for future use:
+      // paymentType: processForm.paymentType,
+      // if (processForm.paymentType === "CRYPTO") {
+      //   payload.networkChain = processForm.networkChain;
+      //   payload.walletAddresses = processForm.walletAddresses.filter((addr) => addr.trim());
+      // } else {
+      //   payload.bankDetails = {
+      //     bankName: processForm.bankName,
+      //     accountTitle: processForm.accountTitle,
+      //     accountNumber: processForm.accountNumber,
+      //     accountIban: processForm.accountIban,
+      //     swiftCode: processForm.swiftCode,
+      //     bankAddress: processForm.bankAddress,
+      //   };
+      // }
     };
-
-    if (processForm.paymentType === "CRYPTO") {
-      payload.networkChain = processForm.networkChain;
-      payload.walletAddresses = processForm.walletAddresses.filter((addr) => addr.trim());
-    } else {
-      payload.bankDetails = {
-        bankName: processForm.bankName,
-        accountTitle: processForm.accountTitle,
-        accountNumber: processForm.accountNumber,
-        accountIban: processForm.accountIban,
-        swiftCode: processForm.swiftCode,
-        bankAddress: processForm.bankAddress,
-      };
-    }
 
     await processOrder(payload);
     resetProcessForm();
@@ -409,31 +483,52 @@ export default function OrdersPage() {
 
   const handleAddBeneficiary = async (event: FormEvent) => {
     event.preventDefault();
-    if (!makePaymentModalOrderId) return;
+    if (!makePaymentModalOrderId || !beneficiaryForm.paymentAccountId) return;
+
+    // Get order and account details for balance validation
+    const paymentOrder = orders.find((o) => o.id === makePaymentModalOrderId);
+    const selectedAccount = accounts.find((a) => a.id === Number(beneficiaryForm.paymentAccountId));
+    
+    if (paymentOrder && selectedAccount) {
+      const requiredAmount = paymentOrder.amountSell;
+      const currentBalance = selectedAccount.balance;
+      
+      // Check if account has insufficient funds
+      if (currentBalance < requiredAmount) {
+        const newBalance = currentBalance - requiredAmount;
+        const confirmMessage = `⚠️ Insufficient Balance Warning\n\nAccount: ${selectedAccount.name}\nCurrent Balance: ${currentBalance.toFixed(2)} ${selectedAccount.currencyCode}\nRequired Amount: ${requiredAmount.toFixed(2)} ${selectedAccount.currencyCode}\n\nYour account balance is insufficient. Are you sure you want to proceed with this payment?\n\nIf you confirm, your balance will become: ${newBalance.toFixed(2)} ${selectedAccount.currencyCode}\n\n(Click OK to proceed, Cancel to go back)`;
+        
+        if (!window.confirm(confirmMessage)) {
+          return; // User cancelled
+        }
+      }
+    }
 
     const payload: any = {
       id: makePaymentModalOrderId,
-      paymentType: beneficiaryForm.paymentType,
+      paymentAccountId: Number(beneficiaryForm.paymentAccountId),
+      // Commented out for future use:
+      // paymentType: beneficiaryForm.paymentType,
+      // if (beneficiaryForm.paymentType === "CRYPTO") {
+      //   payload.networkChain = beneficiaryForm.networkChain;
+      //   payload.walletAddresses = beneficiaryForm.walletAddresses.filter((addr) => addr.trim());
+      // } else {
+      //   payload.bankName = beneficiaryForm.bankName;
+      //   payload.accountTitle = beneficiaryForm.accountTitle;
+      //   payload.accountNumber = beneficiaryForm.accountNumber;
+      //   payload.accountIban = beneficiaryForm.accountIban;
+      //   payload.swiftCode = beneficiaryForm.swiftCode;
+      //   payload.bankAddress = beneficiaryForm.bankAddress;
+      // }
     };
 
-    if (beneficiaryForm.paymentType === "CRYPTO") {
-      payload.networkChain = beneficiaryForm.networkChain;
-      payload.walletAddresses = beneficiaryForm.walletAddresses.filter((addr) => addr.trim());
-    } else {
-      payload.bankName = beneficiaryForm.bankName;
-      payload.accountTitle = beneficiaryForm.accountTitle;
-      payload.accountNumber = beneficiaryForm.accountNumber;
-      payload.accountIban = beneficiaryForm.accountIban;
-      payload.swiftCode = beneficiaryForm.swiftCode;
-      payload.bankAddress = beneficiaryForm.bankAddress;
-    }
-
     await addBeneficiary(payload);
-    if (saveBeneficiaryToCustomer && makePaymentOrder?.customerId) {
-      const customerPayload = { ...payload, customerId: makePaymentOrder.customerId };
-      delete customerPayload.id;
-      await addCustomerBeneficiary(customerPayload);
-    }
+    // Commented out for future use:
+    // if (saveBeneficiaryToCustomer && makePaymentOrder?.customerId) {
+    //   const customerPayload = { ...payload, customerId: makePaymentOrder.customerId };
+    //   delete customerPayload.id;
+    //   await addCustomerBeneficiary(customerPayload);
+    // }
     resetBeneficiaryForm();
     const orderId = makePaymentModalOrderId;
     setMakePaymentModalOrderId(null);
@@ -650,8 +745,17 @@ export default function OrdersPage() {
     if (order.status === "pending") {
       buttons.push(
         <button
+          key="edit"
+          className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-slate-50 first:rounded-t-lg"
+          onClick={() => startEdit(order.id)}
+        >
+          {t("common.edit")}
+        </button>
+      );
+      buttons.push(
+        <button
           key="process"
-          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
+          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50"
           onClick={() => {
             setProcessModalOrderId(order.id);
             setOpenMenuId(null);
@@ -904,7 +1008,7 @@ export default function OrdersPage() {
                     {order.fromCurrency} → {order.toCurrency}
                   </td>
                   <td className="py-2">{order.amountBuy}</td>
-                  <td className="py-2">{order.amountSell}</td>
+                  <td className="py-2">-{order.amountSell}</td>
                   <td className="py-2">{order.rate}</td>
                   <td className="py-2">
                     <Badge tone={getStatusTone(order.status)}>
@@ -966,7 +1070,7 @@ export default function OrdersPage() {
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-slate-900">
-                {t("orders.createOrderTitle")}
+                {editingOrderId ? t("orders.editOrderTitle") : t("orders.createOrderTitle")}
               </h2>
               <button
                 onClick={closeModal}
@@ -989,21 +1093,30 @@ export default function OrdersPage() {
               </button>
             </div>
             <form className="grid gap-3" onSubmit={submit}>
-              <select
-                className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                value={form.customerId}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, customerId: e.target.value }))
-                }
-                required
-              >
-                <option value="">{t("orders.selectCustomer")}</option>
-                {customers.map((customer) => (
-                  <option value={customer.id} key={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
+              <div className="col-span-full flex gap-2">
+                <select
+                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
+                  value={form.customerId}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, customerId: e.target.value }))
+                  }
+                  required
+                >
+                  <option value="">{t("orders.selectCustomer")}</option>
+                  {customers.map((customer) => (
+                    <option value={customer.id} key={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateCustomerModalOpen(true)}
+                  className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors whitespace-nowrap"
+                >
+                  {t("orders.createNewCustomer")}
+                </button>
+              </div>
               <div className="col-span-full grid grid-cols-2 gap-3">
                 <select
                   className="rounded-lg border border-slate-200 px-3 py-2"
@@ -1130,7 +1243,93 @@ export default function OrdersPage() {
                   disabled={isSaving}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
                 >
-                  {isSaving ? t("common.saving") : t("orders.saveOrder")}
+                  {isSaving ? t("common.saving") : editingOrderId ? t("orders.updateOrder") : t("orders.saveOrder")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Customer Modal */}
+      {isCreateCustomerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">
+                {t("orders.createNewCustomerTitle")}
+              </h2>
+              <button
+                onClick={() => {
+                  setIsCreateCustomerModalOpen(false);
+                  resetCustomerForm();
+                }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label={t("common.close")}
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <form className="grid gap-3" onSubmit={handleCreateCustomer}>
+              <input
+                className="rounded-lg border border-slate-200 px-3 py-2"
+                placeholder={t("customers.name")}
+                value={customerForm.name}
+                onChange={(e) =>
+                  setCustomerForm((p) => ({ ...p, name: e.target.value }))
+                }
+                required
+              />
+              <input
+                className="rounded-lg border border-slate-200 px-3 py-2"
+                placeholder={t("customers.email")}
+                type="email"
+                value={customerForm.email}
+                onChange={(e) =>
+                  setCustomerForm((p) => ({ ...p, email: e.target.value }))
+                }
+              />
+              <input
+                className="rounded-lg border border-slate-200 px-3 py-2"
+                placeholder={t("customers.phone")}
+                type="tel"
+                value={customerForm.phone}
+                onChange={(e) =>
+                  setCustomerForm((p) => ({ ...p, phone: e.target.value }))
+                }
+              />
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateCustomerModalOpen(false);
+                    resetCustomerForm();
+                  }}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingCustomer}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                >
+                  {isCreatingCustomer ? t("common.saving") : t("customers.createCustomer")}
                 </button>
               </div>
             </form>
@@ -1186,6 +1385,34 @@ export default function OrdersPage() {
                 ))}
               </select>
 
+              {/* Receipt Account Selection - Customer pays us in fromCurrency */}
+              {(() => {
+                const processOrderData = orders.find((o) => o.id === processModalOrderId);
+                return (
+                  <select
+                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
+                    value={processForm.receiptAccountId}
+                    onChange={(e) =>
+                      setProcessForm((p) => ({ ...p, receiptAccountId: e.target.value }))
+                    }
+                    required
+                  >
+                    <option value="">
+                      {t("orders.selectReceiptAccount")} ({processOrderData?.fromCurrency || t("orders.from")})
+                    </option>
+                    {accounts
+                      .filter((acc) => acc.currencyCode === processOrderData?.fromCurrency)
+                      .map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
+                        </option>
+                      ))}
+                  </select>
+                );
+              })()}
+
+              {/* Commented out for future use - CRYPTO/FIAT payment type selection */}
+              {/* 
               <div className="col-span-full">
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   {t("orders.paymentType")}
@@ -1237,7 +1464,6 @@ export default function OrdersPage() {
                         networkChain: e.target.value,
                       }))
                     }
-                    // required
                   >
                     <option value="">{t("orders.selectNetworkChain")}</option>
                     <option value="TRC20">TRC20</option>
@@ -1357,6 +1583,7 @@ export default function OrdersPage() {
                   />
                 </>
               )}
+              */}
 
               <div className="col-span-full flex gap-3 justify-end">
                 <button
@@ -1615,7 +1842,7 @@ export default function OrdersPage() {
                       {t("orders.paymentUploads")}
                     </h3>
                     <div className="text-sm text-slate-600 mb-2">
-                      {t("orders.amountSell")}: {orderDetails.order.amountSell}
+                      {t("orders.amountSell")}: -{orderDetails.order.amountSell}
                     </div>
                     <div className="text-sm text-slate-600 mb-2">
                       {t("orders.amountPaid")}: {orderDetails.totalPaymentAmount.toFixed(2)}
@@ -1772,7 +1999,7 @@ export default function OrdersPage() {
                         <div>
                           <span className="text-slate-500">{t("orders.amountSell")}:</span>
                           <span className="ml-2 font-semibold text-slate-900">
-                            {orderDetails.order.amountSell}
+                            -{orderDetails.order.amountSell}
                           </span>
                         </div>
                         {orderDetails.order.handlerName && (
@@ -1966,6 +2193,38 @@ export default function OrdersPage() {
               </button>
             </div>
             <form className="grid gap-3" onSubmit={handleAddBeneficiary}>
+              {/* Payment Account Selection - We pay customer in toCurrency */}
+              {(() => {
+                const paymentOrderData = orders.find((o) => o.id === makePaymentModalOrderId);
+                return (
+                  <select
+                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
+                    value={beneficiaryForm.paymentAccountId}
+                    onChange={(e) =>
+                      setBeneficiaryForm((p) => ({ ...p, paymentAccountId: e.target.value }))
+                    }
+                    required
+                  >
+                    <option value="">
+                      {t("orders.selectPaymentAccount")} ({paymentOrderData?.toCurrency || t("orders.to")})
+                    </option>
+                    {accounts
+                      .filter((acc) => acc.currencyCode === paymentOrderData?.toCurrency)
+                      .map((account) => {
+                        const hasInsufficientBalance = paymentOrderData && account.balance < paymentOrderData.amountSell;
+                        return (
+                          <option key={account.id} value={account.id}>
+                            {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
+                            {hasInsufficientBalance ? ` ⚠️ Insufficient` : ""}
+                          </option>
+                        );
+                      })}
+                  </select>
+                );
+              })()}
+
+              {/* Commented out for future use - CRYPTO/FIAT beneficiary details */}
+              {/* 
               {customerBeneficiaries.length > 0 && (
                 <div className="col-span-full">
                   <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -2178,6 +2437,7 @@ export default function OrdersPage() {
                   {t("orders.saveBeneficiaryToCustomer") ?? "Save this beneficiary to customer profile"}
                 </label>
               </div>
+              */}
 
               <div className="col-span-full flex gap-3 justify-end">
                 <button

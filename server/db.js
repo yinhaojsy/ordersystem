@@ -140,6 +140,29 @@ const ensureSchema = () => {
       FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE
     );`,
   ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS accounts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      currencyCode TEXT NOT NULL,
+      name TEXT NOT NULL,
+      balance REAL NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(currencyCode) REFERENCES currencies(code)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS account_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      accountId INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      amount REAL NOT NULL,
+      description TEXT,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(accountId) REFERENCES accounts(id) ON DELETE CASCADE
+    );`,
+  ).run();
 };
 
 const seedData = () => {
@@ -332,6 +355,12 @@ const migrateDatabase = () => {
     }
     if (!columnNames.includes("bankDetails")) {
       db.prepare("ALTER TABLE orders ADD COLUMN bankDetails TEXT").run();
+    }
+    if (!columnNames.includes("buyAccountId")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN buyAccountId INTEGER REFERENCES accounts(id)").run();
+    }
+    if (!columnNames.includes("sellAccountId")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN sellAccountId INTEGER REFERENCES accounts(id)").run();
     }
   } catch (error) {
     console.error("Migration error:", error);

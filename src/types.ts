@@ -69,6 +69,8 @@ export interface Order {
     bankAddress?: string;
   };
   hasBeneficiaries?: boolean;
+  buyAccountId?: number;
+  sellAccountId?: number;
   createdAt: string;
 }
 
@@ -126,6 +128,33 @@ export interface OrderInput {
   amountSell: number;
   rate: number;
   status?: OrderStatus;
+  buyAccountId?: number;
+  sellAccountId?: number;
+}
+
+export interface Account {
+  id: number;
+  currencyCode: string;
+  currencyName?: string;
+  name: string;
+  balance: number;
+  createdAt: string;
+}
+
+export interface AccountSummary {
+  currencyCode: string;
+  currencyName?: string;
+  totalBalance: number;
+  accountCount: number;
+}
+
+export interface AccountTransaction {
+  id: number;
+  accountId: number;
+  type: "add" | "withdraw";
+  amount: number;
+  description?: string;
+  createdAt: string;
 }
 
 

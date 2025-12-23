@@ -32,6 +32,7 @@ import {
 import {
   listOrders,
   createOrder,
+  updateOrder,
   updateOrderStatus,
   deleteOrder,
   getOrderDetails,
@@ -40,6 +41,17 @@ import {
   addBeneficiary,
   addPayment,
 } from "../controllers/ordersController.js";
+import {
+  listAccounts,
+  getAccountsSummary,
+  getAccountsByCurrency,
+  createAccount,
+  updateAccount,
+  deleteAccount,
+  addFunds,
+  withdrawFunds,
+  getAccountTransactions,
+} from "../controllers/accountsController.js";
 
 const router = Router();
 
@@ -81,8 +93,19 @@ router.post("/orders/:id/receipts", addReceipt);
 router.post("/orders/:id/beneficiaries", addBeneficiary);
 router.post("/orders/:id/payments", addPayment);
 router.patch("/orders/:id/status", updateOrderStatus);
+router.put("/orders/:id", updateOrder);
 // DELETE must come last as it matches /orders/:id
 router.delete("/orders/:id", deleteOrder);
+
+router.get("/accounts", listAccounts);
+router.get("/accounts/summary", getAccountsSummary);
+router.get("/accounts/currency/:currencyCode", getAccountsByCurrency);
+router.post("/accounts", createAccount);
+router.put("/accounts/:id", updateAccount);
+router.delete("/accounts/:id", deleteAccount);
+router.post("/accounts/:id/add-funds", addFunds);
+router.post("/accounts/:id/withdraw-funds", withdrawFunds);
+router.get("/accounts/:id/transactions", getAccountTransactions);
 
 export default router;
 

@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "../layout/AppLayout";
 import DashboardPage from "../pages/DashboardPage";
 import CurrenciesPage from "../pages/CurrenciesPage";
+import AccountsPage from "../pages/AccountsPage";
 import CustomersPage from "../pages/CustomersPage";
 import UsersPage from "../pages/UsersPage";
 import RolesPage from "../pages/RolesPage";
@@ -27,6 +28,7 @@ export default function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route index element={<RequireAuth><DashboardPage /></RequireAuth>} />
           <Route path="currencies" element={<RequireAuth roles={["admin"]}><CurrenciesPage /></RequireAuth>} />
+          <Route path="accounts" element={<RequireAuth roles={["admin"]}><AccountsPage /></RequireAuth>} />
           <Route path="customers" element={<RequireAuth><CustomersPage /></RequireAuth>} />
           <Route path="users" element={<RequireAuth roles={["admin"]}><UsersPage /></RequireAuth>} />
           <Route path="roles" element={<RequireAuth roles={["admin"]}><RolesPage /></RequireAuth>} />

@@ -12,6 +12,9 @@ import type {
   OrderPayment,
   CustomerBeneficiary,
   AuthResponse,
+  Account,
+  AccountSummary,
+  AccountTransaction,
 } from "../types";
 
 const baseQuery = fetchBaseQuery({
@@ -21,7 +24,7 @@ const baseQuery = fetchBaseQuery({
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth"],
+  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account"],
   refetchOnReconnect: true,
   endpoints: (builder) => ({
     getCurrencies: builder.query<Currency[], void>({
@@ -291,6 +294,20 @@ export const api = createApi({
       }),
       invalidatesTags: [{ type: "Order", id: "LIST" }],
     }),
+    updateOrder: builder.mutation<
+      Order,
+      { id: number; data: Partial<OrderInput> }
+    >({
+      query: ({ id, data }) => ({
+        url: `orders/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
+      ],
+    }),
     updateOrderStatus: builder.mutation<
       Order,
       { id: number; status: OrderStatus }
@@ -336,17 +353,19 @@ export const api = createApi({
       {
         id: number;
         handlerId: number;
-        paymentType: "CRYPTO" | "FIAT";
-        networkChain?: string;
-        walletAddresses?: string[];
-        bankDetails?: {
-          bankName?: string;
-          accountTitle?: string;
-          accountNumber?: string;
-          accountIban?: string;
-          swiftCode?: string;
-          bankAddress?: string;
-        };
+        receiptAccountId: number;
+        // Commented out for future use:
+        // paymentType: "CRYPTO" | "FIAT";
+        // networkChain?: string;
+        // walletAddresses?: string[];
+        // bankDetails?: {
+        //   bankName?: string;
+        //   accountTitle?: string;
+        //   accountNumber?: string;
+        //   accountIban?: string;
+        //   swiftCode?: string;
+        //   bankAddress?: string;
+        // };
       }
     >({
       query: ({ id, ...body }) => ({
@@ -371,18 +390,20 @@ export const api = createApi({
       invalidatesTags: (_res, _err, { id }) => [{ type: "Order", id }],
     }),
     addBeneficiary: builder.mutation<
-      OrderBeneficiary,
+      { success: boolean; message?: string },
       {
         id: number;
-        paymentType: "CRYPTO" | "FIAT";
-        networkChain?: string;
-        walletAddresses?: string[];
-        bankName?: string;
-        accountTitle?: string;
-        accountNumber?: string;
-        accountIban?: string;
-        swiftCode?: string;
-        bankAddress?: string;
+        paymentAccountId: number;
+        // Commented out for future use:
+        // paymentType: "CRYPTO" | "FIAT";
+        // networkChain?: string;
+        // walletAddresses?: string[];
+        // bankName?: string;
+        // accountTitle?: string;
+        // accountNumber?: string;
+        // accountIban?: string;
+        // swiftCode?: string;
+        // bankAddress?: string;
       }
     >({
       query: ({ id, ...body }) => ({
@@ -393,6 +414,7 @@ export const api = createApi({
       invalidatesTags: (_res, _err, { id }) => [
         { type: "Order", id },
         { type: "Order", id: "LIST" },
+        { type: "Account", id: "LIST" },
       ],
     }),
     addPayment: builder.mutation<
@@ -404,7 +426,99 @@ export const api = createApi({
         method: "POST",
         body,
       }),
-      invalidatesTags: (_res, _err, { id }) => [{ type: "Order", id }],
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    getAccounts: builder.query<Account[], void>({
+      query: () => "accounts",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Account" as const, id })),
+              { type: "Account" as const, id: "LIST" },
+            ]
+          : [{ type: "Account" as const, id: "LIST" }],
+    }),
+    getAccountsSummary: builder.query<AccountSummary[], void>({
+      query: () => "accounts/summary",
+      providesTags: [{ type: "Account", id: "LIST" }],
+    }),
+    getAccountsByCurrency: builder.query<Account[], string>({
+      query: (currencyCode) => `accounts/currency/${currencyCode}`,
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Account" as const, id })),
+              { type: "Account" as const, id: "LIST" },
+            ]
+          : [{ type: "Account" as const, id: "LIST" }],
+    }),
+    createAccount: builder.mutation<
+      Account,
+      { currencyCode: string; name: string; initialFunds?: number }
+    >({
+      query: (body) => ({
+        url: "accounts",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Account", id: "LIST" }],
+    }),
+    updateAccount: builder.mutation<Account, { id: number; name: string }>({
+      query: ({ id, ...body }) => ({
+        url: `accounts/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Account", id },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    deleteAccount: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `accounts/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Account", id },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    addFunds: builder.mutation<
+      Account,
+      { id: number; amount: number; description?: string }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `accounts/${id}/add-funds`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Account", id },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    withdrawFunds: builder.mutation<
+      Account,
+      { id: number; amount: number; description?: string }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `accounts/${id}/withdraw-funds`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Account", id },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    getAccountTransactions: builder.query<AccountTransaction[], number>({
+      query: (id) => `accounts/${id}/transactions`,
+      providesTags: (_res, _err, id) => [{ type: "Account", id }],
     }),
   }),
 });
@@ -433,6 +547,7 @@ export const {
   useDeleteRoleMutation,
   useGetOrdersQuery,
   useAddOrderMutation,
+  useUpdateOrderMutation,
   useUpdateOrderStatusMutation,
   useDeleteOrderMutation,
   useGetOrderDetailsQuery,
@@ -440,6 +555,15 @@ export const {
   useAddReceiptMutation,
   useAddBeneficiaryMutation,
   useAddPaymentMutation,
+  useGetAccountsQuery,
+  useGetAccountsSummaryQuery,
+  useGetAccountsByCurrencyQuery,
+  useCreateAccountMutation,
+  useUpdateAccountMutation,
+  useDeleteAccountMutation,
+  useAddFundsMutation,
+  useWithdrawFundsMutation,
+  useGetAccountTransactionsQuery,
 } = api;
 
 

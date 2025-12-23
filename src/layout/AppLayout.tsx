@@ -14,6 +14,7 @@ export default function AppLayout() {
   const navItems = [
     { to: "/", labelKey: "nav.dashboard", end: true },
     { to: "/currencies", labelKey: "nav.currencies", roles: ["admin"] },
+    { to: "/accounts", labelKey: "nav.accounts", roles: ["admin"] },
     { to: "/customers", labelKey: "nav.customers" },
     { to: "/users", labelKey: "nav.users", roles: ["admin"] },
     { to: "/roles", labelKey: "nav.roles", roles: ["admin"] },
