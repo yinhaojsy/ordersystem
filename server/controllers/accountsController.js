@@ -126,6 +126,26 @@ export const updateAccount = (req, res, next) => {
       });
     }
 
+    // Check if account is used in any internal transfers
+    const transferCount = db
+      .prepare("SELECT COUNT(*) as count FROM internal_transfers WHERE fromAccountId = ? OR toAccountId = ?")
+      .get(id, id);
+    if (transferCount.count > 0) {
+      return res.status(400).json({ 
+        message: "Cannot edit account that is linked to existing transfers" 
+      });
+    }
+
+    // Check if account is used in any expenses
+    const expenseCount = db
+      .prepare("SELECT COUNT(*) as count FROM expenses WHERE accountId = ? AND deletedAt IS NULL")
+      .get(id);
+    if (expenseCount.count > 0) {
+      return res.status(400).json({ 
+        message: "Cannot edit account that is linked to existing expenses" 
+      });
+    }
+
     db.prepare("UPDATE accounts SET name = @name WHERE id = @id;").run({ id, name });
     
     const row = db
@@ -158,6 +178,26 @@ export const deleteAccount = (req, res, next) => {
     if (orderCount.count > 0) {
       return res.status(400).json({ 
         message: "Cannot delete account that is linked to existing orders" 
+      });
+    }
+
+    // Check if account is used in any internal transfers
+    const transferCount = db
+      .prepare("SELECT COUNT(*) as count FROM internal_transfers WHERE fromAccountId = ? OR toAccountId = ?")
+      .get(id, id);
+    if (transferCount.count > 0) {
+      return res.status(400).json({ 
+        message: "Cannot delete account that is linked to existing transfers" 
+      });
+    }
+
+    // Check if account is used in any expenses
+    const expenseCount = db
+      .prepare("SELECT COUNT(*) as count FROM expenses WHERE accountId = ? AND deletedAt IS NULL")
+      .get(id);
+    if (expenseCount.count > 0) {
+      return res.status(400).json({ 
+        message: "Cannot delete account that is linked to existing expenses" 
       });
     }
 

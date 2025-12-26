@@ -15,6 +15,8 @@ export default function AppLayout() {
     { to: "/", labelKey: "nav.dashboard", end: true },
     { to: "/currencies", labelKey: "nav.currencies", roles: ["admin"] },
     { to: "/accounts", labelKey: "nav.accounts", roles: ["admin"] },
+    { to: "/transfers", labelKey: "nav.transfers" },
+    { to: "/expenses", labelKey: "nav.expenses" },
     { to: "/customers", labelKey: "nav.customers" },
     { to: "/users", labelKey: "nav.users", roles: ["admin"] },
     { to: "/roles", labelKey: "nav.roles", roles: ["admin"] },
@@ -106,7 +108,7 @@ export default function AppLayout() {
                   onClick={logout}
                   className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
-                  {t("common.logout") ?? "Logout"}
+                  {t("common.logout")}
                 </button>
               </>
             )}

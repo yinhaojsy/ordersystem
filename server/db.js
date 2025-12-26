@@ -163,6 +163,78 @@ const ensureSchema = () => {
       FOREIGN KEY(accountId) REFERENCES accounts(id) ON DELETE CASCADE
     );`,
   ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS internal_transfers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fromAccountId INTEGER NOT NULL,
+      toAccountId INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      currencyCode TEXT NOT NULL,
+      description TEXT,
+      createdBy INTEGER,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedBy INTEGER,
+      updatedAt TEXT,
+      FOREIGN KEY(fromAccountId) REFERENCES accounts(id),
+      FOREIGN KEY(toAccountId) REFERENCES accounts(id),
+      FOREIGN KEY(createdBy) REFERENCES users(id),
+      FOREIGN KEY(updatedBy) REFERENCES users(id)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS transfer_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      transferId INTEGER NOT NULL,
+      changedBy INTEGER,
+      changedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      fromAccountId INTEGER NOT NULL,
+      fromAccountName TEXT,
+      toAccountId INTEGER NOT NULL,
+      toAccountName TEXT,
+      amount REAL NOT NULL,
+      description TEXT,
+      FOREIGN KEY(transferId) REFERENCES internal_transfers(id) ON DELETE CASCADE,
+      FOREIGN KEY(changedBy) REFERENCES users(id)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      accountId INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      currencyCode TEXT NOT NULL,
+      description TEXT,
+      imagePath TEXT,
+      createdBy INTEGER,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedBy INTEGER,
+      updatedAt TEXT,
+      deletedBy INTEGER,
+      deletedAt TEXT,
+      FOREIGN KEY(accountId) REFERENCES accounts(id),
+      FOREIGN KEY(createdBy) REFERENCES users(id),
+      FOREIGN KEY(updatedBy) REFERENCES users(id),
+      FOREIGN KEY(deletedBy) REFERENCES users(id)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS expense_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      expenseId INTEGER NOT NULL,
+      changedBy INTEGER,
+      changedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      accountId INTEGER NOT NULL,
+      accountName TEXT,
+      amount REAL NOT NULL,
+      description TEXT,
+      FOREIGN KEY(expenseId) REFERENCES expenses(id) ON DELETE CASCADE,
+      FOREIGN KEY(changedBy) REFERENCES users(id)
+    );`,
+  ).run();
 };
 
 const seedData = () => {
@@ -361,6 +433,48 @@ const migrateDatabase = () => {
     }
     if (!columnNames.includes("sellAccountId")) {
       db.prepare("ALTER TABLE orders ADD COLUMN sellAccountId INTEGER REFERENCES accounts(id)").run();
+    }
+    if (!columnNames.includes("paymentFlow")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN paymentFlow TEXT DEFAULT 'receive_first'").run();
+    }
+    if (!columnNames.includes("actualAmountBuy")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN actualAmountBuy REAL").run();
+    }
+    if (!columnNames.includes("actualAmountSell")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN actualAmountSell REAL").run();
+    }
+    if (!columnNames.includes("actualRate")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN actualRate REAL").run();
+    }
+    if (!columnNames.includes("isFlexOrder")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN isFlexOrder INTEGER DEFAULT 0").run();
+    }
+
+    // Check order_payments table for new columns
+    const paymentTableInfo = db.prepare("PRAGMA table_info(order_payments)").all();
+    const paymentColumnNames = paymentTableInfo.map((col) => col.name);
+    
+    if (!paymentColumnNames.includes("accountId")) {
+      db.prepare("ALTER TABLE order_payments ADD COLUMN accountId INTEGER REFERENCES accounts(id)").run();
+    }
+
+    // Check order_receipts table for new columns
+    const receiptTableInfo = db.prepare("PRAGMA table_info(order_receipts)").all();
+    const receiptColumnNames = receiptTableInfo.map((col) => col.name);
+    
+    if (!receiptColumnNames.includes("accountId")) {
+      db.prepare("ALTER TABLE order_receipts ADD COLUMN accountId INTEGER REFERENCES accounts(id)").run();
+    }
+
+    // Check transfers table for new columns
+    const transferTableInfo = db.prepare("PRAGMA table_info(internal_transfers)").all();
+    const transferColumnNames = transferTableInfo.map((col) => col.name);
+    
+    if (!transferColumnNames.includes("updatedBy")) {
+      db.prepare("ALTER TABLE internal_transfers ADD COLUMN updatedBy INTEGER REFERENCES users(id)").run();
+    }
+    if (!transferColumnNames.includes("updatedAt")) {
+      db.prepare("ALTER TABLE internal_transfers ADD COLUMN updatedAt TEXT").run();
     }
   } catch (error) {
     console.error("Migration error:", error);

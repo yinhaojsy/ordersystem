@@ -2,6 +2,8 @@ import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
+import AlertModal from "../components/common/AlertModal";
+import ConfirmModal from "../components/common/ConfirmModal";
 import {
   useAddRoleMutation,
   useDeleteRoleMutation,
@@ -30,6 +32,18 @@ export default function RolesPage() {
   const [addRole, { isLoading: isSaving }] = useAddRoleMutation();
   const [updateRole] = useUpdateRoleMutation();
   const [deleteRole, { isLoading: isDeleting }] = useDeleteRoleMutation();
+
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
+    isOpen: false,
+    message: "",
+    type: "error",
+  });
+
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; roleId: number | null }>({
+    isOpen: false,
+    message: "",
+    roleId: null,
+  });
 
   const [form, setForm] = useState<{
     name: string;
@@ -89,8 +103,43 @@ export default function RolesPage() {
     cancelEdit();
   };
 
+  const handleDeleteClick = (id: number) => {
+    const role = roles.find((r) => r.id === id);
+    if (!role) return;
+    
+    setConfirmModal({
+      isOpen: true,
+      message: t("roles.confirmDelete") || `Are you sure you want to delete ${role.displayName}?`,
+      roleId: id,
+    });
+  };
+
   const remove = async (id: number) => {
-    await deleteRole(id);
+    try {
+      await deleteRole(id).unwrap();
+      setConfirmModal({ isOpen: false, message: "", roleId: null });
+    } catch (err: any) {
+      let message = t("roles.cannotDeleteReferenced");
+      
+      if (err?.data) {
+        let errorMessage = '';
+        if (typeof err.data === 'string') {
+          errorMessage = err.data;
+        } else if (err.data.message) {
+          errorMessage = err.data.message;
+        }
+        
+        // Check if it's the generic server error message and translate it
+        if (errorMessage === "Cannot delete this item because it is referenced by other records.") {
+          message = t("roles.cannotDeleteReferenced");
+        } else if (errorMessage) {
+          message = errorMessage;
+        }
+      }
+      
+      setConfirmModal({ isOpen: false, message: "", roleId: null });
+      setAlertModal({ isOpen: true, message, type: "error" });
+    }
   };
 
   return (
@@ -120,7 +169,7 @@ export default function RolesPage() {
                     <div className="flex flex-wrap gap-1">
                       {role.permissions.sections.map((section) => (
                         <Badge key={section} tone="slate">
-                          {section}
+                          {t(`sections.${section}`) || section}
                         </Badge>
                       ))}
                     </div>
@@ -149,7 +198,7 @@ export default function RolesPage() {
                       </button>
                       <button
                         className="text-rose-600 hover:text-rose-700"
-                        onClick={() => remove(role.id)}
+                        onClick={() => handleDeleteClick(role.id)}
                         disabled={isDeleting}
                       >
                         {t("common.delete")}
@@ -218,7 +267,7 @@ export default function RolesPage() {
                         });
                       }}
                     />
-                    {section}
+                    {t(`sections.${section}`) || section}
                   </label>
                 ))}
               </div>
@@ -305,7 +354,7 @@ export default function RolesPage() {
                       });
                     }}
                   />
-                  {section}
+                  {t(`sections.${section}`) || section}
                 </label>
               ))}
             </div>
@@ -348,6 +397,23 @@ export default function RolesPage() {
           </button>
         </form>
       </SectionCard>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        message={alertModal.message}
+        type={alertModal.type || "error"}
+        onClose={() => setAlertModal({ isOpen: false, message: "", type: "error" })}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        message={confirmModal.message}
+        onConfirm={() => confirmModal.roleId && remove(confirmModal.roleId)}
+        onCancel={() => setConfirmModal({ isOpen: false, message: "", roleId: null })}
+        confirmText={t("common.delete")}
+        cancelText={t("common.cancel")}
+        type="warning"
+      />
     </div>
   );
 }

@@ -43,7 +43,8 @@ export interface Role {
   permissions: RolePermissions;
 }
 
-export type OrderStatus = "pending" | "waiting_for_receipt" | "waiting_for_payment" | "completed" | "cancelled";
+export type OrderStatus = "pending" | "waiting_for_receipt" | "waiting_for_payment" | "under_process" | "completed" | "cancelled";
+export type PaymentFlow = "receive_first" | "pay_first";
 
 export interface Order {
   id: number;
@@ -71,6 +72,11 @@ export interface Order {
   hasBeneficiaries?: boolean;
   buyAccountId?: number;
   sellAccountId?: number;
+  paymentFlow?: PaymentFlow;
+  actualAmountBuy?: number;
+  actualAmountSell?: number;
+  actualRate?: number;
+  isFlexOrder?: boolean;
   createdAt: string;
 }
 
@@ -79,6 +85,8 @@ export interface OrderReceipt {
   orderId: number;
   imagePath: string;
   amount: number;
+  accountId?: number;
+  accountName?: string;
   createdAt: string;
 }
 
@@ -102,6 +110,8 @@ export interface OrderPayment {
   orderId: number;
   imagePath: string;
   amount: number;
+  accountId?: number;
+  accountName?: string;
   createdAt: string;
 }
 
@@ -130,6 +140,8 @@ export interface OrderInput {
   status?: OrderStatus;
   buyAccountId?: number;
   sellAccountId?: number;
+  paymentFlow?: PaymentFlow;
+  isFlexOrder?: boolean;
 }
 
 export interface Account {
@@ -155,6 +167,84 @@ export interface AccountTransaction {
   amount: number;
   description?: string;
   createdAt: string;
+}
+
+export interface Transfer {
+  id: number;
+  fromAccountId: number;
+  fromAccountName?: string;
+  toAccountId: number;
+  toAccountName?: string;
+  amount: number;
+  currencyCode: string;
+  description?: string;
+  createdBy?: number;
+  createdByName?: string;
+  createdAt: string;
+  updatedBy?: number;
+  updatedByName?: string;
+  updatedAt?: string;
+}
+
+export interface TransferChange {
+  id: number;
+  transferId: number;
+  changedBy?: number;
+  changedByName?: string;
+  changedAt: string;
+  fromAccountId: number;
+  fromAccountName?: string;
+  toAccountId: number;
+  toAccountName?: string;
+  amount: number;
+  description?: string;
+}
+
+export interface TransferInput {
+  fromAccountId: number;
+  toAccountId: number;
+  amount: number;
+  description?: string;
+  createdBy?: number;
+}
+
+export interface Expense {
+  id: number;
+  accountId: number;
+  accountName?: string;
+  amount: number;
+  currencyCode: string;
+  description?: string;
+  imagePath?: string;
+  createdBy?: number;
+  createdByName?: string;
+  createdAt: string;
+  updatedBy?: number;
+  updatedByName?: string;
+  updatedAt?: string;
+  deletedBy?: number;
+  deletedByName?: string;
+  deletedAt?: string;
+}
+
+export interface ExpenseInput {
+  accountId: number;
+  amount: number;
+  description?: string;
+  imagePath?: string;
+  createdBy?: number;
+}
+
+export interface ExpenseChange {
+  id: number;
+  expenseId: number;
+  changedBy?: number;
+  changedByName?: string;
+  changedAt: string;
+  accountId: number;
+  accountName?: string;
+  amount: number;
+  description?: string;
 }
 
 

@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
+import AlertModal from "../components/common/AlertModal";
+import ConfirmModal from "../components/common/ConfirmModal";
 import {
   useGetAccountsQuery,
   useGetAccountsSummaryQuery,
@@ -34,6 +36,18 @@ export default function AccountsPage() {
   const [deleteAccount, { isLoading: isDeleting }] = useDeleteAccountMutation();
   const [addFunds] = useAddFundsMutation();
   const [withdrawFunds] = useWithdrawFundsMutation();
+
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
+    isOpen: false,
+    message: "",
+    type: "error",
+  });
+
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; accountId: number | null }>({
+    isOpen: false,
+    message: "",
+    accountId: null,
+  });
 
   const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -112,17 +126,56 @@ export default function AccountsPage() {
       await updateAccount({ id: editingId, name: editForm.name });
       cancelEdit();
     } catch (error: any) {
-      alert(error?.data?.message || t("accounts.errorUpdating"));
+      setAlertModal({ 
+        isOpen: true, 
+        message: error?.data?.message || t("accounts.errorUpdating"), 
+        type: "error" 
+      });
     }
   };
 
+  const handleDeleteClick = (id: number) => {
+    const account = accounts.find((a) => a.id === id);
+    if (!account) return;
+    
+    setConfirmModal({
+      isOpen: true,
+      message: t("accounts.confirmDelete") || `Are you sure you want to delete ${account.name}?`,
+      accountId: id,
+    });
+  };
+
   const handleDelete = async (id: number) => {
-    if (window.confirm(t("accounts.confirmDelete"))) {
-      try {
-        await deleteAccount(id);
-      } catch (error: any) {
-        alert(error?.data?.message || t("accounts.errorDeleting"));
+    try {
+      await deleteAccount(id).unwrap();
+      setConfirmModal({ isOpen: false, message: "", accountId: null });
+    } catch (error: any) {
+      let message = t("accounts.cannotDeleteReferenced");
+      
+      if (error?.data) {
+        let errorMessage = '';
+        if (typeof error.data === 'string') {
+          errorMessage = error.data;
+        } else if (error.data.message) {
+          errorMessage = error.data.message;
+        }
+        
+        // Check for specific error messages and translate them
+        if (errorMessage === "Cannot delete this item because it is referenced by other records.") {
+          message = t("accounts.cannotDeleteReferenced");
+        } else if (errorMessage === "Cannot delete account that is linked to existing orders") {
+          message = t("accounts.cannotDeleteLinkedToOrders");
+        } else if (errorMessage === "Cannot delete account that is linked to existing transfers") {
+          message = t("accounts.cannotDeleteLinkedToTransfers");
+        } else if (errorMessage === "Cannot delete account that is linked to existing expenses") {
+          message = t("accounts.cannotDeleteLinkedToExpenses");
+        } else if (errorMessage) {
+          message = errorMessage;
+        }
       }
+      
+      setConfirmModal({ isOpen: false, message: "", accountId: null });
+      setAlertModal({ isOpen: true, message, type: "error" });
     }
   };
 
@@ -158,7 +211,11 @@ export default function AccountsPage() {
       }
       closeFundsModal();
     } catch (error: any) {
-      alert(error?.data?.message || t("accounts.errorProcessing"));
+      setAlertModal({ 
+        isOpen: true, 
+        message: error?.data?.message || t("accounts.errorProcessing"), 
+        type: "error" 
+      });
     }
   };
 
@@ -171,6 +228,54 @@ export default function AccountsPage() {
   }, {} as Record<string, typeof accounts>);
 
   const selectedAccount = accounts.find((a) => a.id === transactionsModalAccountId);
+
+  // Handle Esc key to close edit account modal
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && editingId) {
+        cancelEdit();
+      }
+    };
+
+    if (editingId) {
+      document.addEventListener("keydown", handleEscKey);
+      return () => {
+        document.removeEventListener("keydown", handleEscKey);
+      };
+    }
+  }, [editingId]);
+
+  // Handle Esc key to close funds modal
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && fundsModalAccountId) {
+        closeFundsModal();
+      }
+    };
+
+    if (fundsModalAccountId) {
+      document.addEventListener("keydown", handleEscKey);
+      return () => {
+        document.removeEventListener("keydown", handleEscKey);
+      };
+    }
+  }, [fundsModalAccountId]);
+
+  // Handle Esc key to close transactions modal
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && transactionsModalAccountId) {
+        setTransactionsModalAccountId(null);
+      }
+    };
+
+    if (transactionsModalAccountId) {
+      document.addEventListener("keydown", handleEscKey);
+      return () => {
+        document.removeEventListener("keydown", handleEscKey);
+      };
+    }
+  }, [transactionsModalAccountId]);
 
   return (
     <div className="space-y-6">
@@ -295,7 +400,7 @@ export default function AccountsPage() {
                                 </button>
                                 <button
                                   className="text-rose-600 hover:text-rose-700"
-                                  onClick={() => handleDelete(account.id)}
+                                  onClick={() => handleDeleteClick(account.id)}
                                   disabled={isDeleting}
                                 >
                                   {t("common.delete")}
@@ -355,6 +460,7 @@ export default function AccountsPage() {
             type="number"
             step="0.01"
             min="0"
+            onWheel={(e) => (e.target as HTMLInputElement).blur()}
           />
           <button
             type="submit"
@@ -397,7 +503,7 @@ export default function AccountsPage() {
 
       {/* Add/Withdraw Funds Modal */}
       {fundsModalAccountId && fundsModalType && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
           <div
             className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
             onClick={(e) => e.stopPropagation()}
@@ -459,6 +565,7 @@ export default function AccountsPage() {
                 type="number"
                 step="0.01"
                 min="0"
+                onWheel={(e) => (e.target as HTMLInputElement).blur()}
               />
               <input
                 className="rounded-lg border border-slate-200 px-3 py-2"
@@ -496,7 +603,7 @@ export default function AccountsPage() {
 
       {/* Transactions Modal */}
       {transactionsModalAccountId && selectedAccount && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
           <div
             className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -574,6 +681,23 @@ export default function AccountsPage() {
           </div>
         </div>
       )}
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        message={alertModal.message}
+        type={alertModal.type || "error"}
+        onClose={() => setAlertModal({ isOpen: false, message: "", type: "error" })}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        message={confirmModal.message}
+        onConfirm={() => confirmModal.accountId && handleDelete(confirmModal.accountId)}
+        onCancel={() => setConfirmModal({ isOpen: false, message: "", accountId: null })}
+        confirmText={t("common.delete")}
+        cancelText={t("common.cancel")}
+        type="warning"
+      />
     </div>
   );
 }

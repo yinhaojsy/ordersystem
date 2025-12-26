@@ -15,6 +15,12 @@ import type {
   Account,
   AccountSummary,
   AccountTransaction,
+  Transfer,
+  TransferInput,
+  TransferChange,
+  Expense,
+  ExpenseInput,
+  ExpenseChange,
 } from "../types";
 
 const baseQuery = fetchBaseQuery({
@@ -24,7 +30,7 @@ const baseQuery = fetchBaseQuery({
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account"],
+  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense"],
   refetchOnReconnect: true,
   endpoints: (builder) => ({
     getCurrencies: builder.query<Currency[], void>({
@@ -353,7 +359,7 @@ export const api = createApi({
       {
         id: number;
         handlerId: number;
-        receiptAccountId: number;
+        paymentFlow?: "receive_first" | "pay_first";
         // Commented out for future use:
         // paymentType: "CRYPTO" | "FIAT";
         // networkChain?: string;
@@ -380,14 +386,18 @@ export const api = createApi({
     }),
     addReceipt: builder.mutation<
       OrderReceipt,
-      { id: number; imagePath: string; amount: number }
+      { id: number; imagePath: string; amount: number; accountId?: number }
     >({
       query: ({ id, ...body }) => ({
         url: `orders/${id}/receipts`,
         method: "POST",
         body,
       }),
-      invalidatesTags: (_res, _err, { id }) => [{ type: "Order", id }],
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
     }),
     addBeneficiary: builder.mutation<
       { success: boolean; message?: string },
@@ -419,7 +429,7 @@ export const api = createApi({
     }),
     addPayment: builder.mutation<
       OrderPayment,
-      { id: number; imagePath: string; amount: number }
+      { id: number; imagePath: string; amount: number; accountId?: number }
     >({
       query: ({ id, ...body }) => ({
         url: `orders/${id}/payments`,
@@ -430,6 +440,30 @@ export const api = createApi({
         { type: "Order", id },
         { type: "Order", id: "LIST" },
         { type: "Account", id: "LIST" },
+      ],
+    }),
+    proceedWithPartialReceipts: builder.mutation<Order, number>({
+      query: (id) => ({
+        url: `orders/${id}/proceed-partial-receipts`,
+        method: "POST",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
+      ],
+    }),
+    adjustFlexOrderRate: builder.mutation<
+      Order,
+      { id: number; rate: number }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `orders/${id}/adjust-rate`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Order", id },
+        { type: "Order", id: "LIST" },
       ],
     }),
     getAccounts: builder.query<Account[], void>({
@@ -520,6 +554,104 @@ export const api = createApi({
       query: (id) => `accounts/${id}/transactions`,
       providesTags: (_res, _err, id) => [{ type: "Account", id }],
     }),
+    getTransfers: builder.query<Transfer[], void>({
+      query: () => "transfers",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Transfer" as const, id })),
+              { type: "Transfer" as const, id: "LIST" },
+            ]
+          : [{ type: "Transfer", id: "LIST" }],
+    }),
+    createTransfer: builder.mutation<Transfer, TransferInput>({
+      query: (body) => ({
+        url: "transfers",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [
+        { type: "Transfer", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    updateTransfer: builder.mutation<
+      Transfer,
+      { id: number; data: Partial<TransferInput> & { updatedBy?: number } }
+    >({
+      query: ({ id, data }) => ({
+        url: `transfers/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Transfer", id },
+        { type: "Transfer", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    deleteTransfer: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `transfers/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: [{ type: "Transfer", id: "LIST" }, { type: "Account", id: "LIST" }],
+    }),
+    getTransferChanges: builder.query<TransferChange[], number>({
+      query: (id) => `transfers/${id}/changes`,
+      providesTags: (_res, _err, id) => [{ type: "Transfer", id, variant: "CHANGES" }],
+    }),
+    getExpenses: builder.query<Expense[], void>({
+      query: () => "expenses",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Expense" as const, id })),
+              { type: "Expense" as const, id: "LIST" },
+            ]
+          : [{ type: "Expense", id: "LIST" }],
+    }),
+    createExpense: builder.mutation<Expense, ExpenseInput>({
+      query: (body) => ({
+        url: "expenses",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [
+        { type: "Expense", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    updateExpense: builder.mutation<
+      Expense,
+      { id: number; data: Partial<ExpenseInput> & { updatedBy?: number } }
+    >({
+      query: ({ id, data }) => ({
+        url: `expenses/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Expense", id },
+        { type: "Expense", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    deleteExpense: builder.mutation<{ success: boolean }, { id: number; deletedBy?: number }>({
+      query: ({ id, ...body }) => ({
+        url: `expenses/${id}`,
+        method: "DELETE",
+        body,
+      }),
+      invalidatesTags: [
+        { type: "Expense", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    getExpenseChanges: builder.query<ExpenseChange[], number>({
+      query: (id) => `expenses/${id}/changes`,
+      providesTags: (_res, _err, id) => [{ type: "Expense", id, variant: "CHANGES" }],
+    }),
   }),
 });
 
@@ -555,6 +687,8 @@ export const {
   useAddReceiptMutation,
   useAddBeneficiaryMutation,
   useAddPaymentMutation,
+  useProceedWithPartialReceiptsMutation,
+  useAdjustFlexOrderRateMutation,
   useGetAccountsQuery,
   useGetAccountsSummaryQuery,
   useGetAccountsByCurrencyQuery,
@@ -564,6 +698,16 @@ export const {
   useAddFundsMutation,
   useWithdrawFundsMutation,
   useGetAccountTransactionsQuery,
+  useGetTransfersQuery,
+  useCreateTransferMutation,
+  useUpdateTransferMutation,
+  useDeleteTransferMutation,
+  useGetTransferChangesQuery,
+  useGetExpensesQuery,
+  useCreateExpenseMutation,
+  useUpdateExpenseMutation,
+  useDeleteExpenseMutation,
+  useGetExpenseChangesQuery,
 } = api;
 
 

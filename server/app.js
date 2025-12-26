@@ -39,9 +39,33 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ message: "Internal server error" });
+app.use((err, req, res, _next) => {
+  // Only log unexpected errors
+  if (err && err.code !== 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+    console.error(err);
+  }
+  
+  // Handle foreign key constraint errors
+  if (err && err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+    // Check if it's a customer deletion error
+    if (req.path && req.path.includes('/customers/')) {
+      return res.status(400).json({ 
+        message: "Cannot delete customer while they have existing orders. Please delete the orders first." 
+      });
+    }
+    // Check if it's a user deletion error
+    if (req.path && req.path.includes('/users/')) {
+      return res.status(400).json({ 
+        message: "Cannot delete user while they are assigned to existing orders. Please delete or reassign the orders first." 
+      });
+    }
+    // Generic foreign key error
+    return res.status(400).json({ 
+      message: "Cannot delete this item because it is referenced by other records." 
+    });
+  }
+  
+  res.status(500).json({ message: err.message || "Internal server error" });
 });
 
 export default app;

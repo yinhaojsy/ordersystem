@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type Tone = "emerald" | "amber" | "rose" | "slate" | "blue";
+type Tone = "emerald" | "amber" | "rose" | "slate" | "blue" | "purple";
 
 const tones: Record<Tone, string> = {
   emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
@@ -8,6 +8,7 @@ const tones: Record<Tone, string> = {
   rose: "bg-rose-50 text-rose-700 ring-rose-100",
   slate: "bg-slate-100 text-slate-700 ring-slate-200",
   blue: "bg-blue-50 text-blue-700 ring-blue-100",
+  purple: "bg-purple-50 text-purple-700 ring-purple-100",
 };
 
 export default function Badge({ children, tone = "slate" }: { children: ReactNode; tone?: Tone }) {

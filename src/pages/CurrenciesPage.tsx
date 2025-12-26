@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
+import AlertModal from "../components/common/AlertModal";
+import ConfirmModal from "../components/common/ConfirmModal";
 import {
   useAddCurrencyMutation,
   useGetCurrenciesQuery,
@@ -15,6 +17,18 @@ export default function CurrenciesPage() {
   const [addCurrency, { isLoading: isSaving }] = useAddCurrencyMutation();
   const [updateCurrency] = useUpdateCurrencyMutation();
   const [deleteCurrency, { isLoading: isDeleting }] = useDeleteCurrencyMutation();
+
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
+    isOpen: false,
+    message: "",
+    type: "error",
+  });
+
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; currencyId: number | null }>({
+    isOpen: false,
+    message: "",
+    currencyId: null,
+  });
 
   const [form, setForm] = useState({
     code: "",
@@ -96,8 +110,43 @@ export default function CurrenciesPage() {
     cancelEdit();
   };
 
+  const handleDeleteClick = (id: number) => {
+    const currency = currencies.find((c) => c.id === id);
+    if (!currency) return;
+    
+    setConfirmModal({
+      isOpen: true,
+      message: t("currencies.confirmDelete") || `Are you sure you want to delete ${currency.code}?`,
+      currencyId: id,
+    });
+  };
+
   const remove = async (id: number) => {
-    await deleteCurrency(id);
+    try {
+      await deleteCurrency(id).unwrap();
+      setConfirmModal({ isOpen: false, message: "", currencyId: null });
+    } catch (err: any) {
+      let message = t("currencies.cannotDeleteReferenced");
+      
+      if (err?.data) {
+        let errorMessage = '';
+        if (typeof err.data === 'string') {
+          errorMessage = err.data;
+        } else if (err.data.message) {
+          errorMessage = err.data.message;
+        }
+        
+        // Check if it's the generic server error message and translate it
+        if (errorMessage === "Cannot delete this item because it is referenced by other records.") {
+          message = t("currencies.cannotDeleteReferenced");
+        } else if (errorMessage) {
+          message = errorMessage;
+        }
+      }
+      
+      setConfirmModal({ isOpen: false, message: "", currencyId: null });
+      setAlertModal({ isOpen: true, message, type: "error" });
+    }
   };
 
   return (
@@ -147,7 +196,7 @@ export default function CurrenciesPage() {
                       </button>
                       <button
                         className="text-rose-600 hover:text-rose-700"
-                        onClick={() => remove(currency.id)}
+                        onClick={() => handleDeleteClick(currency.id)}
                         disabled={isDeleting}
                       >
                         {t("common.delete")}
@@ -199,6 +248,7 @@ export default function CurrenciesPage() {
               required
               type="number"
               step="0.0001"
+              onWheel={(e) => (e.target as HTMLInputElement).blur()}
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
@@ -210,6 +260,7 @@ export default function CurrenciesPage() {
               required
               type="number"
               step="0.0001"
+              onWheel={(e) => (e.target as HTMLInputElement).blur()}
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
@@ -220,6 +271,7 @@ export default function CurrenciesPage() {
               }
               type="number"
               step="0.0001"
+              onWheel={(e) => (e.target as HTMLInputElement).blur()}
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2"
@@ -230,6 +282,7 @@ export default function CurrenciesPage() {
               }
               type="number"
               step="0.0001"
+              onWheel={(e) => (e.target as HTMLInputElement).blur()}
             />
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -278,6 +331,7 @@ export default function CurrenciesPage() {
             required
             type="number"
             step="0.0001"
+            onWheel={(e) => (e.target as HTMLInputElement).blur()}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
@@ -287,6 +341,7 @@ export default function CurrenciesPage() {
             required
             type="number"
             step="0.0001"
+            onWheel={(e) => (e.target as HTMLInputElement).blur()}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
@@ -297,6 +352,7 @@ export default function CurrenciesPage() {
             }
             type="number"
             step="0.0001"
+            onWheel={(e) => (e.target as HTMLInputElement).blur()}
           />
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
@@ -307,6 +363,7 @@ export default function CurrenciesPage() {
             }
             type="number"
             step="0.0001"
+            onWheel={(e) => (e.target as HTMLInputElement).blur()}
           />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
@@ -325,6 +382,23 @@ export default function CurrenciesPage() {
           </button>
         </form>
       </SectionCard>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        message={alertModal.message}
+        type={alertModal.type || "error"}
+        onClose={() => setAlertModal({ isOpen: false, message: "", type: "error" })}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        message={confirmModal.message}
+        onConfirm={() => confirmModal.currencyId && remove(confirmModal.currencyId)}
+        onCancel={() => setConfirmModal({ isOpen: false, message: "", currencyId: null })}
+        confirmText={t("common.delete")}
+        cancelText={t("common.cancel")}
+        type="warning"
+      />
     </div>
   );
 }

@@ -40,6 +40,8 @@ import {
   addReceipt,
   addBeneficiary,
   addPayment,
+  proceedWithPartialReceipts,
+  adjustFlexOrderRate,
 } from "../controllers/ordersController.js";
 import {
   listAccounts,
@@ -52,6 +54,20 @@ import {
   withdrawFunds,
   getAccountTransactions,
 } from "../controllers/accountsController.js";
+import {
+  listTransfers,
+  createTransfer,
+  updateTransfer,
+  deleteTransfer,
+  getTransferChanges,
+} from "../controllers/transfersController.js";
+import {
+  listExpenses,
+  createExpense,
+  updateExpense,
+  deleteExpense,
+  getExpenseChanges,
+} from "../controllers/expensesController.js";
 
 const router = Router();
 
@@ -92,6 +108,8 @@ router.post("/orders/:id/process", processOrder);
 router.post("/orders/:id/receipts", addReceipt);
 router.post("/orders/:id/beneficiaries", addBeneficiary);
 router.post("/orders/:id/payments", addPayment);
+router.post("/orders/:id/proceed-partial-receipts", proceedWithPartialReceipts);
+router.post("/orders/:id/adjust-rate", adjustFlexOrderRate);
 router.patch("/orders/:id/status", updateOrderStatus);
 router.put("/orders/:id", updateOrder);
 // DELETE must come last as it matches /orders/:id
@@ -106,6 +124,18 @@ router.delete("/accounts/:id", deleteAccount);
 router.post("/accounts/:id/add-funds", addFunds);
 router.post("/accounts/:id/withdraw-funds", withdrawFunds);
 router.get("/accounts/:id/transactions", getAccountTransactions);
+
+router.get("/transfers", listTransfers);
+router.post("/transfers", createTransfer);
+router.get("/transfers/:id/changes", getTransferChanges);
+router.put("/transfers/:id", updateTransfer);
+router.delete("/transfers/:id", deleteTransfer);
+
+router.get("/expenses", listExpenses);
+router.post("/expenses", createExpense);
+router.get("/expenses/:id/changes", getExpenseChanges);
+router.put("/expenses/:id", updateExpense);
+router.delete("/expenses/:id", deleteExpense);
 
 export default router;
 

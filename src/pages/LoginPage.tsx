@@ -30,7 +30,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow">
         <div className="mb-4 flex items-center justify-between gap-4">
           <h1 className="text-xl font-semibold text-slate-900">
-            {t("users.login") ?? "Login"}
+            {t("users.login")}
           </h1>
           <div className="flex items-center gap-2">
             <button
@@ -67,14 +67,14 @@ export default function LoginPage() {
           <input
             type="password"
             className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder={t("users.password") ?? "Password"}
+            placeholder={t("users.password")}
             value={form.password}
             onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
             required
           />
           {error && (
             <div className="text-sm text-rose-600">
-              {t("users.invalidCredentials") ?? "Invalid credentials"}
+              {t("users.invalidCredentials")}
             </div>
           )}
           <button

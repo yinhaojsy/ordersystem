@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import SectionCard from "../components/common/SectionCard";
+import AlertModal from "../components/common/AlertModal";
+import ConfirmModal from "../components/common/ConfirmModal";
 import type { Customer, CustomerBeneficiary } from "../types";
 import {
   useAddCustomerMutation,
@@ -25,6 +27,18 @@ export default function CustomersPage() {
     useDeleteCustomerBeneficiaryMutation();
   const [updateCustomer] = useUpdateCustomerMutation();
   const [deleteCustomer, { isLoading: isDeleting }] = useDeleteCustomerMutation();
+  
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
+    isOpen: false,
+    message: "",
+    type: "error",
+  });
+
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; customerId: number | null }>({
+    isOpen: false,
+    message: "",
+    customerId: null,
+  });
 
   const [form, setForm] = useState({
     name: "",
@@ -218,8 +232,47 @@ export default function CustomersPage() {
     cancelEditBeneficiary();
   };
 
+  const handleDeleteClick = (id: number) => {
+    const customer = customers.find((c: Customer) => c.id === id);
+    if (!customer) return;
+    
+    setConfirmModal({
+      isOpen: true,
+      message: t("customers.confirmDelete") || `Are you sure you want to delete ${customer.name}?`,
+      customerId: id,
+    });
+  };
+
   const remove = async (id: number) => {
-    await deleteCustomer(id);
+    try {
+      await deleteCustomer(id).unwrap();
+      setConfirmModal({ isOpen: false, message: "", customerId: null });
+    } catch (err: any) {
+      // Surface backend validation errors (e.g. foreign key constraint)
+      // RTK Query error structure: err.data.message
+      let message = t("customers.cannotDeleteReferenced");
+      
+      if (err?.data) {
+        let errorMessage = '';
+        if (typeof err.data === 'string') {
+          errorMessage = err.data;
+        } else if (err.data.message) {
+          errorMessage = err.data.message;
+        }
+        
+        // Check for specific error messages and translate them
+        if (errorMessage === "Cannot delete this item because it is referenced by other records.") {
+          message = t("customers.cannotDeleteReferenced");
+        } else if (errorMessage === "Cannot delete customer while they have existing orders. Please delete the orders first.") {
+          message = t("customers.cannotDeleteWithOrders");
+        } else if (errorMessage) {
+          message = errorMessage;
+        }
+      }
+      
+      setConfirmModal({ isOpen: false, message: "", customerId: null });
+      setAlertModal({ isOpen: true, message, type: "error" });
+    }
   };
 
   return (
@@ -255,7 +308,7 @@ export default function CustomersPage() {
                       </button>
                       <button
                         className="text-rose-600 hover:text-rose-700"
-                        onClick={() => remove(customer.id)}
+                        onClick={() => handleDeleteClick(customer.id)}
                         disabled={isDeleting}
                       >
                         {t("common.delete")}
@@ -318,7 +371,7 @@ export default function CustomersPage() {
               <div className="text-sm text-slate-500">{t("common.loading")}</div>
             ) : !editingBeneficiaries.length ? (
               <div className="text-sm text-slate-500">
-                {t("customers.noBeneficiaries") ?? "No beneficiaries saved for this customer."}
+                {t("customers.noBeneficiaries")}
               </div>
             ) : (
               <div className="grid gap-3">
@@ -383,7 +436,7 @@ export default function CustomersPage() {
                                 }))
                               }
                             >
-                              <option value="">{t("orders.selectNetworkChain") ?? "Select Network Chain"}</option>
+                              <option value="">{t("orders.selectNetworkChain")}</option>
                               <option value="TRC20">TRC20</option>
                               <option value="ERC20">ERC20</option>
                               <option value="BEP20">BEP20</option>
@@ -398,7 +451,7 @@ export default function CustomersPage() {
                                   <input
                                     type="text"
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                                    placeholder={t("orders.walletAddress") ?? "Wallet Address"}
+                                    placeholder={t("orders.walletAddress")}
                                     value={addr}
                                     onChange={(e) => {
                                       const newAddresses = [...editBeneficiaryForm.walletAddresses];
@@ -421,7 +474,7 @@ export default function CustomersPage() {
                                 }
                                 className="text-sm text-blue-600 hover:underline"
                               >
-                                + {t("orders.addAnotherAddress") ?? "Add another address"}
+                                {t("orders.addAnotherAddress")}
                               </button>
                             </div>
                           </>
@@ -430,7 +483,7 @@ export default function CustomersPage() {
                             <input
                               type="text"
                               className="rounded-lg border border-slate-200 px-3 py-2"
-                              placeholder={t("orders.bankName") ?? "Bank Name"}
+                              placeholder={t("orders.bankName")}
                               value={editBeneficiaryForm.bankName}
                               onChange={(e) =>
                                 setEditBeneficiaryForm((p) => ({
@@ -442,7 +495,7 @@ export default function CustomersPage() {
                             <input
                               type="text"
                               className="rounded-lg border border-slate-200 px-3 py-2"
-                              placeholder={t("orders.accountTitle") ?? "Account Title"}
+                              placeholder={t("orders.accountTitle")}
                               value={editBeneficiaryForm.accountTitle}
                               onChange={(e) =>
                                 setEditBeneficiaryForm((p) => ({
@@ -454,7 +507,7 @@ export default function CustomersPage() {
                             <input
                               type="text"
                               className="rounded-lg border border-slate-200 px-3 py-2"
-                              placeholder={t("orders.accountNumber") ?? "Account Number"}
+                              placeholder={t("orders.accountNumber")}
                               value={editBeneficiaryForm.accountNumber}
                               onChange={(e) =>
                                 setEditBeneficiaryForm((p) => ({
@@ -466,7 +519,7 @@ export default function CustomersPage() {
                             <input
                               type="text"
                               className="rounded-lg border border-slate-200 px-3 py-2"
-                              placeholder={t("orders.accountIban") ?? "Account IBAN"}
+                              placeholder={t("orders.accountIban")}
                               value={editBeneficiaryForm.accountIban}
                               onChange={(e) =>
                                 setEditBeneficiaryForm((p) => ({
@@ -478,7 +531,7 @@ export default function CustomersPage() {
                             <input
                               type="text"
                               className="rounded-lg border border-slate-200 px-3 py-2"
-                              placeholder={t("orders.swiftCode") ?? "Swift Code"}
+                              placeholder={t("orders.swiftCode")}
                               value={editBeneficiaryForm.swiftCode}
                               onChange={(e) =>
                                 setEditBeneficiaryForm((p) => ({
@@ -490,7 +543,7 @@ export default function CustomersPage() {
                             <input
                               type="text"
                               className="rounded-lg border border-slate-200 px-3 py-2"
-                              placeholder={t("orders.bankAddress") ?? "Bank Address"}
+                              placeholder={t("orders.bankAddress")}
                               value={editBeneficiaryForm.bankAddress}
                               onChange={(e) =>
                                 setEditBeneficiaryForm((p) => ({
@@ -618,7 +671,7 @@ export default function CustomersPage() {
               className="h-4 w-4"
             />
             <label htmlFor="include-beneficiary" className="text-sm text-slate-700">
-              {t("customers.addBeneficiaryOptional") ?? "Add beneficiary details (optional)"}
+              {t("customers.addBeneficiaryOptional")}
             </label>
           </div>
 
@@ -676,7 +729,7 @@ export default function CustomersPage() {
                       }))
                     }
                   >
-                    <option value="">{t("orders.selectNetworkChain") ?? "Select Network Chain"}</option>
+                    <option value="">{t("orders.selectNetworkChain")}</option>
                     <option value="TRC20">TRC20</option>
                     <option value="ERC20">ERC20</option>
                     <option value="BEP20">BEP20</option>
@@ -714,7 +767,7 @@ export default function CustomersPage() {
                       }
                       className="text-sm text-blue-600 hover:underline"
                     >
-                      + {t("orders.addAnotherAddress") ?? "Add another address"}
+                      {t("orders.addAnotherAddress")}
                     </button>
                   </div>
                 </>
@@ -723,7 +776,7 @@ export default function CustomersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.bankName") ?? "Bank Name"}
+                    placeholder={t("orders.bankName")}
                     value={beneficiaryForm.bankName}
                     onChange={(e) =>
                       setBeneficiaryForm((p) => ({
@@ -735,7 +788,7 @@ export default function CustomersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.accountTitle") ?? "Account Title"}
+                    placeholder={t("orders.accountTitle")}
                     value={beneficiaryForm.accountTitle}
                     onChange={(e) =>
                       setBeneficiaryForm((p) => ({
@@ -747,7 +800,7 @@ export default function CustomersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.accountNumber") ?? "Account Number"}
+                    placeholder={t("orders.accountNumber")}
                     value={beneficiaryForm.accountNumber}
                     onChange={(e) =>
                       setBeneficiaryForm((p) => ({
@@ -759,7 +812,7 @@ export default function CustomersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.accountIban") ?? "Account IBAN"}
+                    placeholder={t("orders.accountIban")}
                     value={beneficiaryForm.accountIban}
                     onChange={(e) =>
                       setBeneficiaryForm((p) => ({
@@ -771,7 +824,7 @@ export default function CustomersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.swiftCode") ?? "Swift Code"}
+                    placeholder={t("orders.swiftCode")}
                     value={beneficiaryForm.swiftCode}
                     onChange={(e) =>
                       setBeneficiaryForm((p) => ({
@@ -783,7 +836,7 @@ export default function CustomersPage() {
                   <input
                     type="text"
                     className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.bankAddress") ?? "Bank Address"}
+                    placeholder={t("orders.bankAddress")}
                     value={beneficiaryForm.bankAddress}
                     onChange={(e) =>
                       setBeneficiaryForm((p) => ({
@@ -805,6 +858,23 @@ export default function CustomersPage() {
           </button>
         </form>
       </SectionCard>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        message={alertModal.message}
+        type={alertModal.type || "error"}
+        onClose={() => setAlertModal({ isOpen: false, message: "", type: "error" })}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        message={confirmModal.message}
+        onConfirm={() => confirmModal.customerId && remove(confirmModal.customerId)}
+        onCancel={() => setConfirmModal({ isOpen: false, message: "", customerId: null })}
+        confirmText={t("common.delete")}
+        cancelText={t("common.cancel")}
+        type="warning"
+      />
     </div>
   );
 }
