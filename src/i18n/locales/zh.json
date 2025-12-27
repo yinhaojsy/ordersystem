@@ -176,7 +176,11 @@
     "confirmDelete": "您确定要删除此角色吗？",
     "cannotDeleteReferenced": "无法删除角色，因为它被其他记录引用。",
     "cannotDeleteRoleWithUsers": "无法删除角色 \"{{roleName}}\"，因为它已分配给 {{count}} 个用户。请先重新分配或删除这些用户。",
-    "roleUpdatedLogout": "您的角色权限已更新。您将被登出，需要重新登录以应用新权限。"
+    "roleUpdatedLogout": "您的角色权限已更新。您将被登出，需要重新登录以应用新权限。",
+    "forceLogout": "强制登出",
+    "confirmForceLogout": "您确定要强制登出所有具有此角色的用户吗？",
+    "forceLogoutSuccess": "用户将立即被登出。",
+    "forceLogoutError": "强制登出用户失败。"
   },
   "orders": {
     "title": "订单",

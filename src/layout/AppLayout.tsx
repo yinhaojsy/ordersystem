@@ -1,11 +1,11 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Badge from "../components/common/Badge";
 import { useAppDispatch, useAppSelector } from "../app/hooks";
 import { setUser } from "../app/authSlice";
 import { hasSectionAccess } from "../utils/permissions";
-import { useCheckRoleUpdateQuery } from "../services/api";
+import { useIdleTimeout } from "../hooks/useIdleTimeout";
 
 export default function AppLayout() {
   const { t, i18n } = useTranslation();
@@ -14,26 +14,58 @@ export default function AppLayout() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const user = useAppSelector((s) => s.auth.user);
-  
-  // Check if user's role has been updated on the server
-  const { data: roleUpdate } = useCheckRoleUpdateQuery(user?.role || "", {
-    skip: !user?.role,
-    pollingInterval: 5000, // Check every 5 seconds
-  });
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Check if role was updated since user logged in
+  // Subscribe to role updates via Server-Sent Events (SSE)
   useEffect(() => {
-    if (!user?.role || !roleUpdate) return;
-
-    const userRoleUpdatedAt = user.roleUpdatedAt;
-    const serverRoleUpdatedAt = roleUpdate.updatedAt;
-
-    // If role was updated on server and it's different from when user logged in, force logout
-    if (serverRoleUpdatedAt && userRoleUpdatedAt !== serverRoleUpdatedAt) {
-      dispatch(setUser(null));
-      navigate("/login", { replace: true });
+    if (!user?.role) {
+      // Close existing connection if user logs out
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      return;
     }
-  }, [user, roleUpdate, dispatch, navigate]);
+
+    // Subscribe to role updates via SSE
+    const eventSource = new EventSource(
+      `/api/roles/subscribe?roleName=${encodeURIComponent(user.role)}`
+    );
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'forceLogout') {
+          // Force logout immediately when server sends logout signal
+          dispatch(setUser(null));
+          navigate("/login", { replace: true });
+        }
+      } catch (error) {
+        console.error("Error parsing SSE message:", error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error("SSE connection error:", error);
+      // Connection will automatically try to reconnect
+    };
+
+    eventSourceRef.current = eventSource;
+
+    // Cleanup on unmount or role change
+    return () => {
+      eventSource.close();
+      eventSourceRef.current = null;
+    };
+  }, [user?.role, dispatch, navigate]);
+
+  // Handle idle timeout - auto logout after 3 hours of inactivity
+  const handleIdleTimeout = () => {
+    dispatch(setUser(null));
+    navigate("/login", { replace: true });
+  };
+
+  useIdleTimeout(handleIdleTimeout, !!user);
 
   const navItems: Array<{ to: string; labelKey: string; end?: boolean; section: string }> = [
     { to: "/", labelKey: "nav.dashboard", end: true, section: "dashboard" },

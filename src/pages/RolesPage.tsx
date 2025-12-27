@@ -10,6 +10,7 @@ import {
   useDeleteRoleMutation,
   useGetRolesQuery,
   useUpdateRoleMutation,
+  useForceLogoutUsersByRoleMutation,
 } from "../services/api";
 import { useAppSelector, useAppDispatch } from "../app/hooks";
 import { setUser } from "../app/authSlice";
@@ -42,6 +43,7 @@ export default function RolesPage() {
   const [addRole, { isLoading: isSaving }] = useAddRoleMutation();
   const [updateRole] = useUpdateRoleMutation();
   const [deleteRole, { isLoading: isDeleting }] = useDeleteRoleMutation();
+  const [forceLogoutUsers, { isLoading: isLoggingOut }] = useForceLogoutUsersByRoleMutation();
 
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
     isOpen: false,
@@ -53,6 +55,18 @@ export default function RolesPage() {
     isOpen: false,
     message: "",
     roleId: null,
+  });
+
+  const [logoutConfirmModal, setLogoutConfirmModal] = useState<{ 
+    isOpen: boolean; 
+    message: string; 
+    roleId: number | null;
+    roleName: string;
+  }>({
+    isOpen: false,
+    message: "",
+    roleId: null,
+    roleName: "",
   });
 
   const [form, setForm] = useState<{
@@ -114,7 +128,7 @@ export default function RolesPage() {
     
     // Check if the updated role matches the current user's role
     // If so, force logout so they need to login again with new permissions
-    // Note: Other users with this role will be logged out automatically via the polling check in AppLayout
+    // Note: Other users with this role will be logged out automatically via SSE in AppLayout
     if (currentUser && updatedRole.name === currentUser.role) {
       dispatch(setUser(null));
       setAlertModal({
@@ -178,6 +192,47 @@ export default function RolesPage() {
     }
   };
 
+  const handleForceLogoutClick = (id: number) => {
+    const role = roles.find((r) => r.id === id);
+    if (!role) return;
+    
+    setLogoutConfirmModal({
+      isOpen: true,
+      message: t("roles.confirmForceLogout") || `Are you sure you want to force logout all users with role "${role.displayName}"?`,
+      roleId: id,
+      roleName: role.name,
+    });
+  };
+
+  const confirmForceLogout = async (id: number) => {
+    try {
+      const result = await forceLogoutUsers(id).unwrap();
+      setLogoutConfirmModal({ isOpen: false, message: "", roleId: null, roleName: "" });
+      setAlertModal({
+        isOpen: true,
+        message: result.message || t("roles.forceLogoutSuccess") || "Users will be logged out immediately.",
+        type: "success",
+      });
+      
+      // If current user has this role, they will be logged out automatically via SSE
+      // But let's also handle it locally for immediate feedback
+      const role = roles.find((r) => r.id === id);
+      if (currentUser && role && currentUser.role === role.name) {
+        setTimeout(() => {
+          dispatch(setUser(null));
+          navigate("/login", { replace: true });
+        }, 2000);
+      }
+    } catch (err: any) {
+      setLogoutConfirmModal({ isOpen: false, message: "", roleId: null, roleName: "" });
+      setAlertModal({
+        isOpen: true,
+        message: err?.data?.message || t("roles.forceLogoutError") || "Failed to force logout users.",
+        type: "error",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <SectionCard
@@ -231,6 +286,13 @@ export default function RolesPage() {
                         onClick={() => startEdit(role.id)}
                       >
                         {t("common.edit")}
+                      </button>
+                      <button
+                        className="text-blue-600 hover:text-blue-700"
+                        onClick={() => handleForceLogoutClick(role.id)}
+                        disabled={isLoggingOut}
+                      >
+                        {t("roles.forceLogout") || "Force Logout"}
                       </button>
                       <button
                         className="text-rose-600 hover:text-rose-700"
@@ -447,6 +509,16 @@ export default function RolesPage() {
         onConfirm={() => confirmModal.roleId && remove(confirmModal.roleId)}
         onCancel={() => setConfirmModal({ isOpen: false, message: "", roleId: null })}
         confirmText={t("common.delete")}
+        cancelText={t("common.cancel")}
+        type="warning"
+      />
+
+      <ConfirmModal
+        isOpen={logoutConfirmModal.isOpen}
+        message={logoutConfirmModal.message}
+        onConfirm={() => logoutConfirmModal.roleId && confirmForceLogout(logoutConfirmModal.roleId)}
+        onCancel={() => setLogoutConfirmModal({ isOpen: false, message: "", roleId: null, roleName: "" })}
+        confirmText={t("common.confirm") || "Confirm"}
         cancelText={t("common.cancel")}
         type="warning"
       />

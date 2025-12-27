@@ -285,6 +285,16 @@ export const api = createApi({
         { type: "Role", id: "LIST" },
       ],
     }),
+    forceLogoutUsersByRole: builder.mutation<
+      { success: boolean; message: string; userCount: number },
+      number
+    >({
+      query: (id) => ({
+        url: `roles/${id}/force-logout`,
+        method: "POST",
+      }),
+      invalidatesTags: [{ type: "Role", id: "LIST" }],
+    }),
     getOrders: builder.query<Order[], void>({
       query: () => "orders",
       providesTags: (result) =>
@@ -733,6 +743,7 @@ export const {
   useAddRoleMutation,
   useUpdateRoleMutation,
   useDeleteRoleMutation,
+  useForceLogoutUsersByRoleMutation,
   useGetOrdersQuery,
   useAddOrderMutation,
   useUpdateOrderMutation,

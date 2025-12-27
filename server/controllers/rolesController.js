@@ -1,5 +1,62 @@
 import { db } from "../db.js";
 
+// Store active SSE connections by role name: Map<roleName, Set<res>>
+const sseConnections = new Map();
+
+// Broadcast logout message to all users with a specific role
+export const broadcastLogout = (roleName) => {
+  const connections = sseConnections.get(roleName);
+  if (connections && connections.size > 0) {
+    const message = JSON.stringify({ type: 'forceLogout', timestamp: Date.now() });
+    connections.forEach((res) => {
+      try {
+        res.write(`data: ${message}\n\n`);
+      } catch (error) {
+        // Connection closed, remove it
+        connections.delete(res);
+      }
+    });
+  }
+};
+
+// SSE endpoint for role updates subscription
+export const subscribeToRoleUpdates = (req, res, next) => {
+  try {
+    const { roleName } = req.query;
+    if (!roleName) {
+      return res.status(400).json({ message: "Role name is required" });
+    }
+
+    // Set up SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // Store this connection
+    if (!sseConnections.has(roleName)) {
+      sseConnections.set(roleName, new Set());
+    }
+    sseConnections.get(roleName).add(res);
+
+    // Send initial connection confirmation
+    res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+
+    // Handle client disconnect
+    req.on('close', () => {
+      const connections = sseConnections.get(roleName);
+      if (connections) {
+        connections.delete(res);
+        if (connections.size === 0) {
+          sseConnections.delete(roleName);
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const listRoles = (_req, res) => {
   const rows = db.prepare("SELECT * FROM roles ORDER BY id ASC;").all();
   const parsed = rows.map((row) => ({
@@ -96,6 +153,36 @@ export const deleteRole = (req, res, next) => {
       return res.status(404).json({ message: "Role not found" });
     }
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const forceLogoutUsersByRole = (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if role exists
+    const role = db.prepare("SELECT id, name, displayName FROM roles WHERE id = ?;").get(id);
+    if (!role) {
+      return res.status(404).json({ message: "Role not found" });
+    }
+    
+    // Update the role's updatedAt timestamp
+    const updatedAt = new Date().toISOString();
+    db.prepare("UPDATE roles SET updatedAt = ? WHERE id = ?;").run(updatedAt, id);
+    
+    // Broadcast logout to all connected clients with this role
+    broadcastLogout(role.name);
+    
+    // Get count of users with this role
+    const usersWithRole = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = ?;").get(role.name);
+    
+    res.json({ 
+      success: true,
+      message: `All users with role "${role.displayName}" will be logged out immediately.`,
+      userCount: usersWithRole.count
+    });
   } catch (error) {
     next(error);
   }
