@@ -56,6 +56,7 @@ export default function ExpensesPage() {
   const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const accountDropdownRef = useRef<HTMLDivElement>(null);
+  const [imageDragOver, setImageDragOver] = useState(false);
 
   const { data: expenseChanges = [], isLoading: isLoadingChanges } = 
     useGetExpenseChangesQuery(viewAuditTrailExpenseId || 0, { skip: !viewAuditTrailExpenseId });
@@ -121,10 +122,14 @@ export default function ExpensesPage() {
   };
 
   const handleImageUpload = (file: File) => {
-    if (!file.type.startsWith("image/")) {
+    // Check if file is an image or PDF
+    const isImage = file.type.startsWith('image/');
+    const isPDF = file.type === 'application/pdf';
+    
+    if (!isImage && !isPDF) {
       setAlertModal({ 
         isOpen: true, 
-        message: t("expenses.invalidImageFile"), 
+        message: t("expenses.invalidImageFile") || "Please upload an image file or PDF", 
         type: "error" 
       });
       return;
@@ -138,9 +143,58 @@ export default function ExpensesPage() {
     reader.readAsDataURL(file);
   };
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setImageDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const validFiles = files.filter(file => 
+      file.type.startsWith('image/') || file.type === 'application/pdf'
+    );
+    
+    if (validFiles.length > 0) {
+      handleImageUpload(validFiles[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setImageDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setImageDragOver(false);
+  };
+
+  // Helper function to open PDF data URI in a new tab
+  const openPdfInNewTab = (dataUri: string) => {
+    try {
+      // Convert data URI to blob
+      const byteString = atob(dataUri.split(',')[1]);
+      const mimeString = dataUri.split(',')[0].split(':')[1].split(';')[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([ab], { type: mimeString });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      // Clean up the URL after a delay
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (error) {
+      console.error('Error opening PDF:', error);
+      // Fallback: try opening directly
+      window.open(dataUri, '_blank');
+    }
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!form.accountId || !form.amount) return;
+    if (!form.accountId || !form.amount || !form.description) return;
 
     try {
       if (editingExpenseId) {
@@ -150,7 +204,7 @@ export default function ExpensesPage() {
           data: {
             accountId: Number(form.accountId),
             amount: Number(form.amount),
-            description: form.description || undefined,
+            description: form.description,
             imagePath: form.imagePath || undefined,
             updatedBy: authUser?.id,
           },
@@ -160,7 +214,7 @@ export default function ExpensesPage() {
         await createExpense({
           accountId: Number(form.accountId),
           amount: Number(form.amount),
-          description: form.description || undefined,
+          description: form.description,
           imagePath: form.imagePath || undefined,
           createdBy: authUser?.id,
         }).unwrap();
@@ -339,6 +393,36 @@ export default function ExpensesPage() {
     }
   }, [viewAuditTrailExpenseId]);
 
+  // Handle paste event for image upload
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      // Only handle paste when modal is open
+      if (!isModalOpen) return;
+      
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            handleImageUpload(file);
+          }
+          break;
+        }
+      }
+    };
+
+    if (isModalOpen) {
+      window.addEventListener('paste', handlePaste);
+      return () => {
+        window.removeEventListener('paste', handlePaste);
+      };
+    }
+  }, [isModalOpen]);
+
   return (
     <div className="space-y-6">
       <SectionCard
@@ -405,10 +489,10 @@ export default function ExpensesPage() {
                   </th>
                 )}
                 <th className="py-2">{t("expenses.date")}</th>
+                <th className="py-2">{t("expenses.description")}</th>
                 <th className="py-2">{t("expenses.account")}</th>
                 <th className="py-2">{t("expenses.amount")}</th>
                 <th className="py-2">{t("expenses.currency")}</th>
-                <th className="py-2">{t("expenses.description")}</th>
                 <th className="py-2">{t("expenses.proof")}</th>
                 <th className="py-2">{t("expenses.createdBy")}</th>
                 <th className="py-2">{t("expenses.updatedBy")}</th>
@@ -442,13 +526,6 @@ export default function ExpensesPage() {
                     </td>
                   )}
                   <td className="py-2">{formatDate(expense.createdAt)}</td>
-                  <td className="py-2 font-semibold text-slate-900">
-                    {expense.accountName || expense.accountId}
-                  </td>
-                  <td className="py-2 font-semibold text-slate-900">
-                    {formatCurrency(expense.amount, expense.currencyCode)}
-                  </td>
-                  <td className="py-2">{expense.currencyCode}</td>
                   <td className="py-2 text-slate-600">
                     {expense.description ? (
                       <div className="relative group inline-block">
@@ -468,6 +545,13 @@ export default function ExpensesPage() {
                       "-"
                     )}
                   </td>
+                  <td className="py-2 font-semibold text-slate-900">
+                    {expense.accountName || expense.accountId}
+                  </td>
+                  <td className="py-2 font-semibold text-slate-900">
+                    {formatCurrency(expense.amount, expense.currencyCode)}
+                  </td>
+                  <td className="py-2">{expense.currencyCode}</td>
                   <td className="py-2">
                     {expense.imagePath ? (
                       <button
@@ -721,7 +805,7 @@ export default function ExpensesPage() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {t("expenses.description")} ({t("common.optional")})
+                  {t("expenses.description")} *
                 </label>
                 <textarea
                   className="w-full rounded-lg border border-slate-200 px-3 py-2"
@@ -731,6 +815,7 @@ export default function ExpensesPage() {
                     setForm((p) => ({ ...p, description: e.target.value }))
                   }
                   placeholder={t("expenses.descriptionPlaceholder")}
+                  required
                 />
               </div>
 
@@ -738,34 +823,110 @@ export default function ExpensesPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   {t("expenses.proofOfPayment")} ({t("common.optional")})
                 </label>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      handleImageUpload(file);
-                    }
-                  }}
-                />
-                {form.imagePath && (
-                  <div className="mt-2">
-                    <img
-                      src={form.imagePath}
-                      alt="Proof of payment"
-                      className="max-w-full max-h-48 rounded-lg border border-slate-200"
+                <div
+                  className={`p-3 border-2 border-dashed rounded-lg transition-colors relative ${
+                    imageDragOver
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-slate-200"
+                  }`}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                >
+                  {!form.imagePath && (
+                    <div className="text-center py-4 text-slate-500 text-sm mb-2">
+                      <p className="mb-2">Drag & drop file here (image or PDF), paste (Ctrl+V), or</p>
+                    </div>
+                  )}
+                  <div className="relative mb-2">
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleImageUpload(file);
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      id="expense-file-input"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setForm((p) => ({ ...p, imagePath: "" }))}
-                      className="mt-2 text-sm text-rose-600 hover:text-rose-700"
+                    <label
+                      htmlFor="expense-file-input"
+                      className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-blue-50 hover:bg-blue-100 border-2 border-blue-300 border-dashed rounded-lg text-blue-700 font-medium cursor-pointer transition-colors"
                     >
-                      {t("expenses.removeImage")}
-                    </button>
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                        />
+                      </svg>
+                      <span>Choose File (Image or PDF)</span>
+                    </label>
                   </div>
-                )}
+                  {form.imagePath && (
+                    <div className="relative mt-2">
+                      {form.imagePath.startsWith('data:image/') ? (
+                        <img
+                          src={form.imagePath}
+                          alt="Proof of payment"
+                          className="max-w-full max-h-96 w-auto h-auto object-contain rounded"
+                        />
+                      ) : form.imagePath.startsWith('data:application/pdf') ? (
+                        <div className="flex flex-col items-center justify-center p-8 bg-slate-50 border-2 border-slate-200 rounded-lg">
+                          <svg
+                            className="w-16 h-16 text-red-500 mb-2"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                            />
+                          </svg>
+                          <p className="text-sm font-medium text-slate-700">PDF Document</p>
+                          <p className="text-xs text-slate-500 mt-1">Ready to upload</p>
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((p) => ({ ...p, imagePath: "" }));
+                          if (imageInputRef.current) {
+                            imageInputRef.current.value = "";
+                          }
+                        }}
+                        className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transition-colors"
+                        title={t("common.cancel")}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex gap-3 justify-end">
@@ -782,7 +943,8 @@ export default function ExpensesPage() {
                     isCreating ||
                     isUpdating ||
                     !form.accountId ||
-                    !form.amount
+                    !form.amount ||
+                    !form.description
                   }
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
                 >
@@ -798,43 +960,72 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {/* View Image Modal */}
-      {viewImageExpenseId && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-75" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="relative max-w-4xl max-h-[90vh] p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setViewImageExpenseId(null)}
-              className="absolute top-2 right-2 text-white bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-75"
-              aria-label={t("common.close")}
+      {/* View Image/PDF Modal */}
+      {viewImageExpenseId && (() => {
+        const expense = expenses.find((e) => e.id === viewImageExpenseId);
+        const imagePath = expense?.imagePath || "";
+        const isPDF = imagePath.startsWith('data:application/pdf');
+        
+        return (
+          <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-75" style={{ margin: 0, padding: 0 }}>
+            <div
+              className="relative max-w-4xl max-h-[90vh] p-4"
+              onClick={(e) => e.stopPropagation()}
             >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+              <button
+                onClick={() => setViewImageExpenseId(null)}
+                className="absolute top-2 right-2 z-10 text-white bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-75"
+                aria-label={t("common.close")}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+              {isPDF ? (
+                <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg">
+                  <svg
+                    className="w-24 h-24 text-red-500 mb-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                    />
+                  </svg>
+                  <p className="text-lg font-medium text-slate-700 mb-2">PDF Document</p>
+                  <p className="text-sm text-slate-500 mb-4">Click the button below to view the PDF</p>
+                  <button
+                    onClick={() => openPdfInNewTab(imagePath)}
+                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                  >
+                    Open PDF in New Tab
+                  </button>
+                </div>
+              ) : (
+                <img
+                  src={imagePath}
+                  alt="Proof of payment"
+                  className="max-w-full max-h-[90vh] rounded-lg"
                 />
-              </svg>
-            </button>
-            <img
-              src={
-                expenses.find((e) => e.id === viewImageExpenseId)?.imagePath ||
-                ""
-              }
-              alt="Proof of payment"
-              className="max-w-full max-h-[90vh] rounded-lg"
-            />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Audit Trail Modal */}
       {viewAuditTrailExpenseId && (

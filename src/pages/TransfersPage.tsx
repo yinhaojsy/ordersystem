@@ -121,7 +121,7 @@ export default function TransfersPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!form.fromAccountId || !form.toAccountId || !form.amount) return;
+    if (!form.fromAccountId || !form.toAccountId || !form.amount || !form.description) return;
 
     try {
       if (editingTransferId) {
@@ -131,7 +131,7 @@ export default function TransfersPage() {
             fromAccountId: Number(form.fromAccountId),
             toAccountId: Number(form.toAccountId),
             amount: Number(form.amount),
-            description: form.description || undefined,
+            description: form.description,
             updatedBy: authUser?.id,
           },
         }).unwrap();
@@ -140,7 +140,7 @@ export default function TransfersPage() {
           fromAccountId: Number(form.fromAccountId),
           toAccountId: Number(form.toAccountId),
           amount: Number(form.amount),
-          description: form.description || undefined,
+          description: form.description,
           createdBy: authUser?.id,
         }).unwrap();
       }
@@ -353,11 +353,11 @@ export default function TransfersPage() {
                   </th>
                 )}
                 <th className="py-2">{t("transfers.date")}</th>
+                <th className="py-2">{t("transfers.description")}</th>
                 <th className="py-2">{t("transfers.fromAccount")}</th>
                 <th className="py-2">{t("transfers.toAccount")}</th>
                 <th className="py-2">{t("transfers.amount")}</th>
                 <th className="py-2">{t("transfers.currency")}</th>
-                <th className="py-2">{t("transfers.description")}</th>
                 <th className="py-2">{t("transfers.createdBy")}</th>
                 {!isBatchDeleteMode && <th className="py-2">{t("transfers.actions")}</th>}
               </tr>
@@ -388,16 +388,6 @@ export default function TransfersPage() {
                     </td>
                   )}
                   <td className="py-2">{formatDate(transfer.createdAt)}</td>
-                  <td className="py-2 font-semibold text-slate-900">
-                    {transfer.fromAccountName || transfer.fromAccountId}
-                  </td>
-                  <td className="py-2 font-semibold text-slate-900">
-                    {transfer.toAccountName || transfer.toAccountId}
-                  </td>
-                  <td className="py-2 font-semibold text-slate-900">
-                    {formatCurrency(transfer.amount, transfer.currencyCode)}
-                  </td>
-                  <td className="py-2">{transfer.currencyCode}</td>
                   <td className="py-2 text-slate-600">
                     {transfer.description ? (
                       <div className="relative group inline-block">
@@ -417,6 +407,16 @@ export default function TransfersPage() {
                       "-"
                     )}
                   </td>
+                  <td className="py-2 font-semibold text-slate-900">
+                    {transfer.fromAccountName || transfer.fromAccountId}
+                  </td>
+                  <td className="py-2 font-semibold text-slate-900">
+                    {transfer.toAccountName || transfer.toAccountId}
+                  </td>
+                  <td className="py-2 font-semibold text-slate-900">
+                    {formatCurrency(transfer.amount, transfer.currencyCode)}
+                  </td>
+                  <td className="py-2">{transfer.currencyCode}</td>
                   <td className="py-2 text-slate-600">
                     {transfer.createdByName || "-"}
                   </td>
@@ -668,7 +668,7 @@ export default function TransfersPage() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {t("transfers.description")} ({t("common.optional")})
+                  {t("transfers.description")} *
                 </label>
                 <textarea
                   className="w-full rounded-lg border border-slate-200 px-3 py-2"
@@ -676,6 +676,7 @@ export default function TransfersPage() {
                   value={form.description}
                   onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
                   placeholder={t("transfers.descriptionPlaceholder")}
+                  required
                 />
               </div>
 
@@ -689,7 +690,7 @@ export default function TransfersPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isCreating || isUpdating || !form.fromAccountId || !form.toAccountId || !form.amount}
+                  disabled={isCreating || isUpdating || !form.fromAccountId || !form.toAccountId || !form.amount || !form.description}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
                 >
                   {isCreating || isUpdating
