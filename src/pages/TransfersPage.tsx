@@ -13,6 +13,7 @@ import {
 } from "../services/api";
 import { useAppSelector } from "../app/hooks";
 import { formatDate, formatDateTime } from "../utils/format";
+import { hasActionPermission } from "../utils/permissions";
 import type { Account } from "../types";
 
 // Helper function to format currency with proper number formatting
@@ -301,30 +302,32 @@ export default function TransfersPage() {
             >
               {t("transfers.createTransfer")}
             </button>
-            <button
-              onClick={async () => {
-                if (!isBatchDeleteMode) {
-                  setIsBatchDeleteMode(true);
-                } else {
-                  if (!selectedTransferIds.length) return;
-                  setConfirmModal({
-                    isOpen: true,
-                    message: t("transfers.confirmDelete") || "Are you sure you want to delete the selected transfers?",
-                    transferId: -1,
-                    isBulk: true,
-                  });
-                  return;
-                }
-              }}
-              disabled={isDeleting || (isBatchDeleteMode && !selectedTransferIds.length)}
-              className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-            >
-              {isDeleting 
-                ? t("common.deleting") 
-                : isBatchDeleteMode 
-                  ? t("transfers.deleteSelected") 
-                  : t("transfers.batchDelete")}
-            </button>
+            {hasActionPermission(authUser, "deleteTransfer") && (
+              <button
+                onClick={async () => {
+                  if (!isBatchDeleteMode) {
+                    setIsBatchDeleteMode(true);
+                  } else {
+                    if (!selectedTransferIds.length) return;
+                    setConfirmModal({
+                      isOpen: true,
+                      message: t("transfers.confirmDelete") || "Are you sure you want to delete the selected transfers?",
+                      transferId: -1,
+                      isBulk: true,
+                    });
+                    return;
+                  }
+                }}
+                disabled={isDeleting || (isBatchDeleteMode && !selectedTransferIds.length)}
+                className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+              >
+                {isDeleting 
+                  ? t("common.deleting") 
+                  : isBatchDeleteMode 
+                    ? t("transfers.deleteSelected") 
+                    : t("transfers.batchDelete")}
+              </button>
+            )}
           </div>
         }
       >

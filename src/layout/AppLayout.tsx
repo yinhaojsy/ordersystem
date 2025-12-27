@@ -1,26 +1,50 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useEffect } from "react";
 import Badge from "../components/common/Badge";
 import { useAppDispatch, useAppSelector } from "../app/hooks";
 import { setUser } from "../app/authSlice";
+import { hasSectionAccess } from "../utils/permissions";
+import { useCheckRoleUpdateQuery } from "../services/api";
 
 export default function AppLayout() {
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const pathname = location.pathname;
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const user = useAppSelector((s) => s.auth.user);
+  
+  // Check if user's role has been updated on the server
+  const { data: roleUpdate } = useCheckRoleUpdateQuery(user?.role || "", {
+    skip: !user?.role,
+    pollingInterval: 5000, // Check every 5 seconds
+  });
 
-  const navItems = [
-    { to: "/", labelKey: "nav.dashboard", end: true },
-    { to: "/currencies", labelKey: "nav.currencies", roles: ["admin"] },
-    { to: "/accounts", labelKey: "nav.accounts", roles: ["admin"] },
-    { to: "/transfers", labelKey: "nav.transfers" },
-    { to: "/expenses", labelKey: "nav.expenses" },
-    { to: "/customers", labelKey: "nav.customers" },
-    { to: "/users", labelKey: "nav.users", roles: ["admin"] },
-    { to: "/roles", labelKey: "nav.roles", roles: ["admin"] },
-    { to: "/orders", labelKey: "nav.orders" },
+  // Check if role was updated since user logged in
+  useEffect(() => {
+    if (!user?.role || !roleUpdate) return;
+
+    const userRoleUpdatedAt = user.roleUpdatedAt;
+    const serverRoleUpdatedAt = roleUpdate.updatedAt;
+
+    // If role was updated on server and it's different from when user logged in, force logout
+    if (serverRoleUpdatedAt && userRoleUpdatedAt !== serverRoleUpdatedAt) {
+      dispatch(setUser(null));
+      navigate("/login", { replace: true });
+    }
+  }, [user, roleUpdate, dispatch, navigate]);
+
+  const navItems: Array<{ to: string; labelKey: string; end?: boolean; section: string }> = [
+    { to: "/", labelKey: "nav.dashboard", end: true, section: "dashboard" },
+    { to: "/currencies", labelKey: "nav.currencies", section: "currencies" },
+    { to: "/accounts", labelKey: "nav.accounts", section: "accounts" },
+    { to: "/transfers", labelKey: "nav.transfers", section: "transfers" },
+    { to: "/expenses", labelKey: "nav.expenses", section: "expenses" },
+    { to: "/customers", labelKey: "nav.customers", section: "customers" },
+    { to: "/users", labelKey: "nav.users", section: "users" },
+    { to: "/roles", labelKey: "nav.roles", section: "roles" },
+    { to: "/orders", labelKey: "nav.orders", section: "orders" },
   ];
 
   const matched = navItems.find(item =>
@@ -47,7 +71,7 @@ export default function AppLayout() {
         </div>
         <nav className="flex flex-wrap gap-2 lg:flex-col">
           {navItems
-            .filter((item) => !item.roles || (user && item.roles.includes(user.role)))
+            .filter((item) => hasSectionAccess(user, item.section))
             .map((item) => (
               <NavLink
                 key={item.to}

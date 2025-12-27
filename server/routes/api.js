@@ -28,6 +28,7 @@ import {
   createRole,
   updateRole,
   deleteRole,
+  getRoleUpdatedAt,
 } from "../controllers/rolesController.js";
 import {
   listOrders,
@@ -96,6 +97,7 @@ router.delete("/users/:id", deleteUser);
 router.post("/auth/login", login);
 
 router.get("/roles", listRoles);
+router.get("/roles/check-update", getRoleUpdatedAt);
 router.post("/roles", createRole);
 router.put("/roles/:id", updateRole);
 router.delete("/roles/:id", deleteRole);

@@ -35,7 +35,10 @@
     "customers": "客户",
     "users": "用户",
     "roles": "角色",
-    "orders": "订单"
+    "orders": "订单",
+    "transfers": "内部转账",
+    "accounts": "账户",
+    "expenses": "开支"
   },
   "app": {
     "testSystem": "测试系统",
@@ -166,8 +169,13 @@
     "cancelOrder": "取消订单",
     "deleteOrder": "删除订单",
     "deleteManyOrders": "删除多个订单",
+    "deleteExpense": "删除开支",
+    "deleteAccount": "删除账户",
+    "deleteTransfer": "删除内部转账",
+    "createFlexOrder": "创建灵活订单",
     "confirmDelete": "您确定要删除此角色吗？",
-    "cannotDeleteReferenced": "无法删除角色，因为它被其他记录引用。"
+    "cannotDeleteReferenced": "无法删除角色，因为它被其他记录引用。",
+    "roleUpdatedLogout": "您的角色权限已更新。您将被登出，需要重新登录以应用新权限。"
   },
   "orders": {
     "title": "订单",

@@ -40,8 +40,25 @@ export const login = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    // Get role permissions and updatedAt
+    let permissions = { sections: [], actions: {} };
+    let roleUpdatedAt = null;
+    if (user.role) {
+      const roleRow = db.prepare("SELECT permissions, updatedAt FROM roles WHERE name = ?;").get(user.role);
+      if (roleRow) {
+        if (roleRow.permissions) {
+          try {
+            permissions = JSON.parse(roleRow.permissions);
+          } catch (e) {
+            // If parsing fails, use default permissions
+          }
+        }
+        roleUpdatedAt = roleRow.updatedAt || null;
+      }
+    }
+
     const { password: _pw, ...safeUser } = user;
-    res.json(safeUser);
+    res.json({ ...safeUser, permissions, roleUpdatedAt });
   } catch (error) {
     next(error);
   }

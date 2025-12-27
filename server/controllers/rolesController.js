@@ -38,15 +38,34 @@ export const updateRole = (req, res, next) => {
       return res.status(400).json({ message: "No updates provided" });
     }
     const assignments = fields.map((field) => `${field} = @${field}`).join(", ");
-    db.prepare(`UPDATE roles SET ${assignments} WHERE id = @id;`).run({
+    // Always update the updatedAt timestamp when role is modified
+    const updatedAt = new Date().toISOString();
+    db.prepare(`UPDATE roles SET ${assignments}, updatedAt = @updatedAt WHERE id = @id;`).run({
       ...updates,
       permissions: updates.permissions
         ? JSON.stringify(updates.permissions)
         : undefined,
+      updatedAt,
       id,
     });
     const row = db.prepare("SELECT * FROM roles WHERE id = ?;").get(id);
     res.json({ ...row, permissions: JSON.parse(row.permissions || "{}") });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRoleUpdatedAt = (req, res, next) => {
+  try {
+    const { roleName } = req.query;
+    if (!roleName) {
+      return res.status(400).json({ message: "Role name is required" });
+    }
+    const row = db.prepare("SELECT updatedAt FROM roles WHERE name = ?;").get(roleName);
+    if (!row) {
+      return res.status(404).json({ message: "Role not found" });
+    }
+    res.json({ updatedAt: row.updatedAt || null });
   } catch (error) {
     next(error);
   }

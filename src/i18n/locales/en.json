@@ -34,7 +34,10 @@
     "customers": "Customers",
     "users": "Users",
     "roles": "Roles",
-    "orders": "Orders"
+    "orders": "Orders",
+    "transfers": "Internal Transfers",
+    "accounts": "Accounts",
+    "expenses": "Expenses"
   },
   "app": {
     "testSystem": "Test System",
@@ -165,8 +168,13 @@
     "cancelOrder": "Cancel order",
     "deleteOrder": "Delete order",
     "deleteManyOrders": "Delete multiple orders",
+    "deleteExpense": "Delete expense",
+    "deleteAccount": "Delete account",
+    "deleteTransfer": "Delete internal transfer",
+    "createFlexOrder": "Create flex order",
     "confirmDelete": "Are you sure you want to delete this role?",
-    "cannotDeleteReferenced": "Cannot delete role because it is referenced by other records."
+    "cannotDeleteReferenced": "Cannot delete role because it is referenced by other records.",
+    "roleUpdatedLogout": "Your role permissions have been updated. You will be logged out and need to login again to apply the new permissions."
   },
   "orders": {
     "title": "Orders",

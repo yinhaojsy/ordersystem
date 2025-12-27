@@ -17,6 +17,8 @@ import {
   useGetAccountTransactionsQuery,
 } from "../services/api";
 import { formatDate } from "../utils/format";
+import { useAppSelector } from "../app/hooks";
+import { hasActionPermission } from "../utils/permissions";
 
 // Helper function to format currency with proper number formatting
 const formatCurrency = (amount: number, currencyCode: string) => {
@@ -28,6 +30,7 @@ const formatCurrency = (amount: number, currencyCode: string) => {
 
 export default function AccountsPage() {
   const { t } = useTranslation();
+  const authUser = useAppSelector((s) => s.auth.user);
   const { data: accounts = [], isLoading: isLoadingAccounts } = useGetAccountsQuery();
   const { data: summary = [], isLoading: isLoadingSummary } = useGetAccountsSummaryQuery();
   const { data: currencies = [] } = useGetCurrenciesQuery();
@@ -398,13 +401,15 @@ export default function AccountsPage() {
                                 >
                                   {t("common.edit")}
                                 </button>
-                                <button
-                                  className="text-rose-600 hover:text-rose-700"
-                                  onClick={() => handleDeleteClick(account.id)}
-                                  disabled={isDeleting}
-                                >
-                                  {t("common.delete")}
-                                </button>
+                                {hasActionPermission(authUser, "deleteAccount") && (
+                                  <button
+                                    className="text-rose-600 hover:text-rose-700"
+                                    onClick={() => handleDeleteClick(account.id)}
+                                    disabled={isDeleting}
+                                  >
+                                    {t("common.delete")}
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>

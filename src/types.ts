@@ -29,6 +29,8 @@ export interface AuthResponse {
   name: string;
   email: string;
   role: string;
+  permissions?: RolePermissions;
+  roleUpdatedAt?: string; // Timestamp when user's role was last updated (stored at login)
 }
 
 export interface RolePermissions {
@@ -41,6 +43,7 @@ export interface Role {
   name: string;
   displayName: string;
   permissions: RolePermissions;
+  updatedAt?: string;
 }
 
 export type OrderStatus = "pending" | "waiting_for_receipt" | "waiting_for_payment" | "under_process" | "completed" | "cancelled";

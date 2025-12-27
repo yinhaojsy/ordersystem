@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
@@ -10,12 +11,17 @@ import {
   useGetRolesQuery,
   useUpdateRoleMutation,
 } from "../services/api";
+import { useAppSelector, useAppDispatch } from "../app/hooks";
+import { setUser } from "../app/authSlice";
 import type { RolePermissions } from "../types";
 
-const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders"];
+const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses"];
 
 export default function RolesPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const currentUser = useAppSelector((s) => s.auth.user);
   const { data: roles = [], isLoading } = useGetRolesQuery();
   
   const ACTION_OPTIONS = [
@@ -28,6 +34,10 @@ export default function RolesPage() {
     { key: "cancelOrder", labelKey: "roles.cancelOrder" },
     { key: "deleteOrder", labelKey: "roles.deleteOrder" },
     { key: "deleteManyOrders", labelKey: "roles.deleteManyOrders" },
+    { key: "deleteExpense", labelKey: "roles.deleteExpense" },
+    { key: "deleteAccount", labelKey: "roles.deleteAccount" },
+    { key: "deleteTransfer", labelKey: "roles.deleteTransfer" },
+    { key: "createFlexOrder", labelKey: "roles.createFlexOrder" },
   ];
   const [addRole, { isLoading: isSaving }] = useAddRoleMutation();
   const [updateRole] = useUpdateRoleMutation();
@@ -96,10 +106,29 @@ export default function RolesPage() {
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
     if (!editingId || !editForm) return;
-    await updateRole({
+    
+    const updatedRole = await updateRole({
       id: editingId,
       data: editForm,
-    });
+    }).unwrap();
+    
+    // Check if the updated role matches the current user's role
+    // If so, force logout so they need to login again with new permissions
+    // Note: Other users with this role will be logged out automatically via the polling check in AppLayout
+    if (currentUser && updatedRole.name === currentUser.role) {
+      dispatch(setUser(null));
+      setAlertModal({
+        isOpen: true,
+        message: t("roles.roleUpdatedLogout") || "Your role permissions have been updated. Please login again to apply the new permissions.",
+        type: "info",
+      });
+      // Navigate to login after a short delay
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 2000);
+      return;
+    }
+    
     cancelEdit();
   };
 

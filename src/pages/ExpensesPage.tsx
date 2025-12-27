@@ -13,6 +13,7 @@ import {
 } from "../services/api";
 import { useAppSelector } from "../app/hooks";
 import { formatDate, formatDateTime } from "../utils/format";
+import { hasActionPermission } from "../utils/permissions";
 import type { Account } from "../types";
 
 // Helper function to format currency with proper number formatting
@@ -352,31 +353,33 @@ export default function ExpensesPage() {
             >
               {t("expenses.createExpense")}
             </button>
-            <button
-              onClick={async () => {
-                if (!isBatchDeleteMode) {
-                  setIsBatchDeleteMode(true);
-                } else {
-                  if (!selectedExpenseIds.length) return;
-                  if (!selectedExpenseIds.length) return;
-                  setConfirmModal({
-                    isOpen: true,
-                    message: t("expenses.confirmDeleteSelected") || "Are you sure you want to delete the selected expenses?",
-                    expenseId: -1,
-                    isBulk: true,
-                  });
-                  return;
-                }
-              }}
-              disabled={isDeleting || (isBatchDeleteMode && !selectedExpenseIds.length)}
-              className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-            >
+            {hasActionPermission(authUser, "deleteExpense") && (
+              <button
+                onClick={async () => {
+                  if (!isBatchDeleteMode) {
+                    setIsBatchDeleteMode(true);
+                  } else {
+                    if (!selectedExpenseIds.length) return;
+                    if (!selectedExpenseIds.length) return;
+                    setConfirmModal({
+                      isOpen: true,
+                      message: t("expenses.confirmDeleteSelected") || "Are you sure you want to delete the selected expenses?",
+                      expenseId: -1,
+                      isBulk: true,
+                    });
+                    return;
+                  }
+                }}
+                disabled={isDeleting || (isBatchDeleteMode && !selectedExpenseIds.length)}
+                className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+              >
               {isDeleting
                 ? t("common.deleting")
                 : isBatchDeleteMode
                 ? t("expenses.deleteSelected")
                 : t("expenses.batchDelete")}
-            </button>
+              </button>
+            )}
           </div>
         }
       >
@@ -501,13 +504,15 @@ export default function ExpensesPage() {
                       >
                         {t("common.edit")}
                       </button>
-                      <button
-                        onClick={() => handleDeleteClick(expense.id)}
-                        disabled={isDeleting}
-                        className="text-rose-600 hover:text-rose-700 text-sm disabled:opacity-60"
-                      >
-                        {t("common.delete")}
-                      </button>
+                      {hasActionPermission(authUser, "deleteExpense") && (
+                        <button
+                          onClick={() => handleDeleteClick(expense.id)}
+                          disabled={isDeleting}
+                          className="text-rose-600 hover:text-rose-700 text-sm disabled:opacity-60"
+                        >
+                          {t("common.delete")}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -12,7 +12,7 @@ export const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
-const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders"];
+const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses"];
 
 const ensureSchema = () => {
   db.prepare(
@@ -76,9 +76,17 @@ const ensureSchema = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       displayName TEXT NOT NULL,
-      permissions TEXT NOT NULL
+      permissions TEXT NOT NULL,
+      updatedAt TEXT
     );`,
   ).run();
+  
+  // Add updatedAt column if it doesn't exist (migration)
+  const roleColumns = db.prepare("PRAGMA table_info(roles);").all();
+  const hasUpdatedAt = roleColumns.some((col) => col.name === "updatedAt");
+  if (!hasUpdatedAt) {
+    db.prepare("ALTER TABLE roles ADD COLUMN updatedAt TEXT;").run();
+  }
 
   db.prepare(
     `CREATE TABLE IF NOT EXISTS orders (

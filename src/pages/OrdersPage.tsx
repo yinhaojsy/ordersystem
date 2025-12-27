@@ -27,6 +27,7 @@ import {
 } from "../services/api";
 import { useGetRolesQuery } from "../services/api";
 import { useAppSelector } from "../app/hooks";
+import { hasActionPermission } from "../utils/permissions";
 import type { OrderStatus } from "../types";
 import { formatDate } from "../utils/format";
 
@@ -1379,15 +1380,17 @@ export default function OrdersPage() {
             >
               {t("orders.createOrder")}
             </button>
-            <button
-              onClick={() => {
-                setIsFlexOrderMode(true);
-                setIsModalOpen(true);
-              }}
-              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-purple-700 transition-colors"
-            >
-              {t("orders.createFlexOrder")}
-            </button>
+            {hasActionPermission(authUser, "createFlexOrder") && (
+              <button
+                onClick={() => {
+                  setIsFlexOrderMode(true);
+                  setIsModalOpen(true);
+                }}
+                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-purple-700 transition-colors"
+              >
+                {t("orders.createFlexOrder")}
+              </button>
+            )}
             {canDeleteManyOrders && (
               <button
                 onClick={async () => {
