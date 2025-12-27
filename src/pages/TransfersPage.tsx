@@ -86,6 +86,7 @@ export default function TransfersPage() {
     toAccountId: "",
     amount: "",
     description: "",
+    transactionFee: "",
   });
 
   const resetForm = () => {
@@ -94,6 +95,7 @@ export default function TransfersPage() {
       toAccountId: "",
       amount: "",
       description: "",
+      transactionFee: "",
     });
     setFromAccountSearchQuery("");
     setIsFromAccountDropdownOpen(false);
@@ -115,6 +117,7 @@ export default function TransfersPage() {
       toAccountId: String(transfer.toAccountId),
       amount: String(transfer.amount),
       description: transfer.description || "",
+      transactionFee: transfer.transactionFee ? String(transfer.transactionFee) : "",
     });
     setIsModalOpen(true);
   };
@@ -132,6 +135,7 @@ export default function TransfersPage() {
             toAccountId: Number(form.toAccountId),
             amount: Number(form.amount),
             description: form.description,
+            transactionFee: form.transactionFee ? Number(form.transactionFee) : undefined,
             updatedBy: authUser?.id,
           },
         }).unwrap();
@@ -141,6 +145,7 @@ export default function TransfersPage() {
           toAccountId: Number(form.toAccountId),
           amount: Number(form.amount),
           description: form.description,
+          transactionFee: form.transactionFee ? Number(form.transactionFee) : undefined,
           createdBy: authUser?.id,
         }).unwrap();
       }
@@ -357,6 +362,7 @@ export default function TransfersPage() {
                 <th className="py-2">{t("transfers.fromAccount")}</th>
                 <th className="py-2">{t("transfers.toAccount")}</th>
                 <th className="py-2">{t("transfers.amount")}</th>
+                <th className="py-2">{t("transfers.transactionFee")}</th>
                 <th className="py-2">{t("transfers.currency")}</th>
                 <th className="py-2">{t("transfers.createdBy")}</th>
                 {!isBatchDeleteMode && <th className="py-2">{t("transfers.actions")}</th>}
@@ -416,6 +422,9 @@ export default function TransfersPage() {
                   <td className="py-2 font-semibold text-slate-900">
                     {formatCurrency(transfer.amount, transfer.currencyCode)}
                   </td>
+                  <td className="py-2 text-slate-600">
+                    {transfer.transactionFee !== null && transfer.transactionFee !== undefined ? formatCurrency(transfer.transactionFee, transfer.currencyCode) : "-"}
+                  </td>
                   <td className="py-2">{transfer.currencyCode}</td>
                   <td className="py-2 text-slate-600">
                     {transfer.createdByName || "-"}
@@ -450,7 +459,7 @@ export default function TransfersPage() {
               ))}
               {!transfers.length && (
                 <tr>
-                  <td className="py-4 text-sm text-slate-500" colSpan={isBatchDeleteMode ? 8 : 9}>
+                  <td className="py-4 text-sm text-slate-500" colSpan={isBatchDeleteMode ? 9 : 10}>
                     {t("transfers.noTransfers")}
                   </td>
                 </tr>
@@ -654,16 +663,36 @@ export default function TransfersPage() {
                   required
                   disabled={!form.fromAccountId}
                 />
-                {fromAccount && form.amount && Number(form.amount) > fromAccount.balance && (
-                  <div className="mt-1 text-xs text-amber-600">
-                    {t("transfers.insufficientBalance")} -{" "}
-                    {t("transfers.newBalanceWillBe")}:{" "}
-                    {formatCurrency(
-                      fromAccount.balance - Number(form.amount),
-                      fromAccount.currencyCode
-                    )}
-                  </div>
-                )}
+                {fromAccount && form.amount && (() => {
+                  const amount = Number(form.amount);
+                  const fee = form.transactionFee ? Number(form.transactionFee) : 0;
+                  const totalDeduction = amount + fee;
+                  return totalDeduction > fromAccount.balance && (
+                    <div className="mt-1 text-xs text-amber-600">
+                      {t("transfers.insufficientBalance")} -{" "}
+                      {t("transfers.newBalanceWillBe")}:{" "}
+                      {formatCurrency(
+                        fromAccount.balance - totalDeduction,
+                        fromAccount.currencyCode
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {t("transfers.transactionFee")} ({t("common.optional")})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                  value={form.transactionFee}
+                  onChange={(e) => setForm((p) => ({ ...p, transactionFee: e.target.value }))}
+                  placeholder={t("transfers.transactionFeePlaceholder") || "0.00"}
+                />
               </div>
 
               <div>

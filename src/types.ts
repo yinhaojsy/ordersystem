@@ -201,6 +201,7 @@ export interface TransferChange {
   toAccountName?: string;
   amount: number;
   description?: string;
+  transactionFee?: number;
 }
 
 export interface TransferInput {
@@ -208,6 +209,7 @@ export interface TransferInput {
   toAccountId: number;
   amount: number;
   description?: string;
+  transactionFee?: number;
   createdBy?: number;
 }
 

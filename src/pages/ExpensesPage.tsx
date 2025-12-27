@@ -621,10 +621,10 @@ export default function ExpensesPage() {
       {isModalOpen && (
         <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
           <div
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-lg max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between">
+            <div className="sticky top-0 bg-white z-10 p-6 pb-4 border-b border-slate-200 flex items-center justify-between rounded-t-2xl">
               <h2 className="text-xl font-semibold text-slate-900">
                 {editingExpenseId
                   ? t("expenses.editExpenseTitle")
@@ -650,7 +650,8 @@ export default function ExpensesPage() {
                 </svg>
               </button>
             </div>
-            <form className="grid gap-3" onSubmit={handleSubmit}>
+            <div className="overflow-y-auto flex-1 p-6 pt-4">
+              <form className="grid gap-3" onSubmit={handleSubmit}>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   {t("expenses.account")}
@@ -955,7 +956,8 @@ export default function ExpensesPage() {
                     : t("expenses.createExpense")}
                 </button>
               </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}

@@ -573,10 +573,20 @@ export const api = createApi({
         method: "POST",
         body,
       }),
-      invalidatesTags: [
-        { type: "Transfer", id: "LIST" },
-        { type: "Account", id: "LIST" },
-      ],
+      invalidatesTags: (result) => {
+        const tags: Array<{ type: "Transfer" | "Account"; id: number | "LIST" }> = [
+          { type: "Transfer", id: "LIST" },
+          { type: "Account", id: "LIST" },
+        ];
+        
+        // Invalidate specific account transaction caches for affected accounts
+        if (result) {
+          tags.push({ type: "Account", id: result.fromAccountId });
+          tags.push({ type: "Account", id: result.toAccountId });
+        }
+        
+        return tags;
+      },
     }),
     updateTransfer: builder.mutation<
       Transfer,
@@ -587,11 +597,53 @@ export const api = createApi({
         method: "PUT",
         body: data,
       }),
-      invalidatesTags: (_res, _err, { id }) => [
-        { type: "Transfer", id },
-        { type: "Transfer", id: "LIST" },
-        { type: "Account", id: "LIST" },
-      ],
+      invalidatesTags: (result, _err, { id, data }) => {
+        const tags: Array<{ type: "Transfer" | "Account"; id: number | "LIST" }> = [
+          { type: "Transfer", id },
+          { type: "Transfer", id: "LIST" },
+          { type: "Account", id: "LIST" },
+        ];
+        
+        // Invalidate specific account transaction caches for affected accounts
+        if (result) {
+          // Invalidate new account IDs from the result
+          tags.push({ type: "Account", id: result.fromAccountId });
+          tags.push({ type: "Account", id: result.toAccountId });
+        }
+        
+        return tags;
+      },
+      async onQueryStarted({ id, data }, { dispatch, queryFulfilled, getState }) {
+        // Get the old transfer from cache to invalidate old account IDs
+        const state = getState() as any;
+        const transfersQuery = state?.api?.queries?.[`getTransfers(undefined)`];
+        const oldTransfer = transfersQuery?.data?.find((t: Transfer) => t.id === id);
+        
+        // Invalidate old account IDs if they exist
+        if (oldTransfer) {
+          dispatch(
+            api.util.invalidateTags([
+              { type: "Account", id: oldTransfer.fromAccountId },
+              { type: "Account", id: oldTransfer.toAccountId },
+            ])
+          );
+        }
+        
+        try {
+          const result = await queryFulfilled;
+          // Invalidate new account IDs from the result
+          if (result.data) {
+            dispatch(
+              api.util.invalidateTags([
+                { type: "Account", id: result.data.fromAccountId },
+                { type: "Account", id: result.data.toAccountId },
+              ])
+            );
+          }
+        } catch {
+          // If query fails, we still invalidated the old account IDs
+        }
+      },
     }),
     deleteTransfer: builder.mutation<{ success: boolean }, number>({
       query: (id) => ({

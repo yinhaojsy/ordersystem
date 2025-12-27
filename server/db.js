@@ -180,6 +180,7 @@ const ensureSchema = () => {
       amount REAL NOT NULL,
       currencyCode TEXT NOT NULL,
       description TEXT,
+      transactionFee REAL,
       createdBy INTEGER,
       createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updatedBy INTEGER,
@@ -203,6 +204,7 @@ const ensureSchema = () => {
       toAccountName TEXT,
       amount REAL NOT NULL,
       description TEXT,
+      transactionFee REAL,
       FOREIGN KEY(transferId) REFERENCES internal_transfers(id) ON DELETE CASCADE,
       FOREIGN KEY(changedBy) REFERENCES users(id)
     );`,
@@ -483,6 +485,17 @@ const migrateDatabase = () => {
     }
     if (!transferColumnNames.includes("updatedAt")) {
       db.prepare("ALTER TABLE internal_transfers ADD COLUMN updatedAt TEXT").run();
+    }
+    if (!transferColumnNames.includes("transactionFee")) {
+      db.prepare("ALTER TABLE internal_transfers ADD COLUMN transactionFee REAL").run();
+    }
+
+    // Check transfer_changes table for new columns
+    const transferChangesTableInfo = db.prepare("PRAGMA table_info(transfer_changes)").all();
+    const transferChangesColumnNames = transferChangesTableInfo.map((col) => col.name);
+    
+    if (!transferChangesColumnNames.includes("transactionFee")) {
+      db.prepare("ALTER TABLE transfer_changes ADD COLUMN transactionFee REAL").run();
     }
   } catch (error) {
     console.error("Migration error:", error);

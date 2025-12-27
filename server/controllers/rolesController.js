@@ -74,6 +74,22 @@ export const getRoleUpdatedAt = (req, res, next) => {
 export const deleteRole = (req, res, next) => {
   try {
     const { id } = req.params;
+    
+    // Check if role exists
+    const role = db.prepare("SELECT id, name, displayName FROM roles WHERE id = ?;").get(id);
+    if (!role) {
+      return res.status(404).json({ message: "Role not found" });
+    }
+    
+    // Check if any users are assigned to this role
+    const usersWithRole = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = ?;").get(role.name);
+    if (usersWithRole && usersWithRole.count > 0) {
+      return res.status(400).json({ 
+        message: `Cannot delete role "${role.displayName}" because it is assigned to ${usersWithRole.count} user(s). Please reassign or remove those users first.` 
+      });
+    }
+    
+    // Safe to delete - no users are using this role
     const stmt = db.prepare("DELETE FROM roles WHERE id = ?;");
     const result = stmt.run(id);
     if (result.changes === 0) {

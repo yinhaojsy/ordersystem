@@ -162,7 +162,14 @@ export default function RolesPage() {
         if (errorMessage === "Cannot delete this item because it is referenced by other records.") {
           message = t("roles.cannotDeleteReferenced");
         } else if (errorMessage) {
-          message = errorMessage;
+          // Check if it's the role deletion error with users
+          const roleErrorMatch = errorMessage.match(/Cannot delete role "([^"]+)" because it is assigned to (\d+) user\(s\)\. Please reassign or remove those users first\./);
+          if (roleErrorMatch) {
+            const [, roleName, userCount] = roleErrorMatch;
+            message = t("roles.cannotDeleteRoleWithUsers", { roleName, count: Number(userCount) });
+          } else {
+            message = errorMessage;
+          }
         }
       }
       

@@ -175,6 +175,7 @@
     "createFlexOrder": "创建灵活订单",
     "confirmDelete": "您确定要删除此角色吗？",
     "cannotDeleteReferenced": "无法删除角色，因为它被其他记录引用。",
+    "cannotDeleteRoleWithUsers": "无法删除角色 \"{{roleName}}\"，因为它已分配给 {{count}} 个用户。请先重新分配或删除这些用户。",
     "roleUpdatedLogout": "您的角色权限已更新。您将被登出，需要重新登录以应用新权限。"
   },
   "orders": {
@@ -352,7 +353,7 @@
   },
   "transfers": {
     "title": "内部转账",
-    "description": "查看和管理账户之间的内部资金转账",
+    "description": "说明",
     "transfers": "转账",
     "createTransfer": "创建转账",
     "createTransferTitle": "创建内部转账",
@@ -360,6 +361,8 @@
     "fromAccount": "转出账户",
     "toAccount": "转入账户",
     "amount": "金额",
+    "transactionFee": "转账费",
+    "transactionFeePlaceholder": "0.00",
     "currency": "货币",
     "createdBy": "创建人",
     "noTransfers": "暂无转账记录",

@@ -4,9 +4,18 @@ export const listTransfers = (_req, res) => {
   const rows = db
     .prepare(
       `SELECT 
-        t.*,
+        t.id,
+        t.fromAccountId,
+        t.toAccountId,
+        t.amount,
+        t.currencyCode,
+        t.description,
+        t.transactionFee,
+        t.createdBy,
+        t.createdAt,
+        t.updatedBy,
+        t.updatedAt,
         fromAcc.name as fromAccountName,
-        fromAcc.currencyCode,
         toAcc.name as toAccountName,
         creator.name as createdByName,
         updater.name as updatedByName
@@ -23,7 +32,7 @@ export const listTransfers = (_req, res) => {
 
 export const createTransfer = (req, res, next) => {
   try {
-    const { fromAccountId, toAccountId, amount, description, createdBy } = req.body || {};
+    const { fromAccountId, toAccountId, amount, description, transactionFee, createdBy } = req.body || {};
 
     if (!fromAccountId || !toAccountId || !amount) {
       return res.status(400).json({ message: "From account, to account, and amount are required" });
@@ -56,6 +65,15 @@ export const createTransfer = (req, res, next) => {
       return res.status(400).json({ message: "Amount must be a positive number" });
     }
 
+    // Handle transaction fee - convert to number, treat empty string as 0
+    let feeAmount = 0;
+    if (transactionFee !== undefined && transactionFee !== null && transactionFee !== "") {
+      feeAmount = Number(transactionFee);
+      if (isNaN(feeAmount) || feeAmount < 0) {
+        return res.status(400).json({ message: "Transaction fee must be a non-negative number" });
+      }
+    }
+
     // Check sufficient balance (allow negative, but warn)
     const newFromBalance = fromAccount.balance - transferAmount;
     if (newFromBalance < 0) {
@@ -64,9 +82,12 @@ export const createTransfer = (req, res, next) => {
 
     // Perform transfer in a transaction
     const transaction = db.transaction(() => {
-      // Update balances
+      // Update balances (deduct only amount from fromAccount, add amount then deduct fee from toAccount)
       db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(transferAmount, fromAccountId);
       db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(transferAmount, toAccountId);
+      if (feeAmount > 0) {
+        db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(feeAmount, toAccountId);
+      }
 
       // Create transaction records for both accounts
       const transferDescription = description 
@@ -97,10 +118,27 @@ export const createTransfer = (req, res, next) => {
         new Date().toISOString()
       );
 
+      // Record transaction fee deduction on To Account if fee exists
+      if (feeAmount > 0) {
+        const feeDescription = description
+          ? `Transaction fee for transfer from ${fromAccount.name}: ${description}`
+          : `Transaction fee for transfer from ${fromAccount.name}`;
+        
+        db.prepare(
+          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+           VALUES (?, 'withdraw', ?, ?, ?);`
+        ).run(
+          toAccountId,
+          feeAmount,
+          feeDescription,
+          new Date().toISOString()
+        );
+      }
+
       // Create transfer record
       const stmt = db.prepare(
-        `INSERT INTO internal_transfers (fromAccountId, toAccountId, amount, currencyCode, description, createdBy, createdAt)
-         VALUES (@fromAccountId, @toAccountId, @amount, @currencyCode, @description, @createdBy, @createdAt);`
+        `INSERT INTO internal_transfers (fromAccountId, toAccountId, amount, currencyCode, description, transactionFee, createdBy, createdAt)
+         VALUES (@fromAccountId, @toAccountId, @amount, @currencyCode, @description, @transactionFee, @createdBy, @createdAt);`
       );
       const result = stmt.run({
         fromAccountId,
@@ -108,6 +146,7 @@ export const createTransfer = (req, res, next) => {
         amount: transferAmount,
         currencyCode: fromAccount.currencyCode,
         description: description || null,
+        transactionFee: feeAmount > 0 ? feeAmount : null,
         createdBy: createdBy || null,
         createdAt: new Date().toISOString(),
       });
@@ -116,8 +155,8 @@ export const createTransfer = (req, res, next) => {
 
       // Log the initial creation as a change
       db.prepare(
-        `INSERT INTO transfer_changes (transferId, changedBy, changedAt, fromAccountId, fromAccountName, toAccountId, toAccountName, amount, description)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
+        `INSERT INTO transfer_changes (transferId, changedBy, changedAt, fromAccountId, fromAccountName, toAccountId, toAccountName, amount, description, transactionFee)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
       ).run(
         transferId,
         createdBy || null,
@@ -127,7 +166,8 @@ export const createTransfer = (req, res, next) => {
         toAccountId,
         toAccount.name,
         transferAmount,
-        description || null
+        description || null,
+        feeAmount > 0 ? feeAmount : null
       );
 
       return transferId;
@@ -139,9 +179,18 @@ export const createTransfer = (req, res, next) => {
     const transfer = db
       .prepare(
         `SELECT 
-          t.*,
+          t.id,
+          t.fromAccountId,
+          t.toAccountId,
+          t.amount,
+          t.currencyCode,
+          t.description,
+          t.transactionFee,
+          t.createdBy,
+          t.createdAt,
+          t.updatedBy,
+          t.updatedAt,
           fromAcc.name as fromAccountName,
-          fromAcc.currencyCode,
           toAcc.name as toAccountName,
           creator.name as createdByName
          FROM internal_transfers t
@@ -161,7 +210,7 @@ export const createTransfer = (req, res, next) => {
 export const updateTransfer = (req, res, next) => {
   try {
     const { id } = req.params;
-    const { fromAccountId, toAccountId, amount, description, updatedBy } = req.body || {};
+    const { fromAccountId, toAccountId, amount, description, transactionFee, updatedBy } = req.body || {};
 
     // Get existing transfer
     const existingTransfer = db.prepare("SELECT * FROM internal_transfers WHERE id = ?;").get(id);
@@ -174,6 +223,13 @@ export const updateTransfer = (req, res, next) => {
     const finalToAccountId = toAccountId !== undefined ? toAccountId : existingTransfer.toAccountId;
     const finalAmount = amount !== undefined ? Number(amount) : existingTransfer.amount;
     const finalDescription = description !== undefined ? (description || null) : existingTransfer.description;
+    const finalTransactionFee = transactionFee !== undefined ? (transactionFee !== null && transactionFee !== "" ? Number(transactionFee) : null) : existingTransfer.transactionFee;
+    
+    if (finalTransactionFee !== null && finalTransactionFee !== undefined && finalTransactionFee < 0) {
+      return res.status(400).json({ message: "Transaction fee must be a non-negative number" });
+    }
+    
+    const feeAmount = finalTransactionFee !== null && finalTransactionFee !== undefined ? finalTransactionFee : 0;
 
     if (finalFromAccountId === finalToAccountId) {
       return res.status(400).json({ message: "Cannot transfer to the same account" });
@@ -199,12 +255,14 @@ export const updateTransfer = (req, res, next) => {
     const fromAccountChanged = fromAccountId !== undefined && fromAccountId !== existingTransfer.fromAccountId;
     const toAccountChanged = toAccountId !== undefined && toAccountId !== existingTransfer.toAccountId;
     const amountChanged = amount !== undefined && amount !== existingTransfer.amount;
+    const feeChanged = transactionFee !== undefined && finalTransactionFee !== existingTransfer.transactionFee;
+    const oldFeeAmount = existingTransfer.transactionFee || 0;
 
     // Perform update in a transaction
     const transaction = db.transaction(() => {
-      // If accounts or amount changed, reverse old transfer and create new one
-      if (fromAccountChanged || toAccountChanged || amountChanged) {
-        // Reverse old transfer: add back to old from account, deduct from old to account
+      // If accounts, amount, or fee changed, reverse old transfer and create new one
+      if (fromAccountChanged || toAccountChanged || amountChanged || feeChanged) {
+        // Reverse old transfer: add back only amount to old from account, deduct amount and add back fee to old to account
         db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(
           existingTransfer.amount,
           existingTransfer.fromAccountId
@@ -213,6 +271,12 @@ export const updateTransfer = (req, res, next) => {
           existingTransfer.amount,
           existingTransfer.toAccountId
         );
+        if (oldFeeAmount > 0) {
+          db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(
+            oldFeeAmount,
+            existingTransfer.toAccountId
+          );
+        }
 
         // Create reversal transactions
         const oldFromAccount = db.prepare("SELECT name FROM accounts WHERE id = ?;").get(existingTransfer.fromAccountId);
@@ -246,7 +310,24 @@ export const updateTransfer = (req, res, next) => {
           new Date().toISOString()
         );
 
-        // Create new transfer: deduct from new from account, add to new to account
+        // Reverse the fee deduction on old To Account if fee existed
+        if (oldFeeAmount > 0) {
+          const oldFeeDescription = existingTransfer.description
+            ? `Transaction fee for transfer from ${oldFromAccount.name}: ${existingTransfer.description}`
+            : `Transaction fee for transfer from ${oldFromAccount.name}`;
+          
+          db.prepare(
+            `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+             VALUES (?, 'add', ?, ?, ?);`
+          ).run(
+            existingTransfer.toAccountId,
+            oldFeeAmount,
+            `Reversal: ${oldFeeDescription}`,
+            new Date().toISOString()
+          );
+        }
+
+        // Create new transfer: deduct only amount from new from account, add amount then deduct fee from new to account
         db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(
           finalAmount,
           finalFromAccountId
@@ -255,6 +336,12 @@ export const updateTransfer = (req, res, next) => {
           finalAmount,
           finalToAccountId
         );
+        if (feeAmount > 0) {
+          db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(
+            feeAmount,
+            finalToAccountId
+          );
+        }
 
         // Create new transactions
         const newDescription = finalDescription
@@ -284,6 +371,23 @@ export const updateTransfer = (req, res, next) => {
           newReceiveDescription,
           new Date().toISOString()
         );
+
+        // Record transaction fee deduction on new To Account if fee exists
+        if (feeAmount > 0) {
+          const feeDescription = finalDescription
+            ? `Transaction fee for transfer from ${fromAccount.name}: ${finalDescription}`
+            : `Transaction fee for transfer from ${fromAccount.name}`;
+          
+          db.prepare(
+            `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+             VALUES (?, 'withdraw', ?, ?, ?);`
+          ).run(
+            finalToAccountId,
+            feeAmount,
+            feeDescription,
+            new Date().toISOString()
+          );
+        }
       }
 
       // Update transfer record
@@ -294,6 +398,7 @@ export const updateTransfer = (req, res, next) => {
       if (toAccountId !== undefined) updateFields.push("toAccountId = ?"), updateValues.push(toAccountId);
       if (amount !== undefined) updateFields.push("amount = ?"), updateValues.push(finalAmount);
       if (description !== undefined) updateFields.push("description = ?"), updateValues.push(finalDescription || null);
+      if (transactionFee !== undefined) updateFields.push("transactionFee = ?"), updateValues.push(finalTransactionFee);
       
       updateFields.push("updatedBy = ?"), updateValues.push(updatedBy || null);
       updateFields.push("updatedAt = ?"), updateValues.push(new Date().toISOString());
@@ -302,11 +407,11 @@ export const updateTransfer = (req, res, next) => {
       if (updateFields.length > 2) {
         db.prepare(`UPDATE internal_transfers SET ${updateFields.join(", ")} WHERE id = ?;`).run(...updateValues);
         
-        // Log the change if accounts, amount, or description changed
-        if (fromAccountId !== undefined || toAccountId !== undefined || amount !== undefined || description !== undefined) {
+        // Log the change if accounts, amount, description, or fee changed
+        if (fromAccountId !== undefined || toAccountId !== undefined || amount !== undefined || description !== undefined || transactionFee !== undefined) {
           db.prepare(
-            `INSERT INTO transfer_changes (transferId, changedBy, changedAt, fromAccountId, fromAccountName, toAccountId, toAccountName, amount, description)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
+            `INSERT INTO transfer_changes (transferId, changedBy, changedAt, fromAccountId, fromAccountName, toAccountId, toAccountName, amount, description, transactionFee)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
           ).run(
             id,
             updatedBy || null,
@@ -316,7 +421,8 @@ export const updateTransfer = (req, res, next) => {
             finalToAccountId,
             toAccount.name,
             finalAmount,
-            finalDescription
+            finalDescription,
+            finalTransactionFee
           );
         }
       }
@@ -328,9 +434,18 @@ export const updateTransfer = (req, res, next) => {
     const transfer = db
       .prepare(
         `SELECT 
-          t.*,
+          t.id,
+          t.fromAccountId,
+          t.toAccountId,
+          t.amount,
+          t.currencyCode,
+          t.description,
+          t.transactionFee,
+          t.createdBy,
+          t.createdAt,
+          t.updatedBy,
+          t.updatedAt,
           fromAcc.name as fromAccountName,
-          fromAcc.currencyCode,
           toAcc.name as toAccountName,
           creator.name as createdByName,
           updater.name as updatedByName

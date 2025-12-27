@@ -118,6 +118,8 @@ export default function UsersPage() {
         // Check if it's the generic server error message and translate it
         if (errorMessage === "Cannot delete this item because it is referenced by other records.") {
           message = t("users.cannotDeleteReferenced");
+        } else if (errorMessage === "Cannot delete user while they are assigned to existing orders.") {
+          message = t("users.cannotDeleteWithOrders");
         } else if (errorMessage) {
           message = errorMessage;
         }
