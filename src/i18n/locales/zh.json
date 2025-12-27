@@ -349,7 +349,18 @@
     "cannotDeleteReferenced": "无法删除账户，因为它被其他记录引用。",
     "cannotDeleteLinkedToOrders": "无法删除账户，因为它已链接到现有订单",
     "cannotDeleteLinkedToTransfers": "无法删除账户，因为它已链接到现有转账",
-    "cannotDeleteLinkedToExpenses": "无法删除账户，因为它已链接到现有开支"
+    "cannotDeleteLinkedToExpenses": "无法删除账户，因为它已链接到现有开支",
+    "internalTransferTo": "内部转账至 {{accountName}}{{description}}",
+    "internalTransferFrom": "内部转账自 {{accountName}}{{description}}",
+    "transactionFeeForTransfer": "转账交易费用自 {{accountName}}{{description}}",
+    "reversal": "撤销：{{description}}",
+    "expense": "开支{{description}}",
+    "expenseReversal": "撤销：开支{{description}}",
+    "expenseDeleted": "撤销：开支{{description}}（已删除）",
+    "orderReceipt": "订单 #{{orderId}} - 客户收款",
+    "orderPayment": "订单 #{{orderId}} - 客户付款",
+    "orderBuy": "订单 #{{orderId}} - 买入",
+    "orderSell": "订单 #{{orderId}} - 卖出"
   },
   "transfers": {
     "title": "内部转账",

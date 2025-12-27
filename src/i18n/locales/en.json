@@ -357,7 +357,18 @@
     "cannotDeleteReferenced": "Cannot delete account because it is referenced by other records.",
     "cannotDeleteLinkedToOrders": "Cannot delete account that is linked to existing orders",
     "cannotDeleteLinkedToTransfers": "Cannot delete account that is linked to existing transfers",
-    "cannotDeleteLinkedToExpenses": "Cannot delete account that is linked to existing expenses"
+    "cannotDeleteLinkedToExpenses": "Cannot delete account that is linked to existing expenses",
+    "internalTransferTo": "Internal transfer to {{accountName}}{{description}}",
+    "internalTransferFrom": "Internal transfer from {{accountName}}{{description}}",
+    "transactionFeeForTransfer": "Transaction fee for transfer from {{accountName}}{{description}}",
+    "reversal": "Reversal: {{description}}",
+    "expense": "Expense{{description}}",
+    "expenseReversal": "Reversal: Expense{{description}}",
+    "expenseDeleted": "Reversal: Expense{{description}} (Deleted)",
+    "orderReceipt": "Order #{{orderId}} - Receipt from customer",
+    "orderPayment": "Order #{{orderId}} - Payment to customer",
+    "orderBuy": "Order #{{orderId}} - Buy",
+    "orderSell": "Order #{{orderId}} - Sell"
   },
   "transfers": {
     "title": "Internal Transfers",

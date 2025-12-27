@@ -669,7 +669,115 @@ export default function AccountsPage() {
                         {selectedAccount.currencyCode}
                       </td>
                       <td className="py-2 text-slate-600">
-                        {transaction.description || "-"}
+                        {(() => {
+                          const desc = transaction.description || "-";
+                          if (desc === "-") return desc;
+                          
+                          // Translate transaction descriptions
+                          let translated = desc;
+                          
+                          // Internal transfer to
+                          const transferToMatch = desc.match(/^Internal transfer to ([^:]+)(?:: (.+))?$/);
+                          if (transferToMatch) {
+                            const accountName = transferToMatch[1].trim();
+                            const description = transferToMatch[2] ? `: ${transferToMatch[2]}` : "";
+                            translated = t("accounts.internalTransferTo", { accountName, description });
+                          }
+                          
+                          // Internal transfer from
+                          const transferFromMatch = desc.match(/^Internal transfer from ([^:]+)(?:: (.+))?$/);
+                          if (transferFromMatch) {
+                            const accountName = transferFromMatch[1].trim();
+                            const description = transferFromMatch[2] ? `: ${transferFromMatch[2]}` : "";
+                            translated = t("accounts.internalTransferFrom", { accountName, description });
+                          }
+                          
+                          // Transaction fee for transfer from
+                          const feeMatch = desc.match(/^Transaction fee for transfer from ([^:]+)(?:: (.+))?$/);
+                          if (feeMatch) {
+                            const accountName = feeMatch[1].trim();
+                            const description = feeMatch[2] ? `: ${feeMatch[2]}` : "";
+                            translated = t("accounts.transactionFeeForTransfer", { accountName, description });
+                          }
+                          
+                          // Reversal
+                          const reversalMatch = desc.match(/^Reversal: (.+)$/);
+                          if (reversalMatch) {
+                            const originalDesc = reversalMatch[1];
+                            // Recursively translate the original description
+                            let originalTranslated = originalDesc;
+                            const revTransferToMatch = originalDesc.match(/^Internal transfer to ([^:]+)(?:: (.+))?$/);
+                            if (revTransferToMatch) {
+                              const accountName = revTransferToMatch[1].trim();
+                              const description = revTransferToMatch[2] ? `: ${revTransferToMatch[2]}` : "";
+                              originalTranslated = t("accounts.internalTransferTo", { accountName, description });
+                            }
+                            const revTransferFromMatch = originalDesc.match(/^Internal transfer from ([^:]+)(?:: (.+))?$/);
+                            if (revTransferFromMatch) {
+                              const accountName = revTransferFromMatch[1].trim();
+                              const description = revTransferFromMatch[2] ? `: ${revTransferFromMatch[2]}` : "";
+                              originalTranslated = t("accounts.internalTransferFrom", { accountName, description });
+                            }
+                            const revFeeMatch = originalDesc.match(/^Transaction fee for transfer from ([^:]+)(?:: (.+))?$/);
+                            if (revFeeMatch) {
+                              const accountName = revFeeMatch[1].trim();
+                              const description = revFeeMatch[2] ? `: ${revFeeMatch[2]}` : "";
+                              originalTranslated = t("accounts.transactionFeeForTransfer", { accountName, description });
+                            }
+                            translated = t("accounts.reversal", { description: originalTranslated });
+                          }
+                          
+                          // Expense
+                          const expenseMatch = desc.match(/^Expense(?:: (.+))?$/);
+                          if (expenseMatch) {
+                            const description = expenseMatch[1] ? `: ${expenseMatch[1]}` : "";
+                            translated = t("accounts.expense", { description });
+                          }
+                          
+                          // Reversal: Expense
+                          const expenseReversalMatch = desc.match(/^Reversal: Expense(?:: (.+))?$/);
+                          if (expenseReversalMatch) {
+                            const description = expenseReversalMatch[1] ? `: ${expenseReversalMatch[1]}` : "";
+                            translated = t("accounts.expenseReversal", { description });
+                          }
+                          
+                          // Reversal: Expense (Deleted)
+                          const expenseDeletedMatch = desc.match(/^Reversal: Expense(?:: (.+))? \(Deleted\)$/);
+                          if (expenseDeletedMatch) {
+                            const description = expenseDeletedMatch[1] ? `: ${expenseDeletedMatch[1]}` : "";
+                            translated = t("accounts.expenseDeleted", { description });
+                          }
+                          
+                          // Order receipt
+                          const orderReceiptMatch = desc.match(/^Order #(\d+) - Receipt from customer$/);
+                          if (orderReceiptMatch) {
+                            const orderId = orderReceiptMatch[1];
+                            translated = t("accounts.orderReceipt", { orderId });
+                          }
+                          
+                          // Order payment
+                          const orderPaymentMatch = desc.match(/^Order #(\d+) - Payment to customer$/);
+                          if (orderPaymentMatch) {
+                            const orderId = orderPaymentMatch[1];
+                            translated = t("accounts.orderPayment", { orderId });
+                          }
+                          
+                          // Order buy
+                          const orderBuyMatch = desc.match(/^Order #(\d+) - Buy$/);
+                          if (orderBuyMatch) {
+                            const orderId = orderBuyMatch[1];
+                            translated = t("accounts.orderBuy", { orderId });
+                          }
+                          
+                          // Order sell
+                          const orderSellMatch = desc.match(/^Order #(\d+) - Sell$/);
+                          if (orderSellMatch) {
+                            const orderId = orderSellMatch[1];
+                            translated = t("accounts.orderSell", { orderId });
+                          }
+                          
+                          return translated;
+                        })()}
                       </td>
                     </tr>
                   ))}
