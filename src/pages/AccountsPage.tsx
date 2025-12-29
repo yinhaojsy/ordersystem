@@ -1,9 +1,10 @@
-import { useState, type FormEvent, useEffect, useMemo } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
+import ProfitSummaryDisplay from "../components/profit/ProfitSummaryDisplay";
 import {
   useGetAccountsQuery,
   useGetAccountsSummaryQuery,
@@ -23,7 +24,7 @@ import {
 import { formatDate } from "../utils/format";
 import { useAppSelector } from "../app/hooks";
 import { hasActionPermission } from "../utils/permissions";
-import type { ProfitAccountMultiplier } from "../types";
+import { useProfitSummary } from "../hooks/useProfitSummary";
 
 // Helper function to format currency with proper number formatting
 const formatCurrency = (amount: number, currencyCode: string) => {
@@ -340,108 +341,11 @@ export default function AccountsPage() {
     }
   }, [transactionsModalAccountId]);
 
-  // Calculate profit summary data
-  const profitSummary = useMemo(() => {
-    if (!defaultCalculationDetails || displayType !== "profit") return null;
-
-    const defaultMultiplierMap = new Map<number, ProfitAccountMultiplier>();
-    defaultCalculationDetails.multipliers.forEach((m) => {
-      defaultMultiplierMap.set(m.accountId, m);
-    });
-
-    const defaultExchangeRateMap = new Map<string, number>();
-    defaultCalculationDetails.exchangeRates.forEach((er) => {
-      defaultExchangeRateMap.set(`${er.fromCurrencyCode}_${er.toCurrencyCode}`, er.rate);
-    });
-
-    // Calculate account values
-    const accountCalcs = accounts.map((account) => {
-      const multiplier = defaultMultiplierMap.get(account.id);
-      const mult = multiplier?.multiplier ?? 1.0;
-      const calculated = account.balance * mult;
-      return {
-        account,
-        multiplier: multiplier || null,
-        calculated,
-        groupId: multiplier?.groupId || null,
-        groupName: multiplier?.groupName || null,
-      };
-    });
-
-    // Group accounts by groupId
-    const grouped = new Map<string, typeof accountCalcs>();
-    accountCalcs.forEach((calc) => {
-      const groupId = calc.groupId || "ungrouped";
-      if (!grouped.has(groupId)) {
-        grouped.set(groupId, []);
-      }
-      grouped.get(groupId)!.push(calc);
-    });
-
-    // Calculate group sums by currency
-    const groupSums = new Map<string, Map<string, number>>();
-    grouped.forEach((groupAccounts, groupId) => {
-      const currencySums = new Map<string, number>();
-      groupAccounts.forEach((calc) => {
-        const currency = calc.account.currencyCode;
-        currencySums.set(currency, (currencySums.get(currency) || 0) + calc.calculated);
-      });
-      groupSums.set(groupId, currencySums);
-    });
-
-    // Calculate converted amounts
-    const convertedAmounts = new Map<string, number>();
-    const uniqueCurrencies = Array.from(new Set(accounts.map((a) => a.currencyCode)));
-    uniqueCurrencies.forEach((currency) => {
-      const key = `${currency}_${defaultCalculationDetails.targetCurrencyCode}`;
-      const defaultRate = currency === defaultCalculationDetails.targetCurrencyCode ? 1 : 0;
-      const rate = defaultExchangeRateMap.get(key) || defaultRate;
-      const currencySum = Array.from(groupSums.values())
-        .reduce((sum, currencySums) => sum + (currencySums.get(currency) || 0), 0);
-      const converted = rate > 0 ? currencySum * rate : currencySum;
-      convertedAmounts.set(currency, converted);
-    });
-
-    const totalConverted = Array.from(convertedAmounts.values()).reduce((sum, val) => sum + val, 0);
-    const totalInvestment = defaultCalculationDetails.initialInvestment || 0;
-    const totalProfit = totalConverted - totalInvestment;
-
-    // Get group names for display
-    const groupNames = new Map<string, string>();
-    grouped.forEach((_, groupId) => {
-      if (groupId !== "ungrouped") {
-        const firstCalc = grouped.get(groupId)?.[0];
-        if (firstCalc?.groupName) {
-          groupNames.set(groupId, firstCalc.groupName);
-        }
-      }
-    });
-
-    // Calculate converted total for each group
-    const groupConvertedTotals = new Map<string, number>();
-    groupSums.forEach((currencySums, groupId) => {
-      let groupTotal = 0;
-      currencySums.forEach((sum, currency) => {
-        const key = `${currency}_${defaultCalculationDetails.targetCurrencyCode}`;
-        const defaultRate = currency === defaultCalculationDetails.targetCurrencyCode ? 1 : 0;
-        const rate = defaultExchangeRateMap.get(key) || defaultRate;
-        const converted = rate > 0 ? sum * rate : sum;
-        groupTotal += converted;
-      });
-      groupConvertedTotals.set(groupId, groupTotal);
-    });
-
-    return {
-      groupSums,
-      groupNames,
-      groupConvertedTotals,
-      totalConverted,
-      totalInvestment,
-      totalProfit,
-      targetCurrency: defaultCalculationDetails.targetCurrencyCode,
-      exchangeRateMap: defaultExchangeRateMap,
-    };
-  }, [defaultCalculationDetails, accounts, displayType]);
+  // Use shared hook for profit summary calculation
+  const profitSummary = useProfitSummary(
+    displayType === "profit" ? defaultCalculationDetails : undefined,
+    accounts
+  );
 
   const handleToggleDisplay = async (newType: "currency" | "profit") => {
     try {
@@ -494,79 +398,7 @@ export default function AccountsPage() {
         }
       >
         {displayType === "profit" && profitSummary ? (
-          <div className="space-y-4">
-            {/* Group Summaries */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from(profitSummary.groupSums.entries())
-                .filter(([groupId]) => groupId !== "ungrouped")
-                .map(([groupId, currencySums]) => {
-                  const groupName = profitSummary.groupNames.get(groupId) || groupId;
-                  const convertedTotal = profitSummary.groupConvertedTotals.get(groupId) || 0;
-                  return (
-                    <div
-                      key={groupId}
-                      className="p-4 border border-slate-200 rounded-lg bg-slate-50"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold text-slate-900">{groupName}</span>
-                      </div>
-                      <div className="space-y-1">
-                        {Array.from(currencySums.entries()).map(([currency, sum]) => (
-                          <div key={currency} className="flex justify-between text-sm">
-                            <span className="text-slate-600">{currency}:</span>
-                            <span className="font-semibold">{formatCurrency(sum, currency)}</span>
-                          </div>
-                        ))}
-                        <div className="pt-2 border-t border-slate-200 mt-2">
-                          <div className="flex justify-between">
-                            <span className="text-slate-700 font-semibold">
-                              {t("profit.total") || "Total"} ({profitSummary.targetCurrency}):
-                            </span>
-                            <span className="font-bold text-slate-900">
-                              {formatCurrency(convertedTotal, profitSummary.targetCurrency)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-
-            {/* Totals */}
-            <div className="border-t-2 border-slate-300 pt-4 mt-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 border border-slate-200 rounded-lg bg-blue-50">
-                  <div className="text-sm font-semibold text-slate-700 mb-1">
-                    {t("profit.totalConverted") || "Total Converted"}
-                  </div>
-                  <div className="text-2xl font-bold text-blue-700">
-                    {formatCurrency(profitSummary.totalConverted, profitSummary.targetCurrency)}
-                  </div>
-                </div>
-                <div className="p-4 border border-slate-200 rounded-lg bg-slate-50">
-                  <div className="text-sm font-semibold text-slate-700 mb-1">
-                    {t("profit.totalInvestment") || "Total Investment"}
-                  </div>
-                  <div className="text-2xl font-bold text-slate-900">
-                    {formatCurrency(profitSummary.totalInvestment, profitSummary.targetCurrency)}
-                  </div>
-                </div>
-                <div className={`p-4 border border-slate-200 rounded-lg ${
-                  profitSummary.totalProfit >= 0 ? "bg-emerald-50" : "bg-rose-50"
-                }`}>
-                  <div className="text-sm font-semibold text-slate-700 mb-1">
-                    {t("profit.totalProfit") || "Total Profit"}
-                  </div>
-                  <div className={`text-2xl font-bold ${
-                    profitSummary.totalProfit >= 0 ? "text-emerald-700" : "text-rose-700"
-                  }`}>
-                    {formatCurrency(profitSummary.totalProfit, profitSummary.targetCurrency)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ProfitSummaryDisplay summary={profitSummary} />
         ) : (
           <>
             {isLoadingSummary ? (
