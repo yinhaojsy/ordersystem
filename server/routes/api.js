@@ -28,7 +28,6 @@ import {
   createRole,
   updateRole,
   deleteRole,
-  getRoleUpdatedAt,
   subscribeToRoleUpdates,
   forceLogoutUsersByRole,
 } from "../controllers/rolesController.js";
@@ -100,7 +99,6 @@ router.post("/auth/login", login);
 
 router.get("/roles", listRoles);
 router.get("/roles/subscribe", subscribeToRoleUpdates);
-router.get("/roles/check-update", getRoleUpdatedAt);
 router.post("/roles", createRole);
 router.put("/roles/:id", updateRole);
 router.post("/roles/:id/force-logout", forceLogoutUsersByRole);

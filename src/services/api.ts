@@ -253,9 +253,6 @@ export const api = createApi({
             ]
           : [{ type: "Role", id: "LIST" }],
     }),
-    checkRoleUpdate: builder.query<{ updatedAt: string | null }, string>({
-      query: (roleName) => `roles/check-update?roleName=${encodeURIComponent(roleName)}`,
-    }),
     addRole: builder.mutation<Role, Omit<Role, "id">>({
       query: (body) => ({
         url: "roles",
@@ -739,7 +736,6 @@ export const {
   useUpdateUserMutation,
   useDeleteUserMutation,
   useGetRolesQuery,
-  useCheckRoleUpdateQuery,
   useAddRoleMutation,
   useUpdateRoleMutation,
   useDeleteRoleMutation,

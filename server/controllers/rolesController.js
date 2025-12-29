@@ -112,22 +112,6 @@ export const updateRole = (req, res, next) => {
   }
 };
 
-export const getRoleUpdatedAt = (req, res, next) => {
-  try {
-    const { roleName } = req.query;
-    if (!roleName) {
-      return res.status(400).json({ message: "Role name is required" });
-    }
-    const row = db.prepare("SELECT updatedAt FROM roles WHERE name = ?;").get(roleName);
-    if (!row) {
-      return res.status(404).json({ message: "Role not found" });
-    }
-    res.json({ updatedAt: row.updatedAt || null });
-  } catch (error) {
-    next(error);
-  }
-};
-
 export const deleteRole = (req, res, next) => {
   try {
     const { id } = req.params;
