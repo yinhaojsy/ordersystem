@@ -16,7 +16,7 @@ import { useAppSelector, useAppDispatch } from "../app/hooks";
 import { setUser } from "../app/authSlice";
 import type { RolePermissions } from "../types";
 
-const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses"];
+const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit"];
 
 export default function RolesPage() {
   const { t } = useTranslation();
@@ -39,6 +39,7 @@ export default function RolesPage() {
     { key: "deleteAccount", labelKey: "roles.deleteAccount" },
     { key: "deleteTransfer", labelKey: "roles.deleteTransfer" },
     { key: "createFlexOrder", labelKey: "roles.createFlexOrder" },
+    { key: "manageAccountsDisplay", labelKey: "roles.manageAccountsDisplay" },
   ];
   const [addRole, { isLoading: isSaving }] = useAddRoleMutation();
   const [updateRole] = useUpdateRoleMutation();

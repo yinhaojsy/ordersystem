@@ -21,6 +21,10 @@ import type {
   Expense,
   ExpenseInput,
   ExpenseChange,
+  ProfitCalculation,
+  ProfitCalculationDetails,
+  ProfitAccountMultiplier,
+  ProfitExchangeRate,
 } from "../types";
 
 const baseQuery = fetchBaseQuery({
@@ -30,7 +34,7 @@ const baseQuery = fetchBaseQuery({
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense"],
+  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting"],
   refetchOnReconnect: true,
   endpoints: (builder) => ({
     getCurrencies: builder.query<Currency[], void>({
@@ -714,6 +718,149 @@ export const api = createApi({
       query: (id) => `expenses/${id}/changes`,
       providesTags: (_res, _err, id) => [{ type: "Expense", id, variant: "CHANGES" }],
     }),
+    getProfitCalculations: builder.query<ProfitCalculation[], void>({
+      query: () => "profit-calculations",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "ProfitCalculation" as const, id })),
+              { type: "ProfitCalculation" as const, id: "LIST" },
+            ]
+          : [{ type: "ProfitCalculation" as const, id: "LIST" }],
+    }),
+    getProfitCalculation: builder.query<ProfitCalculationDetails, number>({
+      query: (id) => `profit-calculations/${id}`,
+      providesTags: (_res, _err, id) => [{ type: "ProfitCalculation", id }],
+    }),
+    createProfitCalculation: builder.mutation<
+      ProfitCalculationDetails,
+      { name: string; targetCurrencyCode: string; initialInvestment?: number }
+    >({
+      query: (body) => ({
+        url: "profit-calculations",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "ProfitCalculation", id: "LIST" }],
+    }),
+    updateProfitCalculation: builder.mutation<
+      ProfitCalculation,
+      { id: number; data: Partial<Pick<ProfitCalculation, "name" | "targetCurrencyCode" | "initialInvestment" | "groups">> }
+    >({
+      query: ({ id, data }) => ({
+        url: `profit-calculations/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "ProfitCalculation", id },
+        { type: "ProfitCalculation", id: "LIST" },
+      ],
+    }),
+    deleteProfitCalculation: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `profit-calculations/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "ProfitCalculation", id },
+        { type: "ProfitCalculation", id: "LIST" },
+      ],
+    }),
+    updateAccountMultiplier: builder.mutation<
+      ProfitAccountMultiplier,
+      { calculationId: number; accountId: number; multiplier: number; groupId?: string; groupName?: string }
+    >({
+      query: ({ calculationId, accountId, ...body }) => ({
+        url: `profit-calculations/${calculationId}/multipliers/${accountId}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { calculationId }) => [
+        { type: "ProfitCalculation", id: calculationId },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    updateExchangeRate: builder.mutation<
+      ProfitExchangeRate,
+      { calculationId: number; fromCurrencyCode: string; toCurrencyCode: string; rate: number }
+    >({
+      query: ({ calculationId, ...body }) => ({
+        url: `profit-calculations/${calculationId}/exchange-rates`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { calculationId }) => [
+        { type: "ProfitCalculation", id: calculationId },
+      ],
+    }),
+    deleteGroup: builder.mutation<
+      { message: string },
+      { calculationId: number; groupName: string }
+    >({
+      query: ({ calculationId, ...body }) => ({
+        url: `profit-calculations/${calculationId}/groups`,
+        method: "DELETE",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { calculationId }) => [
+        { type: "ProfitCalculation", id: calculationId },
+      ],
+    }),
+    renameGroup: builder.mutation<
+      { message: string },
+      { calculationId: number; oldGroupName: string; newGroupName: string }
+    >({
+      query: ({ calculationId, ...body }) => ({
+        url: `profit-calculations/${calculationId}/groups`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { calculationId }) => [
+        { type: "ProfitCalculation", id: calculationId },
+      ],
+    }),
+    setDefaultProfitCalculation: builder.mutation<
+      { message: string },
+      { id: number }
+    >({
+      query: ({ id }) => ({
+        url: `profit-calculations/${id}/set-default`,
+        method: "PUT",
+      }),
+      invalidatesTags: [
+        { type: "ProfitCalculation", id: "LIST" },
+      ],
+    }),
+    unsetDefaultProfitCalculation: builder.mutation<
+      { message: string },
+      { id: number }
+    >({
+      query: ({ id }) => ({
+        url: `profit-calculations/${id}/unset-default`,
+        method: "PUT",
+      }),
+      invalidatesTags: [
+        { type: "ProfitCalculation", id: "LIST" },
+      ],
+    }),
+    getSetting: builder.query<{ key: string; value: string | null }, string>({
+      query: (key) => `settings/${key}`,
+      providesTags: (_res, _err, key) => [{ type: "Setting", id: key }],
+    }),
+    setSetting: builder.mutation<
+      { key: string; value: string; message: string },
+      { key: string; value: string }
+    >({
+      query: (body) => ({
+        url: "settings",
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { key }) => [
+        { type: "Setting", id: key },
+      ],
+    }),
   }),
 });
 
@@ -771,6 +918,19 @@ export const {
   useUpdateExpenseMutation,
   useDeleteExpenseMutation,
   useGetExpenseChangesQuery,
+  useGetProfitCalculationsQuery,
+  useGetProfitCalculationQuery,
+  useCreateProfitCalculationMutation,
+  useUpdateProfitCalculationMutation,
+  useDeleteProfitCalculationMutation,
+  useUpdateAccountMultiplierMutation,
+  useUpdateExchangeRateMutation,
+  useDeleteGroupMutation,
+  useRenameGroupMutation,
+  useSetDefaultProfitCalculationMutation,
+  useUnsetDefaultProfitCalculationMutation,
+  useGetSettingQuery,
+  useSetSettingMutation,
 } = api;
 
 

@@ -11,6 +11,7 @@ import UsersPage from "../pages/UsersPage";
 import RolesPage from "../pages/RolesPage";
 import OrdersPage from "../pages/OrdersPage";
 import LoginPage from "../pages/LoginPage";
+import ProfitCalculationPage from "../pages/ProfitCalculationPage";
 import { useAppSelector } from "../app/hooks";
 import { hasSectionAccess } from "../utils/permissions";
 
@@ -39,6 +40,7 @@ export default function AppRoutes() {
           <Route path="users" element={<RequireAuth section="users"><UsersPage /></RequireAuth>} />
           <Route path="roles" element={<RequireAuth section="roles"><RolesPage /></RequireAuth>} />
           <Route path="orders" element={<RequireAuth section="orders"><OrdersPage /></RequireAuth>} />
+          <Route path="profit" element={<RequireAuth section="profit"><ProfitCalculationPage /></RequireAuth>} />
         </Route>
         <Route path="/login" element={<LoginPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

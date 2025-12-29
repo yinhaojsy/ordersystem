@@ -95,19 +95,27 @@ export default function CurrenciesPage() {
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
     if (!editingId || !editForm) return;
-    await updateCurrency({
-      id: editingId,
-      data: {
-        code: editForm.code.toUpperCase(),
-        name: editForm.name,
-        baseRateBuy: Number(editForm.baseRateBuy || 0),
-        baseRateSell: Number(editForm.baseRateSell || 0),
-        conversionRateBuy: Number(editForm.conversionRateBuy || editForm.baseRateBuy || 0),
-        conversionRateSell: Number(editForm.conversionRateSell || editForm.baseRateSell || 0),
-        active: Boolean(editForm.active),
-      },
-    });
-    cancelEdit();
+    try {
+      await updateCurrency({
+        id: editingId,
+        data: {
+          code: editForm.code.toUpperCase(),
+          name: editForm.name,
+          baseRateBuy: Number(editForm.baseRateBuy || 0),
+          baseRateSell: Number(editForm.baseRateSell || 0),
+          conversionRateBuy: Number(editForm.conversionRateBuy || editForm.baseRateBuy || 0),
+          conversionRateSell: Number(editForm.conversionRateSell || editForm.baseRateSell || 0),
+          active: Boolean(editForm.active),
+        },
+      }).unwrap();
+      cancelEdit();
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: error?.data?.message || t("currencies.errorUpdating") || "Error updating currency",
+        type: "error",
+      });
+    }
   };
 
   const handleDeleteClick = (id: number) => {

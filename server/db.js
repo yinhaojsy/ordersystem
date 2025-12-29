@@ -12,7 +12,7 @@ export const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
-const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses"];
+const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit"];
 
 const ensureSchema = () => {
   db.prepare(
@@ -245,6 +245,59 @@ const ensureSchema = () => {
       FOREIGN KEY(changedBy) REFERENCES users(id)
     );`,
   ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS profit_calculations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      targetCurrencyCode TEXT NOT NULL,
+      initialInvestment REAL NOT NULL DEFAULT 0,
+      groups TEXT DEFAULT '[]',
+      isDefault INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(targetCurrencyCode) REFERENCES currencies(code)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS profit_account_multipliers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profitCalculationId INTEGER NOT NULL,
+      accountId INTEGER NOT NULL,
+      multiplier REAL NOT NULL DEFAULT 1.0,
+      groupId TEXT,
+      groupName TEXT,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(profitCalculationId) REFERENCES profit_calculations(id) ON DELETE CASCADE,
+      FOREIGN KEY(accountId) REFERENCES accounts(id) ON DELETE CASCADE,
+      UNIQUE(profitCalculationId, accountId)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS profit_exchange_rates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profitCalculationId INTEGER NOT NULL,
+      fromCurrencyCode TEXT NOT NULL,
+      toCurrencyCode TEXT NOT NULL,
+      rate REAL NOT NULL,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(profitCalculationId) REFERENCES profit_calculations(id) ON DELETE CASCADE,
+      FOREIGN KEY(fromCurrencyCode) REFERENCES currencies(code),
+      FOREIGN KEY(toCurrencyCode) REFERENCES currencies(code),
+      UNIQUE(profitCalculationId, fromCurrencyCode, toCurrencyCode)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT UNIQUE NOT NULL,
+      value TEXT NOT NULL,
+      updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );`,
+  ).run();
 };
 
 const seedData = () => {
@@ -382,7 +435,7 @@ const seedData = () => {
     const customer1 = getCustomerId.get("john@example.com");
     const customer2 = getCustomerId.get("sophie@example.com");
     
-    // Only seed orders if we have at least 2 customers
+/*     // Only seed orders if we have at least 2 customers
     if (customer1 && customer2) {
       const insert = db.prepare(
         `INSERT INTO orders (customerId, fromCurrency, toCurrency, amountBuy, amountSell, rate, status, createdAt)
@@ -413,7 +466,7 @@ const seedData = () => {
       ];
       const insertMany = db.transaction((rows) => rows.forEach((row) => insert.run(row)));
       insertMany(seed);
-    }
+    } */
   }
 };
 
@@ -497,6 +550,37 @@ const migrateDatabase = () => {
     if (!transferChangesColumnNames.includes("transactionFee")) {
       db.prepare("ALTER TABLE transfer_changes ADD COLUMN transactionFee REAL").run();
     }
+
+    // Check profit_calculations table for groups column
+    const profitCalcTableInfo = db.prepare("PRAGMA table_info(profit_calculations)").all();
+    const profitCalcColumnNames = profitCalcTableInfo.map((col) => col.name);
+    
+    if (!profitCalcColumnNames.includes("groups")) {
+      db.prepare("ALTER TABLE profit_calculations ADD COLUMN groups TEXT DEFAULT '[]'").run();
+    }
+    
+    // Check profit_calculations table for isDefault column
+    if (!profitCalcColumnNames.includes("isDefault")) {
+      db.prepare("ALTER TABLE profit_calculations ADD COLUMN isDefault INTEGER NOT NULL DEFAULT 0").run();
+    }
+
+    // Migrate existing roles to include "profit" section if not present
+    const roles = db.prepare("SELECT id, permissions FROM roles").all();
+    roles.forEach((role) => {
+      try {
+        const permissions = JSON.parse(role.permissions);
+        if (permissions.sections && !permissions.sections.includes("profit")) {
+          permissions.sections.push("profit");
+          db.prepare("UPDATE roles SET permissions = @permissions, updatedAt = @updatedAt WHERE id = @id").run({
+            id: role.id,
+            permissions: JSON.stringify(permissions),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } catch (error) {
+        console.error(`Error migrating role ${role.id}:`, error);
+      }
+    });
   } catch (error) {
     console.error("Migration error:", error);
   }

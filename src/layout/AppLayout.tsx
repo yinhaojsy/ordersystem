@@ -69,14 +69,15 @@ export default function AppLayout() {
 
   const navItems: Array<{ to: string; labelKey: string; end?: boolean; section: string }> = [
     { to: "/", labelKey: "nav.dashboard", end: true, section: "dashboard" },
-    { to: "/currencies", labelKey: "nav.currencies", section: "currencies" },
-    { to: "/accounts", labelKey: "nav.accounts", section: "accounts" },
-    { to: "/transfers", labelKey: "nav.transfers", section: "transfers" },
+    { to: "/orders", labelKey: "nav.orders", section: "orders" },
     { to: "/expenses", labelKey: "nav.expenses", section: "expenses" },
+    { to: "/transfers", labelKey: "nav.transfers", section: "transfers" },
     { to: "/customers", labelKey: "nav.customers", section: "customers" },
+    { to: "/accounts", labelKey: "nav.accounts", section: "accounts" },
+    { to: "/currencies", labelKey: "nav.currencies", section: "currencies" },
     { to: "/users", labelKey: "nav.users", section: "users" },
     { to: "/roles", labelKey: "nav.roles", section: "roles" },
-    { to: "/orders", labelKey: "nav.orders", section: "orders" },
+    { to: "/profit", labelKey: "nav.profit", section: "profit" },
   ];
 
   const matched = navItems.find(item =>

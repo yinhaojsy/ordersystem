@@ -252,4 +252,43 @@ export interface ExpenseChange {
   description?: string;
 }
 
+export interface ProfitCalculation {
+  id: number;
+  name: string;
+  targetCurrencyCode: string;
+  initialInvestment: number;
+  groups?: string[];
+  isDefault?: number | boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProfitAccountMultiplier {
+  id: number;
+  profitCalculationId: number;
+  accountId: number;
+  accountName?: string;
+  currencyCode?: string;
+  currencyName?: string;
+  balance?: number;
+  multiplier: number;
+  groupId?: string | null;
+  groupName?: string | null;
+  createdAt: string;
+}
+
+export interface ProfitExchangeRate {
+  id: number;
+  profitCalculationId: number;
+  fromCurrencyCode: string;
+  toCurrencyCode: string;
+  rate: number;
+  createdAt: string;
+}
+
+export interface ProfitCalculationDetails extends ProfitCalculation {
+  multipliers: ProfitAccountMultiplier[];
+  exchangeRates: ProfitExchangeRate[];
+}
+
 

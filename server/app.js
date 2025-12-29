@@ -40,6 +40,20 @@ if (process.env.NODE_ENV === "production") {
 }
 
 app.use((err, req, res, _next) => {
+  // Handle SQLite unique constraint errors
+  if (err && (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === 'SQLITE_CONSTRAINT')) {
+    // Check if it's a currency code constraint
+    if (req.path && req.path.includes('/currencies/')) {
+      return res.status(400).json({ 
+        message: "Currency code already exists. Please choose a different code." 
+      });
+    }
+    // Generic unique constraint error
+    return res.status(400).json({ 
+      message: "A record with this value already exists. Please choose a different value." 
+    });
+  }
+  
   // Only log unexpected errors
   if (err && err.code !== 'SQLITE_CONSTRAINT_FOREIGNKEY') {
     console.error(err);

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, useEffect } from "react";
+import { useState, type FormEvent, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
@@ -15,10 +15,15 @@ import {
   useAddFundsMutation,
   useWithdrawFundsMutation,
   useGetAccountTransactionsQuery,
+  useGetProfitCalculationsQuery,
+  useGetProfitCalculationQuery,
+  useGetSettingQuery,
+  useSetSettingMutation,
 } from "../services/api";
 import { formatDate } from "../utils/format";
 import { useAppSelector } from "../app/hooks";
 import { hasActionPermission } from "../utils/permissions";
+import type { ProfitAccountMultiplier } from "../types";
 
 // Helper function to format currency with proper number formatting
 const formatCurrency = (amount: number, currencyCode: string) => {
@@ -39,6 +44,18 @@ export default function AccountsPage() {
   const [deleteAccount, { isLoading: isDeleting }] = useDeleteAccountMutation();
   const [addFunds] = useAddFundsMutation();
   const [withdrawFunds] = useWithdrawFundsMutation();
+  const { data: calculations = [] } = useGetProfitCalculationsQuery();
+  const { data: accountsDisplaySetting } = useGetSettingQuery("accountsDisplayType");
+  const [setSetting] = useSetSettingMutation();
+
+  const displayType = accountsDisplaySetting?.value === "profit" ? "profit" : "currency";
+
+  // Find default calculation
+  const defaultCalculation = calculations.find((calc) => calc.isDefault === 1 || calc.isDefault === true);
+  const { data: defaultCalculationDetails } = useGetProfitCalculationQuery(
+    defaultCalculation?.id || 0,
+    { skip: !defaultCalculation || displayType !== "profit" }
+  );
 
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
     isOpen: false,
@@ -101,13 +118,33 @@ export default function AccountsPage() {
     event.preventDefault();
     if (!form.currencyCode || !form.name) return;
 
-    await createAccount({
-      currencyCode: form.currencyCode,
-      name: form.name,
-      initialFunds: form.initialFunds ? parseFloat(form.initialFunds) : 0,
-    });
+    // Check if account with same name already exists
+    const duplicateAccount = accounts.find(
+      (a) => a.name.toLowerCase().trim() === form.name.toLowerCase().trim()
+    );
+    if (duplicateAccount) {
+      setAlertModal({
+        isOpen: true,
+        message: t("accounts.duplicateNameError") || "An account with this name already exists",
+        type: "error",
+      });
+      return;
+    }
 
-    resetForm();
+    try {
+      await createAccount({
+        currencyCode: form.currencyCode,
+        name: form.name,
+        initialFunds: form.initialFunds ? parseFloat(form.initialFunds) : 0,
+      }).unwrap();
+      resetForm();
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: error?.data?.message || t("accounts.errorCreating") || "Error creating account",
+        type: "error",
+      });
+    }
   };
 
   const startEdit = (accountId: number) => {
@@ -125,8 +162,22 @@ export default function AccountsPage() {
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
     if (!editingId) return;
+    
+    // Check if another account with same name already exists (excluding current account)
+    const duplicateAccount = accounts.find(
+      (a) => a.id !== editingId && a.name.toLowerCase().trim() === editForm.name.toLowerCase().trim()
+    );
+    if (duplicateAccount) {
+      setAlertModal({
+        isOpen: true,
+        message: t("accounts.duplicateNameError") || "An account with this name already exists",
+        type: "error",
+      });
+      return;
+    }
+
     try {
-      await updateAccount({ id: editingId, name: editForm.name });
+      await updateAccount({ id: editingId, name: editForm.name }).unwrap();
       cancelEdit();
     } catch (error: any) {
       setAlertModal({ 
@@ -148,7 +199,16 @@ export default function AccountsPage() {
     });
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number | null) => {
+    if (id === null || id === undefined) {
+      setAlertModal({ 
+        isOpen: true, 
+        message: t("accounts.errorDeleting") || "Error: Invalid account ID", 
+        type: "error" 
+      });
+      return;
+    }
+
     try {
       await deleteAccount(id).unwrap();
       setConfirmModal({ isOpen: false, message: "", accountId: null });
@@ -280,41 +340,265 @@ export default function AccountsPage() {
     }
   }, [transactionsModalAccountId]);
 
+  // Calculate profit summary data
+  const profitSummary = useMemo(() => {
+    if (!defaultCalculationDetails || displayType !== "profit") return null;
+
+    const defaultMultiplierMap = new Map<number, ProfitAccountMultiplier>();
+    defaultCalculationDetails.multipliers.forEach((m) => {
+      defaultMultiplierMap.set(m.accountId, m);
+    });
+
+    const defaultExchangeRateMap = new Map<string, number>();
+    defaultCalculationDetails.exchangeRates.forEach((er) => {
+      defaultExchangeRateMap.set(`${er.fromCurrencyCode}_${er.toCurrencyCode}`, er.rate);
+    });
+
+    // Calculate account values
+    const accountCalcs = accounts.map((account) => {
+      const multiplier = defaultMultiplierMap.get(account.id);
+      const mult = multiplier?.multiplier ?? 1.0;
+      const calculated = account.balance * mult;
+      return {
+        account,
+        multiplier: multiplier || null,
+        calculated,
+        groupId: multiplier?.groupId || null,
+        groupName: multiplier?.groupName || null,
+      };
+    });
+
+    // Group accounts by groupId
+    const grouped = new Map<string, typeof accountCalcs>();
+    accountCalcs.forEach((calc) => {
+      const groupId = calc.groupId || "ungrouped";
+      if (!grouped.has(groupId)) {
+        grouped.set(groupId, []);
+      }
+      grouped.get(groupId)!.push(calc);
+    });
+
+    // Calculate group sums by currency
+    const groupSums = new Map<string, Map<string, number>>();
+    grouped.forEach((groupAccounts, groupId) => {
+      const currencySums = new Map<string, number>();
+      groupAccounts.forEach((calc) => {
+        const currency = calc.account.currencyCode;
+        currencySums.set(currency, (currencySums.get(currency) || 0) + calc.calculated);
+      });
+      groupSums.set(groupId, currencySums);
+    });
+
+    // Calculate converted amounts
+    const convertedAmounts = new Map<string, number>();
+    const uniqueCurrencies = Array.from(new Set(accounts.map((a) => a.currencyCode)));
+    uniqueCurrencies.forEach((currency) => {
+      const key = `${currency}_${defaultCalculationDetails.targetCurrencyCode}`;
+      const defaultRate = currency === defaultCalculationDetails.targetCurrencyCode ? 1 : 0;
+      const rate = defaultExchangeRateMap.get(key) || defaultRate;
+      const currencySum = Array.from(groupSums.values())
+        .reduce((sum, currencySums) => sum + (currencySums.get(currency) || 0), 0);
+      const converted = rate > 0 ? currencySum * rate : currencySum;
+      convertedAmounts.set(currency, converted);
+    });
+
+    const totalConverted = Array.from(convertedAmounts.values()).reduce((sum, val) => sum + val, 0);
+    const totalInvestment = defaultCalculationDetails.initialInvestment || 0;
+    const totalProfit = totalConverted - totalInvestment;
+
+    // Get group names for display
+    const groupNames = new Map<string, string>();
+    grouped.forEach((_, groupId) => {
+      if (groupId !== "ungrouped") {
+        const firstCalc = grouped.get(groupId)?.[0];
+        if (firstCalc?.groupName) {
+          groupNames.set(groupId, firstCalc.groupName);
+        }
+      }
+    });
+
+    // Calculate converted total for each group
+    const groupConvertedTotals = new Map<string, number>();
+    groupSums.forEach((currencySums, groupId) => {
+      let groupTotal = 0;
+      currencySums.forEach((sum, currency) => {
+        const key = `${currency}_${defaultCalculationDetails.targetCurrencyCode}`;
+        const defaultRate = currency === defaultCalculationDetails.targetCurrencyCode ? 1 : 0;
+        const rate = defaultExchangeRateMap.get(key) || defaultRate;
+        const converted = rate > 0 ? sum * rate : sum;
+        groupTotal += converted;
+      });
+      groupConvertedTotals.set(groupId, groupTotal);
+    });
+
+    return {
+      groupSums,
+      groupNames,
+      groupConvertedTotals,
+      totalConverted,
+      totalInvestment,
+      totalProfit,
+      targetCurrency: defaultCalculationDetails.targetCurrencyCode,
+      exchangeRateMap: defaultExchangeRateMap,
+    };
+  }, [defaultCalculationDetails, accounts, displayType]);
+
+  const handleToggleDisplay = async (newType: "currency" | "profit") => {
+    try {
+      await setSetting({ key: "accountsDisplayType", value: newType }).unwrap();
+      setAlertModal({
+        isOpen: true,
+        message: t("accounts.displaySettingSaved") || "Display setting saved successfully",
+        type: "success",
+      });
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: error?.data?.message || t("accounts.errorSavingDisplaySetting") || "Error saving display setting",
+        type: "error",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Summary Section */}
       <SectionCard
         title={t("accounts.summaryTitle")}
         description={t("accounts.summaryDescription")}
-      >
-        {isLoadingSummary ? (
-          <div className="text-sm text-slate-500">{t("common.loading")}</div>
-        ) : summary.length === 0 ? (
-          <div className="text-sm text-slate-500">{t("accounts.noAccounts")}</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {summary.map((item) => (
-              <div
-                key={item.currencyCode}
-                className="p-4 border border-slate-200 rounded-lg bg-slate-50"
+        actions={
+          hasActionPermission(authUser, "manageAccountsDisplay") ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleToggleDisplay("currency")}
+                className={`px-3 py-1 text-sm rounded ${
+                  displayType === "currency"
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-slate-900">
-                    {item.currencyCode}
-                  </span>
-                  <Badge tone="blue">{item.accountCount} {t("accounts.accounts")}</Badge>
+                {t("accounts.currencySummary") || "Currency Summary"}
+              </button>
+              <button
+                onClick={() => handleToggleDisplay("profit")}
+                className={`px-3 py-1 text-sm rounded ${
+                  displayType === "profit"
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                }`}
+              >
+                {t("accounts.profitSummary") || "Profit Summary"}
+              </button>
+            </div>
+          ) : undefined
+        }
+      >
+        {displayType === "profit" && profitSummary ? (
+          <div className="space-y-4">
+            {/* Group Summaries */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from(profitSummary.groupSums.entries())
+                .filter(([groupId]) => groupId !== "ungrouped")
+                .map(([groupId, currencySums]) => {
+                  const groupName = profitSummary.groupNames.get(groupId) || groupId;
+                  const convertedTotal = profitSummary.groupConvertedTotals.get(groupId) || 0;
+                  return (
+                    <div
+                      key={groupId}
+                      className="p-4 border border-slate-200 rounded-lg bg-slate-50"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-slate-900">{groupName}</span>
+                      </div>
+                      <div className="space-y-1">
+                        {Array.from(currencySums.entries()).map(([currency, sum]) => (
+                          <div key={currency} className="flex justify-between text-sm">
+                            <span className="text-slate-600">{currency}:</span>
+                            <span className="font-semibold">{formatCurrency(sum, currency)}</span>
+                          </div>
+                        ))}
+                        <div className="pt-2 border-t border-slate-200 mt-2">
+                          <div className="flex justify-between">
+                            <span className="text-slate-700 font-semibold">
+                              {t("profit.total") || "Total"} ({profitSummary.targetCurrency}):
+                            </span>
+                            <span className="font-bold text-slate-900">
+                              {formatCurrency(convertedTotal, profitSummary.targetCurrency)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Totals */}
+            <div className="border-t-2 border-slate-300 pt-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 border border-slate-200 rounded-lg bg-blue-50">
+                  <div className="text-sm font-semibold text-slate-700 mb-1">
+                    {t("profit.totalConverted") || "Total Converted"}
+                  </div>
+                  <div className="text-2xl font-bold text-blue-700">
+                    {formatCurrency(profitSummary.totalConverted, profitSummary.targetCurrency)}
+                  </div>
                 </div>
-                <div className={`text-2xl font-bold ${
-                  item.totalBalance < 0 ? "text-red-600" : "text-slate-900"
+                <div className="p-4 border border-slate-200 rounded-lg bg-slate-50">
+                  <div className="text-sm font-semibold text-slate-700 mb-1">
+                    {t("profit.totalInvestment") || "Total Investment"}
+                  </div>
+                  <div className="text-2xl font-bold text-slate-900">
+                    {formatCurrency(profitSummary.totalInvestment, profitSummary.targetCurrency)}
+                  </div>
+                </div>
+                <div className={`p-4 border border-slate-200 rounded-lg ${
+                  profitSummary.totalProfit >= 0 ? "bg-emerald-50" : "bg-rose-50"
                 }`}>
-                  {formatCurrency(item.totalBalance, item.currencyCode)}
-                </div>
-                <div className="text-xs text-slate-500 mt-1">
-                  {item.currencyName || item.currencyCode}
+                  <div className="text-sm font-semibold text-slate-700 mb-1">
+                    {t("profit.totalProfit") || "Total Profit"}
+                  </div>
+                  <div className={`text-2xl font-bold ${
+                    profitSummary.totalProfit >= 0 ? "text-emerald-700" : "text-rose-700"
+                  }`}>
+                    {formatCurrency(profitSummary.totalProfit, profitSummary.targetCurrency)}
+                  </div>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
+        ) : (
+          <>
+            {isLoadingSummary ? (
+              <div className="text-sm text-slate-500">{t("common.loading")}</div>
+            ) : summary.length === 0 ? (
+              <div className="text-sm text-slate-500">{t("accounts.noAccounts")}</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {summary.map((item) => (
+                  <div
+                    key={item.currencyCode}
+                    className="p-4 border border-slate-200 rounded-lg bg-slate-50"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold text-slate-900">
+                        {item.currencyCode}
+                      </span>
+                      <Badge tone="blue">{item.accountCount} {t("accounts.accounts")}</Badge>
+                    </div>
+                    <div className={`text-2xl font-bold ${
+                      item.totalBalance < 0 ? "text-red-600" : "text-slate-900"
+                    }`}>
+                      {formatCurrency(item.totalBalance, item.currencyCode)}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      {item.currencyName || item.currencyCode}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </SectionCard>
 
@@ -464,7 +748,6 @@ export default function AccountsPage() {
             onChange={(e) => setForm((p) => ({ ...p, initialFunds: e.target.value }))}
             type="number"
             step="0.01"
-            min="0"
             onWheel={(e) => (e.target as HTMLInputElement).blur()}
           />
           <button
@@ -805,7 +1088,11 @@ export default function AccountsPage() {
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         message={confirmModal.message}
-        onConfirm={() => confirmModal.accountId && handleDelete(confirmModal.accountId)}
+        onConfirm={() => {
+          if (confirmModal.accountId !== null && confirmModal.accountId !== undefined) {
+            handleDelete(confirmModal.accountId);
+          }
+        }}
         onCancel={() => setConfirmModal({ isOpen: false, message: "", accountId: null })}
         confirmText={t("common.delete")}
         cancelText={t("common.cancel")}

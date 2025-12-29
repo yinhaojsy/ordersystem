@@ -55,6 +55,8 @@ import {
   addFunds,
   withdrawFunds,
   getAccountTransactions,
+  getAccountReferences,
+  getAllReferences,
 } from "../controllers/accountsController.js";
 import {
   listTransfers,
@@ -70,6 +72,20 @@ import {
   deleteExpense,
   getExpenseChanges,
 } from "../controllers/expensesController.js";
+import {
+  getProfitCalculations,
+  getProfitCalculation,
+  createProfitCalculation,
+  updateProfitCalculation,
+  deleteProfitCalculation,
+  updateAccountMultiplier,
+  updateExchangeRate,
+  deleteGroup,
+  renameGroup,
+  setDefaultCalculation,
+  unsetDefaultCalculation,
+} from "../controllers/profitController.js";
+import { getSetting, setSetting } from "../controllers/settingsController.js";
 
 const router = Router();
 
@@ -122,6 +138,8 @@ router.delete("/orders/:id", deleteOrder);
 router.get("/accounts", listAccounts);
 router.get("/accounts/summary", getAccountsSummary);
 router.get("/accounts/currency/:currencyCode", getAccountsByCurrency);
+router.get("/accounts/debug/references", getAllReferences);
+router.get("/accounts/:id/references", getAccountReferences);
 router.post("/accounts", createAccount);
 router.put("/accounts/:id", updateAccount);
 router.delete("/accounts/:id", deleteAccount);
@@ -140,6 +158,21 @@ router.post("/expenses", createExpense);
 router.get("/expenses/:id/changes", getExpenseChanges);
 router.put("/expenses/:id", updateExpense);
 router.delete("/expenses/:id", deleteExpense);
+
+router.get("/profit-calculations", getProfitCalculations);
+router.get("/profit-calculations/:id", getProfitCalculation);
+router.post("/profit-calculations", createProfitCalculation);
+router.put("/profit-calculations/:id", updateProfitCalculation);
+router.delete("/profit-calculations/:id", deleteProfitCalculation);
+router.put("/profit-calculations/:id/multipliers/:accountId", updateAccountMultiplier);
+router.put("/profit-calculations/:id/exchange-rates", updateExchangeRate);
+router.delete("/profit-calculations/:id/groups", deleteGroup);
+router.put("/profit-calculations/:id/groups", renameGroup);
+router.put("/profit-calculations/:id/set-default", setDefaultCalculation);
+router.put("/profit-calculations/:id/unset-default", unsetDefaultCalculation);
+
+router.get("/settings/:key", getSetting);
+router.put("/settings", setSetting);
 
 export default router;
 
