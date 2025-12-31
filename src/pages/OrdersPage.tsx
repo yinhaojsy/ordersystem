@@ -278,8 +278,8 @@ export default function OrdersPage() {
     // }
   };
 
-  const [receiptUploads, setReceiptUploads] = useState<Array<{ image: string; amount: string; accountId: string }>>([{ image: "", amount: "", accountId: "" }]);
-  const [paymentUploads, setPaymentUploads] = useState<Array<{ image: string; amount: string; accountId: string }>>([{ image: "", amount: "", accountId: "" }]);
+  const [receiptUploads, setReceiptUploads] = useState<Array<{ image: string; file?: File; amount: string; accountId: string }>>([{ image: "", amount: "", accountId: "" }]);
+  const [paymentUploads, setPaymentUploads] = useState<Array<{ image: string; file?: File; amount: string; accountId: string }>>([{ image: "", amount: "", accountId: "" }]);
   const [receiptDragOver, setReceiptDragOver] = useState(false);
   const [paymentDragOver, setPaymentDragOver] = useState(false);
   const [activeUploadType, setActiveUploadType] = useState<"receipt" | "payment" | null>(null);
@@ -676,10 +676,16 @@ export default function OrdersPage() {
       if (upload.image && upload.amount && upload.accountId) {
         const payload: any = {
           id: viewModalOrderId,
-          imagePath: upload.image,
           amount: Number(upload.amount),
           accountId: Number(upload.accountId),
         };
+        
+        // Send File object if available, otherwise fallback to base64 (backward compatibility)
+        if (upload.file) {
+          payload.file = upload.file;
+        } else {
+          payload.imagePath = upload.image;
+        }
         
         await addReceipt(payload).unwrap();
       }
@@ -819,10 +825,16 @@ export default function OrdersPage() {
       if (upload.image && upload.amount) {
         const payload: any = {
           id: viewModalOrderId,
-          imagePath: upload.image,
           amount: Number(upload.amount),
           accountId: Number(upload.accountId),
         };
+        
+        // Send File object if available, otherwise fallback to base64 (backward compatibility)
+        if (upload.file) {
+          payload.file = upload.file;
+        } else {
+          payload.imagePath = upload.image;
+        }
         
         try {
           const result = await addPayment(payload).unwrap();
@@ -873,6 +885,22 @@ export default function OrdersPage() {
       return;
     }
     
+    // Store the File object immediately
+    if (type === "receipt") {
+      setReceiptUploads((prev) => {
+        const newUploads = [...prev];
+        newUploads[index] = { ...newUploads[index], file };
+        return newUploads;
+      });
+    } else {
+      setPaymentUploads((prev) => {
+        const newUploads = [...prev];
+        newUploads[index] = { ...newUploads[index], file };
+        return newUploads;
+      });
+    }
+    
+    // Convert to base64 for preview (keep existing behavior)
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result as string;
@@ -953,34 +981,53 @@ export default function OrdersPage() {
               setReceiptUploads((prev) => {
                 const emptyIndex = prev.findIndex(u => !u.image);
                 const targetIndex = emptyIndex !== -1 ? emptyIndex : prev.length;
+                const updated = [...prev];
                 
-                // Process the image upload
+                // If no empty slot, add a new one
+                if (emptyIndex === -1) {
+                  updated.push({ image: "", amount: "", accountId: "" });
+                }
+                
+                // Store File object
+                if (!updated[targetIndex]) {
+                  updated[targetIndex] = { image: "", amount: "", accountId: "" };
+                }
+                updated[targetIndex] = { ...updated[targetIndex], file };
+                
+                // Convert to base64 for preview
                 const reader = new FileReader();
                 reader.onloadend = () => {
                   const base64 = reader.result as string;
                   setReceiptUploads((current) => {
-                    const updated = [...current];
-                    if (!updated[targetIndex]) {
-                      updated[targetIndex] = { image: "", amount: "", accountId: "" };
+                    const finalUpdated = [...current];
+                    if (!finalUpdated[targetIndex]) {
+                      finalUpdated[targetIndex] = { image: "", amount: "", accountId: "" };
                     }
-                    updated[targetIndex] = { ...updated[targetIndex], image: base64 };
-                    return updated;
+                    finalUpdated[targetIndex] = { ...finalUpdated[targetIndex], image: base64 };
+                    return finalUpdated;
                   });
                 };
                 reader.readAsDataURL(file);
                 
-                // If no empty slot, add a new one
-                if (emptyIndex === -1) {
-                  return [...prev, { image: "", amount: "", accountId: "" }];
-                }
-                return prev;
+                return updated;
               });
             } else {
               setPaymentUploads((prev) => {
                 const emptyIndex = prev.findIndex(u => !u.image);
                 const targetIndex = emptyIndex !== -1 ? emptyIndex : prev.length;
                 
-                // Process the image upload
+                // Store File object and process for preview
+                setPaymentUploads((current) => {
+                  const updated = [...current];
+                  if (!updated[targetIndex]) {
+                    updated[targetIndex] = { image: "", amount: "", accountId: "" };
+                  }
+                  const existing = updated[targetIndex];
+                  updated[targetIndex] = { ...existing, file };
+                  return updated;
+                });
+                
+                // Convert to base64 for preview
                 const reader = new FileReader();
                 reader.onloadend = () => {
                   const base64 = reader.result as string;
@@ -990,7 +1037,7 @@ export default function OrdersPage() {
                       updated[targetIndex] = { image: "", amount: "", accountId: "" };
                     }
                     const existing = updated[targetIndex];
-                    updated[targetIndex] = { image: base64, amount: existing.amount, accountId: existing.accountId };
+                    updated[targetIndex] = { image: base64, amount: existing.amount, accountId: existing.accountId, file: existing.file };
                     return updated;
                   });
                 };
@@ -1014,6 +1061,26 @@ export default function OrdersPage() {
       window.removeEventListener('paste', handlePaste);
     };
   }, [viewModalOrderId, makePaymentModalOrderId, activeUploadType]);
+
+  // Helper function to determine if a file path is an image or PDF
+  const getFileType = (imagePath: string): 'image' | 'pdf' | null => {
+    if (!imagePath) return null;
+    
+    // Check for base64 data URLs
+    if (imagePath.startsWith('data:image/')) return 'image';
+    if (imagePath.startsWith('data:application/pdf')) return 'pdf';
+    
+    // Check for server URLs (e.g., /api/uploads/orders/...)
+    if (imagePath.startsWith('/api/uploads/')) {
+      const lowerPath = imagePath.toLowerCase();
+      if (lowerPath.endsWith('.pdf')) return 'pdf';
+      if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || 
+          lowerPath.endsWith('.png') || lowerPath.endsWith('.gif') || 
+          lowerPath.endsWith('.webp')) return 'image';
+    }
+    
+    return null;
+  };
 
   const setStatus = async (id: number, status: OrderStatus) => {
     await updateOrderStatus({ id, status });
@@ -1215,6 +1282,12 @@ export default function OrdersPage() {
 
   // Helper function to open PDF data URI in a new tab
   const openPdfInNewTab = (dataUri: string) => {
+    // If it's a server URL, open it directly
+    if (dataUri.startsWith('/api/uploads/')) {
+      window.open(dataUri, '_blank');
+      return;
+    }
+    
     try {
       // Convert data URI to blob
       const byteString = atob(dataUri.split(',')[1]);
@@ -2234,7 +2307,7 @@ export default function OrdersPage() {
                         key={receipt.id}
                         className="mb-4 p-3 border border-slate-200 rounded-lg"
                       >
-                        {receipt.imagePath.startsWith('data:image/') ? (
+                        {getFileType(receipt.imagePath) === 'image' ? (
                           <img
                             src={receipt.imagePath}
                             alt="Receipt"
@@ -2246,7 +2319,7 @@ export default function OrdersPage() {
                               title: t("orders.receiptUploads")
                             })}
                           />
-                        ) : receipt.imagePath.startsWith('data:application/pdf') ? (
+                        ) : getFileType(receipt.imagePath) === 'pdf' ? (
                           <div
                             className="flex items-center justify-center gap-2 p-8 bg-slate-50 border-2 border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors mb-2"
                             onClick={() => openPdfInNewTab(receipt.imagePath)}
@@ -2530,7 +2603,7 @@ export default function OrdersPage() {
                         key={payment.id}
                         className="mb-4 p-3 border border-slate-200 rounded-lg"
                       >
-                        {payment.imagePath.startsWith('data:image/') ? (
+                        {getFileType(payment.imagePath) === 'image' ? (
                           <img
                             src={payment.imagePath}
                             alt="Payment"
@@ -2542,7 +2615,7 @@ export default function OrdersPage() {
                               title: t("orders.paymentUploads")
                             })}
                           />
-                        ) : payment.imagePath.startsWith('data:application/pdf') ? (
+                        ) : getFileType(payment.imagePath) === 'pdf' ? (
                           <div
                             className="flex items-center justify-center gap-2 p-8 bg-slate-50 border-2 border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors mb-2"
                             onClick={() => openPdfInNewTab(payment.imagePath)}
@@ -3118,7 +3191,7 @@ export default function OrdersPage() {
                         key={receipt.id}
                         className="mb-4 p-3 border border-slate-200 rounded-lg"
                       >
-                        {receipt.imagePath.startsWith('data:image/') ? (
+                        {getFileType(receipt.imagePath) === 'image' ? (
                           <img
                             src={receipt.imagePath}
                             alt="Receipt"
@@ -3130,7 +3203,7 @@ export default function OrdersPage() {
                               title: t("orders.receiptUploads")
                             })}
                           />
-                        ) : receipt.imagePath.startsWith('data:application/pdf') ? (
+                        ) : getFileType(receipt.imagePath) === 'pdf' ? (
                           <div
                             className="flex items-center justify-center gap-2 p-8 bg-slate-50 border-2 border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors mb-2"
                             onClick={() => openPdfInNewTab(receipt.imagePath)}
@@ -3545,7 +3618,7 @@ export default function OrdersPage() {
                         key={payment.id}
                         className="mb-4 p-3 border border-slate-200 rounded-lg"
                       >
-                        {payment.imagePath.startsWith('data:image/') ? (
+                        {getFileType(payment.imagePath) === 'image' ? (
                           <img
                             src={payment.imagePath}
                             alt="Payment"
@@ -3557,7 +3630,7 @@ export default function OrdersPage() {
                               title: t("orders.paymentUploads")
                             })}
                           />
-                        ) : payment.imagePath.startsWith('data:application/pdf') ? (
+                        ) : getFileType(payment.imagePath) === 'pdf' ? (
                           <div
                             className="flex items-center justify-center gap-2 p-8 bg-slate-50 border-2 border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors mb-2"
                             onClick={() => openPdfInNewTab(payment.imagePath)}
@@ -3965,7 +4038,7 @@ export default function OrdersPage() {
                           key={receipt.id}
                           className="mb-4 p-3 border border-slate-200 rounded-lg"
                         >
-                          {receipt.imagePath.startsWith('data:image/') ? (
+                          {getFileType(receipt.imagePath) === 'image' ? (
                             <img
                               src={receipt.imagePath}
                               alt="Receipt"
@@ -3977,7 +4050,7 @@ export default function OrdersPage() {
                                 title: t("orders.receiptUploads")
                               })}
                             />
-                          ) : receipt.imagePath.startsWith('data:application/pdf') ? (
+                          ) : getFileType(receipt.imagePath) === 'pdf' ? (
                             <div
                               className="flex items-center justify-center gap-2 p-8 bg-slate-50 border-2 border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors mb-2"
                               onClick={() => openPdfInNewTab(receipt.imagePath)}
@@ -4022,7 +4095,7 @@ export default function OrdersPage() {
                           key={payment.id}
                           className="mb-4 p-3 border border-slate-200 rounded-lg"
                         >
-                          {payment.imagePath.startsWith('data:image/') ? (
+                          {getFileType(payment.imagePath) === 'image' ? (
                             <img
                               src={payment.imagePath}
                               alt="Payment"
@@ -4034,7 +4107,7 @@ export default function OrdersPage() {
                                 title: t("orders.paymentUploads")
                               })}
                             />
-                          ) : payment.imagePath.startsWith('data:application/pdf') ? (
+                          ) : getFileType(payment.imagePath) === 'pdf' ? (
                             <div
                               className="flex items-center justify-center gap-2 p-8 bg-slate-50 border-2 border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors mb-2"
                               onClick={() => openPdfInNewTab(payment.imagePath)}
