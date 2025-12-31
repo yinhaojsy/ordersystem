@@ -181,7 +181,8 @@ export default function ProfitCalculationPage() {
     const sums = new Map<string, Map<string, number>>(); // groupId -> currency -> sum
     
     groupedAccounts.forEach((items, groupId) => {
-      if (groupId) { // Type guard to ensure groupId is not null
+      // Exclude "ungrouped" accounts from group sums - only include assigned groups
+      if (groupId && groupId !== "ungrouped") {
         const currencySums = new Map<string, number>();
         items.forEach((item) => {
           const currency = item.account.currencyCode;

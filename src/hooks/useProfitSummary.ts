@@ -57,17 +57,27 @@ export function useProfitSummary(
     // Calculate group sums by currency
     const groupSums = new Map<string, Map<string, number>>();
     grouped.forEach((groupAccounts, groupId) => {
-      const currencySums = new Map<string, number>();
-      groupAccounts.forEach((calc) => {
-        const currency = calc.account.currencyCode;
-        currencySums.set(currency, (currencySums.get(currency) || 0) + calc.calculated);
-      });
-      groupSums.set(groupId, currencySums);
+      // Exclude "ungrouped" accounts from group sums - only include assigned groups
+      if (groupId !== "ungrouped") {
+        const currencySums = new Map<string, number>();
+        groupAccounts.forEach((calc) => {
+          const currency = calc.account.currencyCode;
+          currencySums.set(currency, (currencySums.get(currency) || 0) + calc.calculated);
+        });
+        groupSums.set(groupId, currencySums);
+      }
     });
 
     // Calculate converted amounts
     const convertedAmounts = new Map<string, number>();
-    const uniqueCurrencies = Array.from(new Set(accounts.map((a) => a.currencyCode)));
+    // Only include currencies from accounts that are assigned to groups (exclude ungrouped)
+    const uniqueCurrencies = Array.from(
+      new Set(
+        accountCalcs
+          .filter((calc) => calc.groupId) // Only include accounts with a groupId
+          .map((calc) => calc.account.currencyCode)
+      )
+    );
     uniqueCurrencies.forEach((currency) => {
       const key = `${currency}_${calculationDetails.targetCurrencyCode}`;
       const defaultRate = currency === calculationDetails.targetCurrencyCode ? 1 : 0;
