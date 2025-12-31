@@ -1,4 +1,11 @@
 import { db } from "../db.js";
+import {
+  saveFile,
+  deleteFile,
+  generateExpenseFilename,
+  base64ToBuffer,
+  getFileUrl,
+} from "../utils/fileStorage.js";
 
 export const listExpenses = (_req, res) => {
   const rows = db
@@ -18,32 +25,88 @@ export const listExpenses = (_req, res) => {
        ORDER BY e.createdAt DESC;`,
     )
     .all();
-  res.json(rows);
+  
+  // Convert file paths to URLs for response (if not base64)
+  const expensesWithUrls = rows.map(expense => ({
+    ...expense,
+    imagePath: expense.imagePath && !expense.imagePath.startsWith('data:') 
+      ? getFileUrl(expense.imagePath) 
+      : expense.imagePath,
+  }));
+  
+  res.json(expensesWithUrls);
 };
 
 export const createExpense = (req, res, next) => {
   try {
-    const { accountId, amount, description, imagePath, createdBy } = req.body || {};
+    // Multer automatically parses FormData fields into req.body
+    // When FormData is used, fields are strings; when JSON is used, they might be numbers
+    const accountId = req.body?.accountId;
+    const amount = req.body?.amount;
+    const description = req.body?.description;
+    const createdBy = req.body?.createdBy;
+    const file = req.file; // Multer file object
 
-    if (!accountId || !amount) {
+    // Validate accountId - handle both string and number inputs (FormData sends strings)
+    // Check if accountId exists and is valid
+    if (accountId == null || accountId === "" || accountId === undefined) {
+      return res.status(400).json({ message: "Account and amount are required" });
+    }
+    
+    const accountIdStr = String(accountId).trim();
+    const accountIdNum = Number(accountIdStr);
+    
+    if (!accountIdStr || isNaN(accountIdNum) || accountIdNum <= 0) {
+      return res.status(400).json({ message: "Account and amount are required" });
+    }
+
+    // Validate amount - handle both string and number inputs (FormData sends strings)
+    // Check if amount exists and is valid
+    if (amount == null || amount === "" || amount === undefined) {
+      return res.status(400).json({ message: "Account and amount are required" });
+    }
+    
+    const amountStr = String(amount).trim();
+    const expenseAmount = Number(amountStr);
+    
+    if (!amountStr || isNaN(expenseAmount) || expenseAmount <= 0) {
       return res.status(400).json({ message: "Account and amount are required" });
     }
 
     // Get account details
-    const account = db.prepare("SELECT id, name, balance, currencyCode FROM accounts WHERE id = ?;").get(accountId);
+    const account = db.prepare("SELECT id, name, balance, currencyCode FROM accounts WHERE id = ?;").get(accountIdNum);
     if (!account) {
       return res.status(404).json({ message: "Account not found" });
     }
 
-    const expenseAmount = Number(amount);
-    if (isNaN(expenseAmount) || expenseAmount <= 0) {
-      return res.status(400).json({ message: "Amount must be a positive number" });
+    // Handle file upload - support both file and base64 (for backward compatibility)
+    let imagePath = null;
+    
+    if (file) {
+      // We need to create the expense first to get the ID for filename
+      // So we'll do it in two steps: create expense, then update with file
+      const tempExpenseId = db.prepare("SELECT COALESCE(MAX(id), 0) + 1 as nextId FROM expenses;").get().nextId;
+      const filename = generateExpenseFilename(tempExpenseId, file.mimetype, file.originalname);
+      imagePath = saveFile(file.buffer, filename, "expense");
+    } else if (req.body.imagePath) {
+      // Legacy base64 path (backward compatibility)
+      const base64Path = req.body.imagePath;
+      if (typeof base64Path === 'string' && base64Path.trim().length > 0) {
+        if (base64Path.startsWith('data:')) {
+          // We'll convert after we get the expense ID
+          imagePath = base64Path; // Temporary, will be converted
+        } else {
+          // Already a file path
+          imagePath = base64Path;
+        }
+      }
     }
 
     // Perform expense creation in a transaction
+    let expenseId;
     const transaction = db.transaction(() => {
       // Deduct amount from account balance (allow negative)
-      db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(expenseAmount, accountId);
+      db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(expenseAmount, accountIdNum);
 
       // Create transaction record for the account
       const expenseDescription = description 
@@ -54,7 +117,7 @@ export const createExpense = (req, res, next) => {
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
          VALUES (?, 'withdraw', ?, ?, ?);`
       ).run(
-        accountId,
+        accountIdNum,
         expenseAmount,
         expenseDescription,
         new Date().toISOString()
@@ -66,7 +129,7 @@ export const createExpense = (req, res, next) => {
          VALUES (@accountId, @amount, @currencyCode, @description, @imagePath, @createdBy, @createdAt);`
       );
       const result = stmt.run({
-        accountId,
+        accountId: accountIdNum,
         amount: expenseAmount,
         currencyCode: account.currencyCode,
         description: description || null,
@@ -75,7 +138,18 @@ export const createExpense = (req, res, next) => {
         createdAt: new Date().toISOString(),
       });
 
-      const expenseId = result.lastInsertRowid;
+      expenseId = result.lastInsertRowid;
+
+      // If we have a base64 image, convert it to file now that we have the expense ID
+      if (imagePath && imagePath.startsWith('data:')) {
+        const buffer = base64ToBuffer(imagePath);
+        if (buffer) {
+          const filename = generateExpenseFilename(expenseId, null, null);
+          imagePath = saveFile(buffer, filename, "expense");
+          // Update the expense with the file path
+          db.prepare("UPDATE expenses SET imagePath = ? WHERE id = ?;").run(imagePath, expenseId);
+        }
+      }
 
       // Log the initial creation as a change
       db.prepare(
@@ -85,7 +159,7 @@ export const createExpense = (req, res, next) => {
         expenseId,
         createdBy || null,
         new Date().toISOString(),
-        accountId,
+        accountIdNum,
         account.name,
         expenseAmount,
         description || null
@@ -94,7 +168,7 @@ export const createExpense = (req, res, next) => {
       return expenseId;
     });
 
-    const expenseId = transaction();
+    transaction();
 
     // Get the created expense with joined data
     const expense = db
@@ -109,8 +183,16 @@ export const createExpense = (req, res, next) => {
          WHERE e.id = ?;`
       )
       .get(expenseId);
+    
+    // Convert file path to URL for response (if not base64)
+    const expenseWithUrl = {
+      ...expense,
+      imagePath: expense.imagePath && !expense.imagePath.startsWith('data:') 
+        ? getFileUrl(expense.imagePath) 
+        : expense.imagePath,
+    };
 
-    res.status(201).json(expense);
+    res.status(201).json(expenseWithUrl);
   } catch (error) {
     next(error);
   }
@@ -119,16 +201,63 @@ export const createExpense = (req, res, next) => {
 export const updateExpense = (req, res, next) => {
   try {
     const { id } = req.params;
-    const { accountId, amount, description, imagePath, updatedBy } = req.body || {};
+    const { accountId, amount, description, updatedBy } = req.body || {};
+    const file = req.file; // Multer file object
 
     // Get existing expense
     const existingExpense = db.prepare("SELECT * FROM expenses WHERE id = ? AND deletedAt IS NULL;").get(id);
     if (!existingExpense) {
       return res.status(404).json({ message: "Expense not found" });
     }
+    
+    // Handle file upload - support both file and base64 (for backward compatibility)
+    let imagePath = undefined; // undefined means don't change, null means remove
+    
+    if (file) {
+      // New file upload - delete old file if it exists
+      if (existingExpense.imagePath && !existingExpense.imagePath.startsWith('data:')) {
+        deleteFile(existingExpense.imagePath);
+      }
+      const filename = generateExpenseFilename(id, file.mimetype, file.originalname);
+      imagePath = saveFile(file.buffer, filename, "expense");
+    } else if (req.body.imagePath !== undefined) {
+      // Explicitly set imagePath (could be null to remove, or new base64, or file path)
+      if (req.body.imagePath === null || req.body.imagePath === '') {
+        // Remove image - delete old file if it exists
+        if (existingExpense.imagePath && !existingExpense.imagePath.startsWith('data:')) {
+          deleteFile(existingExpense.imagePath);
+        }
+        imagePath = null;
+      } else if (req.body.imagePath.startsWith('data:')) {
+        // Legacy base64 - convert to file
+        if (existingExpense.imagePath && !existingExpense.imagePath.startsWith('data:')) {
+          deleteFile(existingExpense.imagePath);
+        }
+        const buffer = base64ToBuffer(req.body.imagePath);
+        if (buffer) {
+          const filename = generateExpenseFilename(id, null, null);
+          imagePath = saveFile(buffer, filename, "expense");
+        } else {
+          imagePath = req.body.imagePath; // Keep as base64 if conversion fails
+        }
+      } else {
+        // Already a file path (shouldn't happen, but handle it)
+        imagePath = req.body.imagePath;
+      }
+    }
 
     // Get account details for both old and new accounts
-    const finalAccountId = accountId !== undefined ? accountId : existingExpense.accountId;
+    // Handle both string and number inputs (FormData sends strings)
+    let finalAccountId = existingExpense.accountId;
+    if (accountId !== undefined) {
+      const accountIdStr = String(accountId).trim();
+      const accountIdNum = Number(accountIdStr);
+      if (!accountIdStr || isNaN(accountIdNum) || accountIdNum <= 0) {
+        return res.status(400).json({ message: "Account and amount are required" });
+      }
+      finalAccountId = accountIdNum;
+    }
+    
     const accountChanged = accountId !== undefined && accountId !== existingExpense.accountId;
     
     const newAccount = db.prepare("SELECT id, name, balance, currencyCode FROM accounts WHERE id = ?;").get(finalAccountId);
@@ -146,9 +275,15 @@ export const updateExpense = (req, res, next) => {
       }
     }
 
-    const expenseAmount = Number(amount || existingExpense.amount);
-    if (isNaN(expenseAmount) || expenseAmount <= 0) {
-      return res.status(400).json({ message: "Amount must be a positive number" });
+    // Handle amount validation - support both string and number inputs
+    let expenseAmount = existingExpense.amount;
+    if (amount !== undefined) {
+      const amountStr = String(amount).trim();
+      const amountNum = Number(amountStr);
+      if (!amountStr || isNaN(amountNum) || amountNum <= 0) {
+        return res.status(400).json({ message: "Account and amount are required" });
+      }
+      expenseAmount = amountNum;
     }
 
     const amountChanged = amount !== undefined && amount !== existingExpense.amount;
@@ -227,7 +362,7 @@ export const updateExpense = (req, res, next) => {
       const finalAmount = expenseAmount;
       const finalDescription = description !== undefined ? (description || null) : existingExpense.description;
       
-      if (accountId !== undefined) updateFields.push("accountId = ?"), updateValues.push(accountId);
+      if (accountId !== undefined) updateFields.push("accountId = ?"), updateValues.push(finalAccountId);
       if (amount !== undefined) updateFields.push("amount = ?"), updateValues.push(expenseAmount);
       if (description !== undefined) updateFields.push("description = ?"), updateValues.push(description || null);
       if (imagePath !== undefined) updateFields.push("imagePath = ?"), updateValues.push(imagePath || null);
@@ -274,8 +409,16 @@ export const updateExpense = (req, res, next) => {
          WHERE e.id = ?;`
       )
       .get(id);
+    
+    // Convert file path to URL for response (if not base64)
+    const expenseWithUrl = {
+      ...expense,
+      imagePath: expense.imagePath && !expense.imagePath.startsWith('data:') 
+        ? getFileUrl(expense.imagePath) 
+        : expense.imagePath,
+    };
 
-    res.json(expense);
+    res.json(expenseWithUrl);
   } catch (error) {
     next(error);
   }
@@ -319,6 +462,11 @@ export const deleteExpense = (req, res, next) => {
     const expense = db.prepare("SELECT * FROM expenses WHERE id = ? AND deletedAt IS NULL;").get(id);
     if (!expense) {
       return res.status(404).json({ message: "Expense not found" });
+    }
+    
+    // Delete associated file if it exists
+    if (expense.imagePath && !expense.imagePath.startsWith('data:')) {
+      deleteFile(expense.imagePath);
     }
 
     // Perform soft delete in a transaction

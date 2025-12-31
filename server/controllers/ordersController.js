@@ -1,4 +1,12 @@
 import { db } from "../db.js";
+import {
+  saveFile,
+  deleteFile,
+  generateOrderReceiptFilename,
+  generateOrderPaymentFilename,
+  base64ToBuffer,
+  getFileUrl,
+} from "../utils/fileStorage.js";
 
 // Helper function to calculate amountSell from amountBuy using the same logic as order creation (OrdersPage.tsx lines 298-365)
 const calculateAmountSell = (amountBuy, rate, fromCurrency, toCurrency) => {
@@ -220,12 +228,91 @@ export const updateOrderStatus = (req, res, next) => {
 export const deleteOrder = (req, res, next) => {
   try {
     const { id } = req.params;
+    
+    // Check if order exists
+    const order = db.prepare("SELECT id FROM orders WHERE id = ?;").get(id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    
+    // Get all receipts with accountId and amount for reversing balances
+    const receipts = db.prepare("SELECT accountId, amount, imagePath FROM order_receipts WHERE orderId = ?;").all(id);
+    // Get all payments with accountId and amount for reversing balances
+    const payments = db.prepare("SELECT accountId, amount, imagePath FROM order_payments WHERE orderId = ?;").all(id);
+    
+    // Reverse account balances for receipts
+    // Receipts added to account balance, so we need to subtract
+    receipts.forEach((receipt) => {
+      if (receipt.accountId && receipt.amount) {
+        const accountId = receipt.accountId;
+        const amount = receipt.amount;
+        
+        // Subtract the amount from account balance (reverse the receipt)
+        db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(amount, accountId);
+        
+        // Create reverse transaction in transaction history
+        db.prepare(
+          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+           VALUES (?, 'withdraw', ?, ?, ?);`
+        ).run(
+          accountId,
+          amount,
+          `Order #${id} - Reversal of receipt from customer (Order deleted)`,
+          new Date().toISOString()
+        );
+      }
+    });
+    
+    // Reverse account balances for payments
+    // Payments subtracted from account balance, so we need to add back
+    payments.forEach((payment) => {
+      if (payment.accountId && payment.amount) {
+        const accountId = payment.accountId;
+        const amount = payment.amount;
+        
+        // Add the amount back to account balance (reverse the payment)
+        db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(amount, accountId);
+        
+        // Create reverse transaction in transaction history
+        db.prepare(
+          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+           VALUES (?, 'add', ?, ?, ?);`
+        ).run(
+          accountId,
+          amount,
+          `Order #${id} - Reversal of payment to customer (Order deleted)`,
+          new Date().toISOString()
+        );
+      }
+    });
+    
+    // Delete associated files
+    receipts.forEach((receipt) => deleteFile(receipt.imagePath));
+    payments.forEach((payment) => deleteFile(payment.imagePath));
+    
+    // Collect all unique account IDs that were affected
+    const affectedAccountIds = new Set();
+    receipts.forEach((receipt) => {
+      if (receipt.accountId) {
+        affectedAccountIds.add(receipt.accountId);
+      }
+    });
+    payments.forEach((payment) => {
+      if (payment.accountId) {
+        affectedAccountIds.add(payment.accountId);
+      }
+    });
+    
+    // Delete the order (this will cascade delete receipts and payments due to foreign key constraints)
     const stmt = db.prepare(`DELETE FROM orders WHERE id = ?;`);
     const result = stmt.run(id);
     if (result.changes === 0) {
       return res.status(404).json({ message: "Order not found" });
     }
-    res.json({ success: true });
+    res.json({ 
+      success: true,
+      affectedAccountIds: Array.from(affectedAccountIds)
+    });
   } catch (error) {
     next(error);
   }
@@ -300,6 +387,17 @@ export const getOrderDetails = (req, res, next) => {
       paymentBalanceCalc = expectedPaymentBasedOnReceipts - totalPaymentAmount;
     }
     
+    // Convert file paths to URLs for receipts and payments
+    const receiptsWithUrls = receipts.map(r => ({
+      ...r,
+      imagePath: r.imagePath.startsWith('data:') ? r.imagePath : getFileUrl(r.imagePath),
+    }));
+    
+    const paymentsWithUrls = payments.map(p => ({
+      ...p,
+      imagePath: p.imagePath.startsWith('data:') ? p.imagePath : getFileUrl(p.imagePath),
+    }));
+
     res.json({
       order: {
         ...order,
@@ -307,12 +405,12 @@ export const getOrderDetails = (req, res, next) => {
         bankDetails: order.bankDetails ? JSON.parse(order.bankDetails) : null,
         isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
       },
-      receipts,
+      receipts: receiptsWithUrls,
       beneficiaries: beneficiaries.map(b => ({
         ...b,
         walletAddresses: b.walletAddresses ? JSON.parse(b.walletAddresses) : null,
       })),
-      payments,
+      payments: paymentsWithUrls,
       totalReceiptAmount,
       totalPaymentAmount,
       receiptBalance: receiptBalanceCalc,
@@ -432,14 +530,39 @@ export const processOrder = (req, res, next) => {
 export const addReceipt = (req, res, next) => {
   try {
     const { id } = req.params;
-    const { imagePath, amount, accountId } = req.body;
+    const { amount, accountId } = req.body;
+    const file = req.file; // Multer file object
 
-    if (!imagePath || amount === undefined) {
-      return res.status(400).json({ message: "Image path and amount are required" });
+    // Support both file upload and base64 (for backward compatibility)
+    let imagePath = null;
+    
+    if (file) {
+      // New file upload path
+      const filename = generateOrderReceiptFilename(id, file.mimetype, file.originalname);
+      imagePath = saveFile(file.buffer, filename, "order");
+    } else if (req.body.imagePath) {
+      // Legacy base64 path (backward compatibility)
+      const base64Path = req.body.imagePath;
+      if (typeof base64Path === 'string' && base64Path.trim().length > 0) {
+        if (base64Path.startsWith('data:')) {
+          // Convert base64 to file for migration
+          const buffer = base64ToBuffer(base64Path);
+          if (buffer) {
+            const filename = generateOrderReceiptFilename(id, null, null);
+            imagePath = saveFile(buffer, filename, "order");
+          } else {
+            // If conversion fails, store as base64 (legacy)
+            imagePath = base64Path;
+          }
+        } else {
+          // Already a file path
+          imagePath = base64Path;
+        }
+      }
     }
 
-    if (typeof imagePath !== 'string' || imagePath.trim().length === 0) {
-      return res.status(400).json({ message: "Invalid image path" });
+    if (!imagePath || amount === undefined) {
+      return res.status(400).json({ message: "File/image and amount are required" });
     }
 
     // Check if order exists first and get paymentFlow
@@ -493,6 +616,12 @@ export const addReceipt = (req, res, next) => {
          WHERE r.id = ?;`
       )
       .get(result.lastInsertRowid);
+    
+    // Convert file path to URL for response (if not base64)
+    const receiptWithUrl = {
+      ...receipt,
+      imagePath: receipt.imagePath.startsWith('data:') ? receipt.imagePath : getFileUrl(receipt.imagePath),
+    };
 
     // Update account balance immediately
     const receiptAccountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(receiptAccountId);
@@ -562,7 +691,7 @@ export const addReceipt = (req, res, next) => {
       }
     }
 
-    res.json(receipt);
+    res.json(receiptWithUrl);
   } catch (error) {
     console.error("Error adding receipt:", error);
     next(error);
@@ -732,14 +861,39 @@ const updateAccountBalancesOnCompletion = (orderId) => {
 export const addPayment = (req, res, next) => {
   try {
     const { id } = req.params;
-    const { imagePath, amount, accountId } = req.body;
+    const { amount, accountId } = req.body;
+    const file = req.file; // Multer file object
 
-    if (!imagePath || amount === undefined) {
-      return res.status(400).json({ message: "Image path and amount are required" });
+    // Support both file upload and base64 (for backward compatibility)
+    let imagePath = null;
+    
+    if (file) {
+      // New file upload path
+      const filename = generateOrderPaymentFilename(id, file.mimetype, file.originalname);
+      imagePath = saveFile(file.buffer, filename, "order");
+    } else if (req.body.imagePath) {
+      // Legacy base64 path (backward compatibility)
+      const base64Path = req.body.imagePath;
+      if (typeof base64Path === 'string' && base64Path.trim().length > 0) {
+        if (base64Path.startsWith('data:')) {
+          // Convert base64 to file for migration
+          const buffer = base64ToBuffer(base64Path);
+          if (buffer) {
+            const filename = generateOrderPaymentFilename(id, null, null);
+            imagePath = saveFile(buffer, filename, "order");
+          } else {
+            // If conversion fails, store as base64 (legacy)
+            imagePath = base64Path;
+          }
+        } else {
+          // Already a file path
+          imagePath = base64Path;
+        }
+      }
     }
 
-    if (typeof imagePath !== 'string' || imagePath.trim().length === 0) {
-      return res.status(400).json({ message: "Invalid image path" });
+    if (!imagePath || amount === undefined) {
+      return res.status(400).json({ message: "File/image and amount are required" });
     }
 
     // Check if order exists first and get paymentFlow
@@ -793,6 +947,12 @@ export const addPayment = (req, res, next) => {
          WHERE p.id = ?;`
       )
       .get(result.lastInsertRowid);
+    
+    // Convert file path to URL for response (if not base64)
+    const paymentWithUrl = {
+      ...payment,
+      imagePath: payment.imagePath.startsWith('data:') ? payment.imagePath : getFileUrl(payment.imagePath),
+    };
 
     // Update account balance immediately
     const accountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(paymentAccountId);
@@ -909,7 +1069,7 @@ export const addPayment = (req, res, next) => {
       }
     }
 
-    res.json(payment);
+    res.json(paymentWithUrl);
   } catch (error) {
     console.error("Error adding payment:", error);
     next(error);

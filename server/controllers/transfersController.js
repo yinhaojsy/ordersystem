@@ -503,11 +503,82 @@ export const deleteTransfer = (req, res, next) => {
       return res.status(404).json({ message: "Transfer not found" });
     }
 
-    // Note: We don't reverse the account balances when deleting a transfer
-    // as this could cause issues if accounts have been modified since the transfer
-    // The transfer record is just removed for audit purposes
-    
-    db.prepare("DELETE FROM internal_transfers WHERE id = ?;").run(id);
+    // Get account details for reversal
+    const fromAccount = db.prepare("SELECT id, name, balance, currencyCode FROM accounts WHERE id = ?;").get(transfer.fromAccountId);
+    const toAccount = db.prepare("SELECT id, name, balance, currencyCode FROM accounts WHERE id = ?;").get(transfer.toAccountId);
+
+    if (!fromAccount || !toAccount) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+
+    const transferAmount = transfer.amount;
+    const feeAmount = transfer.transactionFee || 0;
+
+    // Perform reversal in a transaction
+    const transaction = db.transaction(() => {
+      // Reverse balances: add back amount to fromAccount, deduct amount and add back fee to toAccount
+      db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(transferAmount, transfer.fromAccountId);
+      db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(transferAmount, transfer.toAccountId);
+      if (feeAmount > 0) {
+        db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(feeAmount, transfer.toAccountId);
+      }
+
+      // Create reversal transaction records
+      const transferDescription = transfer.description 
+        ? `Internal transfer to ${toAccount.name}: ${transfer.description}`
+        : `Internal transfer to ${toAccount.name}`;
+      
+      const receiveDescription = transfer.description
+        ? `Internal transfer from ${fromAccount.name}: ${transfer.description}`
+        : `Internal transfer from ${fromAccount.name}`;
+
+      // Reversal for fromAccount (add back the amount)
+      db.prepare(
+        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+         VALUES (?, 'add', ?, ?, ?);`
+      ).run(
+        transfer.fromAccountId,
+        transferAmount,
+        `Reversal: ${transferDescription}`,
+        new Date().toISOString()
+      );
+
+      // Reversal for toAccount (deduct back the amount)
+      db.prepare(
+        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+         VALUES (?, 'withdraw', ?, ?, ?);`
+      ).run(
+        transfer.toAccountId,
+        transferAmount,
+        `Reversal: ${receiveDescription}`,
+        new Date().toISOString()
+      );
+
+      // Reversal for fee on toAccount (add back the fee)
+      if (feeAmount > 0) {
+        const feeDescription = transfer.description
+          ? `Transaction fee for transfer from ${fromAccount.name}: ${transfer.description}`
+          : `Transaction fee for transfer from ${fromAccount.name}`;
+        
+        db.prepare(
+          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+           VALUES (?, 'add', ?, ?, ?);`
+        ).run(
+          transfer.toAccountId,
+          feeAmount,
+          `Reversal: ${feeDescription}`,
+          new Date().toISOString()
+        );
+      }
+
+      // Delete transfer changes first (foreign key constraint)
+      db.prepare("DELETE FROM transfer_changes WHERE transferId = ?;").run(id);
+      
+      // Delete transfer record
+      db.prepare("DELETE FROM internal_transfers WHERE id = ?;").run(id);
+    });
+
+    transaction();
     
     res.json({ success: true });
   } catch (error) {

@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import apiRouter from "./routes/api.js";
 import { initDatabase } from "./db.js";
+import { getUploadsDir } from "./utils/fileStorage.js";
 
 initDatabase();
 
@@ -12,7 +13,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Increase limit for large base64 images
+app.use(express.json({ limit: '50mb' })); // Keep limit for backward compatibility during migration
+// Note: express.urlencoded is NOT needed here - multer handles FormData parsing automatically
+
+// Serve uploaded files statically
+app.use("/api/uploads", express.static(getUploadsDir()));
 
 // Log all requests for debugging
 app.use((req, res, next) => {

@@ -190,6 +190,14 @@ export default function TransfersPage() {
   const handleBulkDelete = async () => {
     try {
       setConfirmModal({ isOpen: false, message: "", transferId: null, isBulk: false });
+      
+      // Delete all selected transfers
+      const deletePromises = selectedTransferIds.map((id) => deleteTransfer(id).unwrap());
+      await Promise.all(deletePromises);
+      
+      // Clear selection and exit batch delete mode
+      setSelectedTransferIds([]);
+      setIsBatchDeleteMode(false);
     } catch (error: any) {
       let message = error?.data?.message || t("transfers.errorDeleting");
       
@@ -203,6 +211,10 @@ export default function TransfersPage() {
       
       setConfirmModal({ isOpen: false, message: "", transferId: null, isBulk: false });
       setAlertModal({ isOpen: true, message, type: "error" });
+      
+      // Clear selection and exit batch delete mode even on error
+      setSelectedTransferIds([]);
+      setIsBatchDeleteMode(false);
     }
   };
 

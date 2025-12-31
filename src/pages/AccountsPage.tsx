@@ -1,4 +1,4 @@
-import { useState, type FormEvent, useEffect } from "react";
+import { useState, type FormEvent, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
@@ -20,11 +20,13 @@ import {
   useGetProfitCalculationQuery,
   useGetSettingQuery,
   useSetSettingMutation,
+  useAddCurrencyMutation,
 } from "../services/api";
 import { formatDate } from "../utils/format";
 import { useAppSelector } from "../app/hooks";
 import { hasActionPermission } from "../utils/permissions";
 import { useProfitSummary } from "../hooks/useProfitSummary";
+import * as XLSX from "xlsx";
 
 // Helper function to format currency with proper number formatting
 const formatCurrency = (amount: number, currencyCode: string) => {
@@ -37,9 +39,9 @@ const formatCurrency = (amount: number, currencyCode: string) => {
 export default function AccountsPage() {
   const { t } = useTranslation();
   const authUser = useAppSelector((s) => s.auth.user);
-  const { data: accounts = [], isLoading: isLoadingAccounts } = useGetAccountsQuery();
+  const { data: accounts = [], isLoading: isLoadingAccounts, refetch: refetchAccounts } = useGetAccountsQuery();
   const { data: summary = [], isLoading: isLoadingSummary } = useGetAccountsSummaryQuery();
-  const { data: currencies = [] } = useGetCurrenciesQuery();
+  const { data: currencies = [], refetch: refetchCurrencies } = useGetCurrenciesQuery();
   const [createAccount, { isLoading: isCreating }] = useCreateAccountMutation();
   const [updateAccount] = useUpdateAccountMutation();
   const [deleteAccount, { isLoading: isDeleting }] = useDeleteAccountMutation();
@@ -75,6 +77,12 @@ export default function AccountsPage() {
   const [fundsModalAccountId, setFundsModalAccountId] = useState<number | null>(null);
   const [fundsModalType, setFundsModalType] = useState<"add" | "withdraw" | null>(null);
   const [transactionsModalAccountId, setTransactionsModalAccountId] = useState<number | null>(null);
+  const [importExportMenuOpen, setImportExportMenuOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<number>>(new Set());
+  const importExportMenuRef = useRef<HTMLDivElement>(null);
+  const [addCurrency] = useAddCurrencyMutation();
 
   const { data: accountsByCurrency = [] } = useGetAccountsByCurrencyQuery(
     selectedCurrency || "",
@@ -341,6 +349,25 @@ export default function AccountsPage() {
     }
   }, [transactionsModalAccountId]);
 
+  // Close import/export menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        importExportMenuRef.current &&
+        !importExportMenuRef.current.contains(event.target as Node)
+      ) {
+        setImportExportMenuOpen(false);
+      }
+    };
+
+    if (importExportMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [importExportMenuOpen]);
+
   // Use shared hook for profit summary calculation
   const profitSummary = useProfitSummary(
     displayType === "profit" ? defaultCalculationDetails : undefined,
@@ -359,6 +386,247 @@ export default function AccountsPage() {
       setAlertModal({
         isOpen: true,
         message: error?.data?.message || t("accounts.errorSavingDisplaySetting") || "Error saving display setting",
+        type: "error",
+      });
+    }
+  };
+
+  const handleExportClick = () => {
+    setImportExportMenuOpen(false);
+    setExportModalOpen(true);
+    setSelectedAccountIds(new Set());
+  };
+
+  const handleImportClick = () => {
+    setImportExportMenuOpen(false);
+    setImportModalOpen(true);
+  };
+
+  const handleSelectAllAccounts = () => {
+    if (selectedAccountIds.size === accounts.length) {
+      setSelectedAccountIds(new Set());
+    } else {
+      setSelectedAccountIds(new Set(accounts.map((a) => a.id)));
+    }
+  };
+
+  const handleToggleAccountSelection = (accountId: number) => {
+    const newSelection = new Set(selectedAccountIds);
+    if (newSelection.has(accountId)) {
+      newSelection.delete(accountId);
+    } else {
+      newSelection.add(accountId);
+    }
+    setSelectedAccountIds(newSelection);
+  };
+
+  const handleExportAccounts = () => {
+    if (selectedAccountIds.size === 0) {
+      setAlertModal({
+        isOpen: true,
+        message: t("accounts.selectAccountsToExport") || "Please select at least one account to export",
+        type: "warning",
+      });
+      return;
+    }
+
+    const accountsToExport = accounts.filter((a) => selectedAccountIds.has(a.id));
+    const currencyCodes = new Set(accountsToExport.map((a) => a.currencyCode));
+    const currenciesToExport = currencies.filter((c) => currencyCodes.has(c.code));
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+
+    // Accounts sheet
+    const accountsData = accountsToExport.map((account) => ({
+      "Account Name": account.name,
+      "Currency Code": account.currencyCode,
+      "Balance": account.balance,
+      "Created At": formatDate(account.createdAt),
+    }));
+    const accountsSheet = XLSX.utils.json_to_sheet(accountsData);
+    XLSX.utils.book_append_sheet(wb, accountsSheet, "Accounts");
+
+    // Currencies sheet
+    const currenciesData = currenciesToExport.map((currency) => ({
+      "Currency Code": currency.code,
+      "Currency Name": currency.name,
+      "Base Rate Buy": currency.baseRateBuy,
+      "Base Rate Sell": currency.baseRateSell,
+      "Conversion Rate Buy": currency.conversionRateBuy,
+      "Conversion Rate Sell": currency.conversionRateSell,
+      "Active": currency.active ? "Yes" : "No",
+    }));
+    const currenciesSheet = XLSX.utils.json_to_sheet(currenciesData);
+    XLSX.utils.book_append_sheet(wb, currenciesSheet, "Currencies");
+
+    // Write file
+    XLSX.writeFile(wb, `accounts_export_${new Date().toISOString().split("T")[0]}.xlsx`);
+
+    setExportModalOpen(false);
+    setSelectedAccountIds(new Set());
+    setAlertModal({
+      isOpen: true,
+      message: t("accounts.exportSuccess") || "Accounts exported successfully",
+      type: "success",
+    });
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+
+      // Read currencies sheet
+      const currenciesSheet = workbook.Sheets["Currencies"];
+      if (!currenciesSheet) {
+        setAlertModal({
+          isOpen: true,
+          message: t("accounts.currenciesSheetNotFound") || "Currencies sheet not found in the file",
+          type: "error",
+        });
+        return;
+      }
+      const currenciesData = XLSX.utils.sheet_to_json(currenciesSheet) as any[];
+
+      // Read accounts sheet
+      const accountsSheet = workbook.Sheets["Accounts"];
+      if (!accountsSheet) {
+        setAlertModal({
+          isOpen: true,
+          message: t("accounts.accountsSheetNotFound") || "Accounts sheet not found in the file",
+          type: "error",
+        });
+        return;
+      }
+      const accountsData = XLSX.utils.sheet_to_json(accountsSheet) as any[];
+
+      // Get current currencies list
+      let currentCurrencies = [...currencies];
+
+      // Validate and process currencies
+      const currenciesToCreate: any[] = [];
+      for (const currencyRow of currenciesData) {
+        const code = String(currencyRow["Currency Code"] || "").trim().toUpperCase();
+        const name = String(currencyRow["Currency Name"] || "").trim();
+        
+        if (!code || !name) {
+          continue;
+        }
+
+        const existingCurrency = currentCurrencies.find((c) => c.code === code);
+        if (!existingCurrency) {
+          currenciesToCreate.push({
+            code,
+            name,
+            baseRateBuy: parseFloat(currencyRow["Base Rate Buy"] || "0") || 0,
+            baseRateSell: parseFloat(currencyRow["Base Rate Sell"] || "0") || 0,
+            conversionRateBuy: parseFloat(currencyRow["Conversion Rate Buy"] || currencyRow["Base Rate Buy"] || "0") || 0,
+            conversionRateSell: parseFloat(currencyRow["Conversion Rate Sell"] || currencyRow["Base Rate Sell"] || "0") || 0,
+            active: String(currencyRow["Active"] || "").toLowerCase() === "yes" ? true : false,
+          });
+        }
+      }
+
+      // Show confirmation for currencies to create
+      if (currenciesToCreate.length > 0) {
+        const currencyList = currenciesToCreate.map((c) => `${c.code} - ${c.name}`).join("\n");
+        const confirmed = window.confirm(
+          t("accounts.confirmCreateCurrencies")?.replace("{count}", String(currenciesToCreate.length))?.replace("{currencies}", currencyList) ||
+          `The following ${currenciesToCreate.length} currencies will be created:\n\n${currencyList}\n\nDo you want to continue?`
+        );
+        if (!confirmed) {
+          return;
+        }
+
+        // Create currencies
+        for (const currency of currenciesToCreate) {
+          try {
+            await addCurrency(currency).unwrap();
+          } catch (error: any) {
+            console.error(`Error creating currency ${currency.code}:`, error);
+          }
+        }
+
+        // Refetch currencies to include newly created ones
+        const { data: updatedCurrencies = [] } = await refetchCurrencies();
+        currentCurrencies = updatedCurrencies;
+      }
+
+      // Process accounts
+      let createdCount = 0;
+      let skippedCount = 0;
+      const errors: string[] = [];
+
+      for (const accountRow of accountsData) {
+        const name = String(accountRow["Account Name"] || "").trim();
+        const currencyCode = String(accountRow["Currency Code"] || "").trim().toUpperCase();
+        const balance = parseFloat(accountRow["Balance"] || "0") || 0;
+
+        if (!name || !currencyCode) {
+          skippedCount++;
+          continue;
+        }
+
+        // Check if currency exists (after creating new ones)
+        const currencyExists = currentCurrencies.find((c) => c.code === currencyCode);
+        if (!currencyExists) {
+          errors.push(`Currency ${currencyCode} not found for account ${name}`);
+          skippedCount++;
+          continue;
+        }
+
+        // Check if account already exists
+        const accountExists = accounts.find(
+          (a) => a.name.toLowerCase().trim() === name.toLowerCase().trim() && a.currencyCode === currencyCode
+        );
+        if (accountExists) {
+          skippedCount++;
+          continue;
+        }
+
+        try {
+          await createAccount({
+            currencyCode,
+            name,
+            initialFunds: balance,
+          }).unwrap();
+          createdCount++;
+        } catch (error: any) {
+          errors.push(`Error creating account ${name}: ${error?.data?.message || "Unknown error"}`);
+          skippedCount++;
+        }
+      }
+
+      // Show results
+      let message = t("accounts.importComplete")?.replace("{created}", String(createdCount))?.replace("{skipped}", String(skippedCount)) ||
+        `Import complete. Created: ${createdCount}, Skipped: ${skippedCount}`;
+      if (errors.length > 0) {
+        message += `\n\nErrors:\n${errors.slice(0, 5).join("\n")}`;
+        if (errors.length > 5) {
+          message += `\n... and ${errors.length - 5} more errors`;
+        }
+      }
+
+      setAlertModal({
+        isOpen: true,
+        message,
+        type: errors.length > 0 ? "warning" : "success",
+      });
+
+      // Refetch accounts to show newly imported ones
+      await refetchAccounts();
+
+      setImportModalOpen(false);
+      // Reset file input
+      event.target.value = "";
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: t("accounts.importError") || `Error importing file: ${error?.message || "Unknown error"}`,
         type: "error",
       });
     }
@@ -438,6 +706,32 @@ export default function AccountsPage() {
       <SectionCard
         title={t("accounts.currencyPoolsTitle")}
         description={t("accounts.currencyPoolsDescription")}
+        actions={
+          <div className="relative" ref={importExportMenuRef}>
+            <button
+              onClick={() => setImportExportMenuOpen(!importExportMenuOpen)}
+              className="px-3 py-1 text-sm rounded bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
+            >
+              {t("accounts.importExport") || "Import/Export"}
+            </button>
+            {importExportMenuOpen && (
+              <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-[9999]">
+                <button
+                  onClick={handleImportClick}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-t-lg"
+                >
+                  {t("accounts.importAccounts") || "Import Accounts"}
+                </button>
+                <button
+                  onClick={handleExportClick}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-b-lg"
+                >
+                  {t("accounts.exportAccounts") || "Export Accounts"}
+                </button>
+              </div>
+            )}
+          </div>
+        }
       >
         {isLoadingAccounts ? (
           <div className="text-sm text-slate-500">{t("common.loading")}</div>
@@ -930,6 +1224,182 @@ export default function AccountsPage() {
         cancelText={t("common.cancel")}
         type="warning"
       />
+
+      {/* Export Accounts Modal */}
+      {exportModalOpen && (
+        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
+          <div
+            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">
+                {t("accounts.exportAccounts") || "Export Accounts"}
+              </h2>
+              <button
+                onClick={() => {
+                  setExportModalOpen(false);
+                  setSelectedAccountIds(new Set());
+                }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label={t("common.close")}
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="mb-4">
+              <button
+                onClick={handleSelectAllAccounts}
+                className="text-sm text-blue-600 hover:text-blue-700 mb-3"
+              >
+                {selectedAccountIds.size === accounts.length
+                  ? t("accounts.deselectAll") || "Deselect All"
+                  : t("accounts.selectAll") || "Select All"}
+              </button>
+              <div className="max-h-96 overflow-y-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 w-12">
+                        <input
+                          type="checkbox"
+                          checked={selectedAccountIds.size === accounts.length && accounts.length > 0}
+                          onChange={handleSelectAllAccounts}
+                          className="rounded border-slate-300"
+                        />
+                      </th>
+                      <th className="px-4 py-2">{t("accounts.accountName")}</th>
+                      <th className="px-4 py-2">{t("accounts.currencyCode") || "Currency"}</th>
+                      <th className="px-4 py-2">{t("accounts.balance")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.map((account) => (
+                      <tr
+                        key={account.id}
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                      >
+                        <td className="px-4 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedAccountIds.has(account.id)}
+                            onChange={() => handleToggleAccountSelection(account.id)}
+                            className="rounded border-slate-300"
+                          />
+                        </td>
+                        <td className="px-4 py-2 font-semibold">{account.name}</td>
+                        <td className="px-4 py-2">{account.currencyCode}</td>
+                        <td className="px-4 py-2">
+                          {formatCurrency(account.balance, account.currencyCode)}
+                        </td>
+                      </tr>
+                    ))}
+                    {accounts.length === 0 && (
+                      <tr>
+                        <td className="px-4 py-4 text-sm text-slate-500 text-center" colSpan={4}>
+                          {t("accounts.noAccounts")}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setExportModalOpen(false);
+                  setSelectedAccountIds(new Set());
+                }}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleExportAccounts}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
+              >
+                {t("accounts.export") || "Export"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Accounts Modal */}
+      {importModalOpen && (
+        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">
+                {t("accounts.importAccounts") || "Import Accounts"}
+              </h2>
+              <button
+                onClick={() => {
+                  setImportModalOpen(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label={t("common.close")}
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-slate-600 mb-4">
+                {t("accounts.importDescription") || "Select an Excel file (.xlsx) to import accounts. The file should contain 'Accounts' and 'Currencies' sheets. Missing currencies will be created automatically."}
+              </p>
+              <label className="block">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFile}
+                  className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </label>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setImportModalOpen(false);
+                }}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

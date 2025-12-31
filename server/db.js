@@ -360,9 +360,7 @@ const seedData = () => {
       `INSERT INTO users (name, email, password, role) VALUES (@name, @email, @password, @role);`,
     );
     const seed = [
-      { name: "Alice", email: "alice@fx.com", password: "$2a$10$7zYd9Yz0Q7qZfyq/BKUKee9ZCBAWNRwJj4tUNsGrD/qVUKPTySGfa", role: "admin" }, // password: admin123
-      { name: "Ben", email: "ben@fx.com", password: "$2a$10$7zYd9Yz0Q7qZfyq/BKUKee9ZCBAWNRwJj4tUNsGrD/qVUKPTySGfa", role: "manager" },
-      { name: "Cara", email: "cara@fx.com", password: "$2a$10$7zYd9Yz0Q7qZfyq/BKUKee9ZCBAWNRwJj4tUNsGrD/qVUKPTySGfa", role: "viewer" },
+      { name: "Admin", email: "admin@test.com", password: "$2a$10$7zYd9Yz0Q7qZfyq/BKUKee9ZCBAWNRwJj4tUNsGrD/qVUKPTySGfa", role: "admin" }, // password: admin123
     ];
     const insertMany = db.transaction((rows) => rows.forEach((row) => insert.run(row)));
     insertMany(seed);
@@ -428,6 +426,7 @@ const seedData = () => {
     insertMany(basePermissions);
   }
 
+/*
   const orderCount = db.prepare("SELECT COUNT(*) as count FROM orders").get().count;
   if (orderCount === 0) {
     // Get actual customer IDs from the database
@@ -435,7 +434,7 @@ const seedData = () => {
     const customer1 = getCustomerId.get("john@example.com");
     const customer2 = getCustomerId.get("sophie@example.com");
     
-/*     // Only seed orders if we have at least 2 customers
+     // Only seed orders if we have at least 2 customers
     if (customer1 && customer2) {
       const insert = db.prepare(
         `INSERT INTO orders (customerId, fromCurrency, toCurrency, amountBuy, amountSell, rate, status, createdAt)
@@ -466,8 +465,8 @@ const seedData = () => {
       ];
       const insertMany = db.transaction((rows) => rows.forEach((row) => insert.run(row)));
       insertMany(seed);
-    } */
-  }
+    } 
+  } */
 };
 
 const migrateDatabase = () => {

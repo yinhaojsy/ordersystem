@@ -29,6 +29,11 @@ import type {
 
 const baseQuery = fetchBaseQuery({
   baseUrl: "/api",
+  prepareHeaders: (headers, { extra, endpoint }) => {
+    // Don't set Content-Type for FormData - browser will set it with boundary
+    // RTK Query will automatically handle FormData and not set Content-Type
+    return headers;
+  },
 });
 
 export const api = createApi({
@@ -342,15 +347,27 @@ export const api = createApi({
         { type: "Order", id: "LIST" },
       ],
     }),
-    deleteOrder: builder.mutation<{ success: boolean }, number>({
+    deleteOrder: builder.mutation<{ success: boolean; affectedAccountIds?: number[] }, number>({
       query: (id) => ({
         url: `orders/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: (_res, _err, id) => [
-        { type: "Order", id },
-        { type: "Order", id: "LIST" },
-      ],
+      invalidatesTags: (res, _err, id) => {
+        const tags: Array<{ type: "Order" | "Account"; id: number | "LIST" }> = [
+          { type: "Order", id },
+          { type: "Order", id: "LIST" },
+          { type: "Account", id: "LIST" }, // Invalidate account list to refresh balances
+        ];
+        
+        // Invalidate specific account transaction caches for affected accounts
+        if (res?.affectedAccountIds) {
+          res.affectedAccountIds.forEach((accountId) => {
+            tags.push({ type: "Account", id: accountId });
+          });
+        }
+        
+        return tags;
+      },
     }),
     getOrderDetails: builder.query<
       {
@@ -400,13 +417,31 @@ export const api = createApi({
     }),
     addReceipt: builder.mutation<
       OrderReceipt,
-      { id: number; imagePath: string; amount: number; accountId?: number }
+      { id: number; file?: File; imagePath?: string; amount: number; accountId?: number }
     >({
-      query: ({ id, ...body }) => ({
-        url: `orders/${id}/receipts`,
-        method: "POST",
-        body,
-      }),
+      query: ({ id, file, imagePath, ...body }) => {
+        if (file) {
+          // Use FormData for file upload
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("amount", String(body.amount));
+          if (body.accountId !== undefined) {
+            formData.append("accountId", String(body.accountId));
+          }
+          return {
+            url: `orders/${id}/receipts`,
+            method: "POST",
+            body: formData,
+          };
+        } else {
+          // Backward compatibility: use JSON with base64
+          return {
+            url: `orders/${id}/receipts`,
+            method: "POST",
+            body: { ...body, imagePath },
+          };
+        }
+      },
       invalidatesTags: (_res, _err, { id }) => [
         { type: "Order", id },
         { type: "Order", id: "LIST" },
@@ -443,13 +478,31 @@ export const api = createApi({
     }),
     addPayment: builder.mutation<
       OrderPayment,
-      { id: number; imagePath: string; amount: number; accountId?: number }
+      { id: number; file?: File; imagePath?: string; amount: number; accountId?: number }
     >({
-      query: ({ id, ...body }) => ({
-        url: `orders/${id}/payments`,
-        method: "POST",
-        body,
-      }),
+      query: ({ id, file, imagePath, ...body }) => {
+        if (file) {
+          // Use FormData for file upload
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("amount", String(body.amount));
+          if (body.accountId !== undefined) {
+            formData.append("accountId", String(body.accountId));
+          }
+          return {
+            url: `orders/${id}/payments`,
+            method: "POST",
+            body: formData,
+          };
+        } else {
+          // Backward compatibility: use JSON with base64
+          return {
+            url: `orders/${id}/payments`,
+            method: "POST",
+            body: { ...body, imagePath },
+          };
+        }
+      },
       invalidatesTags: (_res, _err, { id }) => [
         { type: "Order", id },
         { type: "Order", id: "LIST" },
@@ -677,12 +730,33 @@ export const api = createApi({
             ]
           : [{ type: "Expense", id: "LIST" }],
     }),
-    createExpense: builder.mutation<Expense, ExpenseInput>({
-      query: (body) => ({
-        url: "expenses",
-        method: "POST",
-        body,
-      }),
+    createExpense: builder.mutation<Expense, ExpenseInput & { file?: File }>({
+      query: ({ file, ...body }) => {
+        if (file) {
+          // Use FormData for file upload
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("accountId", String(body.accountId));
+          formData.append("amount", String(body.amount));
+          // Always append description (even if empty) since backend requires it
+          formData.append("description", body.description || "");
+          if (body.createdBy !== undefined) {
+            formData.append("createdBy", String(body.createdBy));
+          }
+          return {
+            url: "expenses",
+            method: "POST",
+            body: formData,
+          };
+        } else {
+          // Backward compatibility: use JSON with base64
+          return {
+            url: "expenses",
+            method: "POST",
+            body,
+          };
+        }
+      },
       invalidatesTags: [
         { type: "Expense", id: "LIST" },
         { type: "Account", id: "LIST" },
@@ -690,13 +764,44 @@ export const api = createApi({
     }),
     updateExpense: builder.mutation<
       Expense,
-      { id: number; data: Partial<ExpenseInput> & { updatedBy?: number } }
+      { id: number; data: Partial<ExpenseInput> & { updatedBy?: number; file?: File } }
     >({
-      query: ({ id, data }) => ({
-        url: `expenses/${id}`,
-        method: "PUT",
-        body: data,
-      }),
+      query: ({ id, data }) => {
+        const { file, ...body } = data;
+        if (file) {
+          // Use FormData for file upload
+          const formData = new FormData();
+          formData.append("file", file);
+          if (body.accountId !== undefined) {
+            formData.append("accountId", String(body.accountId));
+          }
+          if (body.amount !== undefined) {
+            formData.append("amount", String(body.amount));
+          }
+          if (body.description !== undefined) {
+            formData.append("description", body.description || "");
+          }
+          if (body.imagePath !== undefined) {
+            // For removing image, send empty string
+            formData.append("imagePath", body.imagePath || "");
+          }
+          if (body.updatedBy !== undefined) {
+            formData.append("updatedBy", String(body.updatedBy));
+          }
+          return {
+            url: `expenses/${id}`,
+            method: "PUT",
+            body: formData,
+          };
+        } else {
+          // Backward compatibility: use JSON with base64
+          return {
+            url: `expenses/${id}`,
+            method: "PUT",
+            body,
+          };
+        }
+      },
       invalidatesTags: (_res, _err, { id }) => [
         { type: "Expense", id },
         { type: "Expense", id: "LIST" },

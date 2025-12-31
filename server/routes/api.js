@@ -45,6 +45,7 @@ import {
   proceedWithPartialReceipts,
   adjustFlexOrderRate,
 } from "../controllers/ordersController.js";
+import { upload } from "../middleware/upload.js";
 import {
   listAccounts,
   getAccountsSummary,
@@ -125,9 +126,9 @@ router.post("/orders", createOrder);
 // More specific routes must come before less specific ones
 router.get("/orders/:id/details", getOrderDetails);
 router.post("/orders/:id/process", processOrder);
-router.post("/orders/:id/receipts", addReceipt);
+router.post("/orders/:id/receipts", upload.single("file"), addReceipt);
 router.post("/orders/:id/beneficiaries", addBeneficiary);
-router.post("/orders/:id/payments", addPayment);
+router.post("/orders/:id/payments", upload.single("file"), addPayment);
 router.post("/orders/:id/proceed-partial-receipts", proceedWithPartialReceipts);
 router.post("/orders/:id/adjust-rate", adjustFlexOrderRate);
 router.patch("/orders/:id/status", updateOrderStatus);
@@ -154,9 +155,9 @@ router.put("/transfers/:id", updateTransfer);
 router.delete("/transfers/:id", deleteTransfer);
 
 router.get("/expenses", listExpenses);
-router.post("/expenses", createExpense);
+router.post("/expenses", upload.single("file"), createExpense);
 router.get("/expenses/:id/changes", getExpenseChanges);
-router.put("/expenses/:id", updateExpense);
+router.put("/expenses/:id", upload.single("file"), updateExpense);
 router.delete("/expenses/:id", deleteExpense);
 
 router.get("/profit-calculations", getProfitCalculations);

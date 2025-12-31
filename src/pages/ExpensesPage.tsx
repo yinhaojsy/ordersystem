@@ -82,7 +82,13 @@ export default function ExpensesPage() {
     });
   };
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    accountId: string;
+    amount: string;
+    description: string;
+    imagePath: string;
+    file?: File;
+  }>({
     accountId: "",
     amount: "",
     description: "",
@@ -95,6 +101,7 @@ export default function ExpensesPage() {
       amount: "",
       description: "",
       imagePath: "",
+      file: undefined,
     });
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
@@ -135,6 +142,10 @@ export default function ExpensesPage() {
       return;
     }
 
+    // Store File object
+    setForm((p) => ({ ...p, file }));
+
+    // Convert to base64 for preview (keep existing behavior)
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result as string;
@@ -169,55 +180,117 @@ export default function ExpensesPage() {
     setImageDragOver(false);
   };
 
-  // Helper function to open PDF data URI in a new tab
-  const openPdfInNewTab = (dataUri: string) => {
+  // Helper function to check if a path is a PDF (handles both data URIs and file paths)
+  const isPdfFile = (path: string): boolean => {
+    if (!path) return false;
+    // Check for data URI format
+    if (path.startsWith('data:application/pdf')) return true;
+    // Check for file path ending in .pdf
+    if (path.toLowerCase().endsWith('.pdf')) return true;
+    return false;
+  };
+
+  // Helper function to open PDF in a new tab (handles both data URIs and file URLs)
+  const openPdfInNewTab = (pdfPath: string) => {
     try {
-      // Convert data URI to blob
-      const byteString = atob(dataUri.split(',')[1]);
-      const mimeString = dataUri.split(',')[0].split(':')[1].split(';')[0];
-      const ab = new ArrayBuffer(byteString.length);
-      const ia = new Uint8Array(ab);
-      for (let i = 0; i < byteString.length; i++) {
-        ia[i] = byteString.charCodeAt(i);
+      // If it's a data URI, convert to blob
+      if (pdfPath.startsWith('data:')) {
+        const byteString = atob(pdfPath.split(',')[1]);
+        const mimeString = pdfPath.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        // Clean up the URL after a delay
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+      } else {
+        // It's a file path/URL - open directly
+        window.open(pdfPath, '_blank');
       }
-      const blob = new Blob([ab], { type: mimeString });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      // Clean up the URL after a delay
-      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (error) {
       console.error('Error opening PDF:', error);
       // Fallback: try opening directly
-      window.open(dataUri, '_blank');
+      window.open(pdfPath, '_blank');
     }
   };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!form.accountId || !form.amount || !form.description) return;
+    
+    // Validate form fields - check for empty strings and ensure values are valid
+    const accountId = form.accountId?.trim();
+    const amount = form.amount?.trim();
+    const description = form.description?.trim();
+    
+    if (!accountId || !amount || !description) {
+      setAlertModal({ 
+        isOpen: true, 
+        message: t("expenses.accountAndAmountRequired") || "Account and amount are required", 
+        type: "warning" 
+      });
+      return;
+    }
+    
+    // Validate that accountId and amount are valid numbers
+    const accountIdNum = Number(accountId);
+    const amountNum = Number(amount);
+    
+    if (isNaN(accountIdNum) || accountIdNum <= 0) {
+      setAlertModal({ 
+        isOpen: true, 
+        message: t("expenses.invalidAccount") || "Please select a valid account", 
+        type: "warning" 
+      });
+      return;
+    }
+    
+    if (isNaN(amountNum) || amountNum <= 0) {
+      setAlertModal({ 
+        isOpen: true, 
+        message: t("expenses.invalidAmount") || "Amount must be a positive number", 
+        type: "warning" 
+      });
+      return;
+    }
 
     try {
       if (editingExpenseId) {
         // Update existing expense
+        const updateData: any = {
+          accountId: accountIdNum,
+          amount: amountNum,
+          description: description,
+          updatedBy: authUser?.id,
+        };
+        // Send File object if available, otherwise fallback to base64 (backward compatibility)
+        if (form.file) {
+          updateData.file = form.file;
+        } else if (form.imagePath) {
+          updateData.imagePath = form.imagePath;
+        }
         await updateExpense({
           id: editingExpenseId,
-          data: {
-            accountId: Number(form.accountId),
-            amount: Number(form.amount),
-            description: form.description,
-            imagePath: form.imagePath || undefined,
-            updatedBy: authUser?.id,
-          },
+          data: updateData,
         }).unwrap();
       } else {
         // Create new expense
-        await createExpense({
-          accountId: Number(form.accountId),
-          amount: Number(form.amount),
-          description: form.description,
-          imagePath: form.imagePath || undefined,
+        const createData: any = {
+          accountId: accountIdNum,
+          amount: amountNum,
+          description: description,
           createdBy: authUser?.id,
-        }).unwrap();
+        };
+        // Send File object if available, otherwise fallback to base64 (backward compatibility)
+        if (form.file) {
+          createData.file = form.file;
+        } else if (form.imagePath) {
+          createData.imagePath = form.imagePath;
+        }
+        await createExpense(createData).unwrap();
       }
       closeModal();
     } catch (error: any) {
@@ -881,7 +954,7 @@ export default function ExpensesPage() {
                           alt="Proof of payment"
                           className="max-w-full max-h-96 w-auto h-auto object-contain rounded"
                         />
-                      ) : form.imagePath.startsWith('data:application/pdf') ? (
+                      ) : isPdfFile(form.imagePath) ? (
                         <div className="flex flex-col items-center justify-center p-8 bg-slate-50 border-2 border-slate-200 rounded-lg">
                           <svg
                             className="w-16 h-16 text-red-500 mb-2"
@@ -966,7 +1039,7 @@ export default function ExpensesPage() {
       {viewImageExpenseId && (() => {
         const expense = expenses.find((e) => e.id === viewImageExpenseId);
         const imagePath = expense?.imagePath || "";
-        const isPDF = imagePath.startsWith('data:application/pdf');
+        const isPDF = isPdfFile(imagePath);
         
         return (
           <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-75" style={{ margin: 0, padding: 0 }}>
