@@ -16,7 +16,8 @@
     "confirmDelete": "您确定要删除此项吗？",
     "operationsConsole": "操作控制台",
     "logout": "退出登录",
-    "optional": "可选"
+    "optional": "可选",
+    "saveAll": "保存所有更改"
   },
   "nav": {
     "dashboard": "仪表板",
@@ -528,6 +529,9 @@
     "defaultCalculationSummaryDesc": "默认利润计算的摘要",
     "totalInvestment": "总投资",
     "totalProfit": "总利润",
-    "total": "总计"
+    "total": "总计",
+    "unsavedChanges": "您有未保存的更改",
+    "changesSaved": "所有更改已成功保存",
+    "errorSaving": "保存更改时出错"
   }
 }

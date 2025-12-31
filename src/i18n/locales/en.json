@@ -15,7 +15,8 @@
     "noData": "No data yet.",
     "confirmDelete": "Are you sure you want to delete this item?",
     "operationsConsole": "Operations Console",
-    "logout": "Logout"
+    "logout": "Logout",
+    "saveAll": "Save All Changes"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -537,6 +538,9 @@
     "defaultCalculationSummaryDesc": "Summary of the default profit calculation",
     "totalInvestment": "Total Investment",
     "totalProfit": "Total Profit",
-    "total": "Total"
+    "total": "Total",
+    "unsavedChanges": "You have unsaved changes",
+    "changesSaved": "All changes saved successfully",
+    "errorSaving": "Error saving changes"
   }
 }

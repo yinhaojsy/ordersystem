@@ -70,6 +70,13 @@ export default function ProfitCalculationPage() {
   });
   // Track multiplier input values to allow empty state
   const [multiplierInputs, setMultiplierInputs] = useState<Map<number, string>>(new Map());
+  
+  // Track pending changes that haven't been saved to DB
+  const [pendingMultipliers, setPendingMultipliers] = useState<Map<number, { multiplier: number; groupId?: string; groupName?: string }>>(new Map());
+  const [pendingExchangeRates, setPendingExchangeRates] = useState<Map<string, number>>(new Map());
+  const [pendingInitialInvestment, setPendingInitialInvestment] = useState<number | null>(null);
+  const [pendingGroupAssignments, setPendingGroupAssignments] = useState<Map<number, { groupId: string; groupName: string }>>(new Map());
+  const [isSaving, setIsSaving] = useState(false);
 
   const { data: calculationDetails, refetch: refetchCalculation } = useGetProfitCalculationQuery(
     selectedCalculationId || 0,
@@ -80,6 +87,11 @@ export default function ProfitCalculationPage() {
   useEffect(() => {
     setCreatedGroups([]);
     setMultiplierInputs(new Map()); // Reset multiplier inputs when calculation changes
+    // Reset all pending changes when calculation changes
+    setPendingMultipliers(new Map());
+    setPendingExchangeRates(new Map());
+    setPendingInitialInvestment(null);
+    setPendingGroupAssignments(new Map());
     // Sync createdGroups with database groups when calculation loads
     if (calculationDetails?.groups) {
       // Groups from database will be shown via availableGroups
@@ -100,7 +112,7 @@ export default function ProfitCalculationPage() {
     return map;
   }, [calculationDetails]);
 
-  // Create a map of exchange rates
+  // Create a map of exchange rates (merge with pending changes)
   const exchangeRateMap = useMemo(() => {
     if (!calculationDetails) return new Map<string, number>();
     const map = new Map<string, number>();
@@ -108,8 +120,12 @@ export default function ProfitCalculationPage() {
       const key = `${er.fromCurrencyCode}_${er.toCurrencyCode}`;
       map.set(key, er.rate);
     });
+    // Override with pending changes
+    pendingExchangeRates.forEach((rate, key) => {
+      map.set(key, rate);
+    });
     return map;
-  }, [calculationDetails]);
+  }, [calculationDetails, pendingExchangeRates]);
 
   // Get all unique group names
   const availableGroups = useMemo(() => {
@@ -133,7 +149,7 @@ export default function ProfitCalculationPage() {
     return Array.from(groupSet).sort();
   }, [calculationDetails, createdGroups]);
 
-  // Calculate account values with current balances
+  // Calculate account values with current balances (merge with pending changes)
   const accountCalculations = useMemo(() => {
     if (!calculationDetails) return [];
     
@@ -150,16 +166,22 @@ export default function ProfitCalculationPage() {
       }
       const calculated = account.balance * mult;
       
+      // Check for pending group assignment (from pending multiplier or pending group assignments)
+      const pendingMult = pendingMultipliers.get(account.id);
+      const pendingGroup = pendingGroupAssignments.get(account.id);
+      const groupId = pendingMult?.groupId ?? pendingGroup?.groupId ?? (multiplier?.groupId || null);
+      const groupName = pendingMult?.groupName ?? pendingGroup?.groupName ?? (multiplier?.groupName || null);
+      
       return {
         account,
         multiplier: multiplier || null,
         calculated,
-        groupId: multiplier?.groupId || null,
-        groupName: multiplier?.groupName || null,
+        groupId,
+        groupName,
         effectiveMultiplier: mult, // Store the effective multiplier for display
       };
     });
-  }, [accounts, calculationDetails, multiplierMap, multiplierInputs]);
+  }, [accounts, calculationDetails, multiplierMap, multiplierInputs, pendingMultipliers, pendingGroupAssignments]);
 
   // Group accounts by groupId
   const groupedAccounts = useMemo(() => {
@@ -241,11 +263,31 @@ export default function ProfitCalculationPage() {
     return convertedAmounts.get(calculationDetails.targetCurrencyCode) || 0;
   }, [calculationDetails, convertedAmounts]);
 
-  // Calculate profit
+  // Calculate profit (use pending initial investment if available)
   const profit = useMemo(() => {
     if (!calculationDetails) return 0;
-    return totalConverted - calculationDetails.initialInvestment;
-  }, [calculationDetails, totalConverted]);
+    const investment = pendingInitialInvestment !== null ? pendingInitialInvestment : calculationDetails.initialInvestment;
+    return totalConverted - investment;
+  }, [calculationDetails, totalConverted, pendingInitialInvestment]);
+  
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    // Simple check: if any pending changes exist, show the button
+    const hasChanges = pendingMultipliers.size > 0 || 
+           pendingExchangeRates.size > 0 || 
+           pendingInitialInvestment !== null ||
+           pendingGroupAssignments.size > 0;
+    // Debug log (remove in production)
+    if (hasChanges) {
+      console.log('Has unsaved changes:', {
+        multipliers: pendingMultipliers.size,
+        rates: pendingExchangeRates.size,
+        investment: pendingInitialInvestment,
+        groups: pendingGroupAssignments.size
+      });
+    }
+    return hasChanges;
+  }, [pendingMultipliers, pendingExchangeRates, pendingInitialInvestment, pendingGroupAssignments]);
 
   const handleCreateCalculation = async () => {
     if (!newCalculationName || !newCalculationCurrency) {
@@ -305,67 +347,81 @@ export default function ProfitCalculationPage() {
     }
   };
 
-  const handleMultiplierChange = async (accountId: number, multiplier: number, groupId?: string, groupName?: string) => {
-    if (!selectedCalculationId) return;
+  // Save all pending changes to database
+  const handleSaveAllChanges = async () => {
+    if (!selectedCalculationId || !hasUnsavedChanges) return;
     
+    setIsSaving(true);
     try {
-      await updateMultiplier({
-        calculationId: selectedCalculationId,
-        accountId,
-        multiplier,
-        groupId,
-        groupName,
-      }).unwrap();
-      // Clear the local input for this account so it syncs with database value
-      setMultiplierInputs((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(accountId);
-        return newMap;
+      const promises: Promise<any>[] = [];
+      
+      // Save pending multipliers
+      pendingMultipliers.forEach((data, accountId) => {
+        promises.push(
+          updateMultiplier({
+            calculationId: selectedCalculationId,
+            accountId,
+            multiplier: data.multiplier,
+            groupId: data.groupId,
+            groupName: data.groupName,
+          }).unwrap()
+        );
       });
-      // Refetch to update UI immediately
+      
+      // Save pending exchange rates
+      pendingExchangeRates.forEach((rate, key) => {
+        const [fromCurrency, toCurrency] = key.split('_');
+        promises.push(
+          updateRate({
+            calculationId: selectedCalculationId,
+            fromCurrencyCode: fromCurrency,
+            toCurrencyCode: toCurrency,
+            rate,
+          }).unwrap()
+        );
+      });
+      
+      // Save pending initial investment
+      if (pendingInitialInvestment !== null) {
+        promises.push(
+          updateCalculation({
+            id: selectedCalculationId,
+            data: { initialInvestment: pendingInitialInvestment },
+          }).unwrap()
+        );
+      }
+      
+      // Note: Group assignments are already included in pendingMultipliers above,
+      // so we don't need to save them separately
+      
+      // Wait for all updates to complete
+      await Promise.all(promises);
+      
+      // Clear all pending changes
+      setPendingMultipliers(new Map());
+      setPendingExchangeRates(new Map());
+      setPendingInitialInvestment(null);
+      setPendingGroupAssignments(new Map());
+      
+      // Clear multiplier inputs to sync with database
+      setMultiplierInputs(new Map());
+      
+      // Refetch to update UI
       refetchCalculation();
+      
+      setAlertModal({
+        isOpen: true,
+        message: t("profit.changesSaved") || "All changes saved successfully",
+        type: "success",
+      });
     } catch (error: any) {
       setAlertModal({
         isOpen: true,
-        message: error?.data?.message || t("profit.errorUpdatingMultiplier"),
+        message: error?.data?.message || t("profit.errorSaving") || "Error saving changes",
         type: "error",
       });
-    }
-  };
-
-  const handleExchangeRateChange = async (fromCurrency: string, toCurrency: string, rate: number) => {
-    if (!selectedCalculationId) return;
-    
-    try {
-      await updateRate({
-        calculationId: selectedCalculationId,
-        fromCurrencyCode: fromCurrency,
-        toCurrencyCode: toCurrency,
-        rate,
-      }).unwrap();
-    } catch (error: any) {
-      setAlertModal({
-        isOpen: true,
-        message: error?.data?.message || t("profit.errorUpdatingRate"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleInitialInvestmentChange = async (investment: number) => {
-    if (!selectedCalculationId || !calculationDetails) return;
-    
-    try {
-      await updateCalculation({
-        id: selectedCalculationId,
-        data: { initialInvestment: investment },
-      }).unwrap();
-    } catch (error: any) {
-      setAlertModal({
-        isOpen: true,
-        message: error?.data?.message || t("profit.errorUpdating"),
-        type: "error",
-      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -449,17 +505,38 @@ export default function ProfitCalculationPage() {
     }
   };
 
-  const handleGroupNameChange = async (accountId: number, groupId: string, groupName: string) => {
+  const handleGroupNameChange = (accountId: number, groupId: string, groupName: string) => {
+    // Get current multiplier value (from pending or database)
+    const pendingMult = pendingMultipliers.get(accountId);
     const multiplier = multiplierMap.get(accountId);
-    // If no multiplier exists, create one with default value of 1.0
-    const multiplierValue = multiplier?.multiplier ?? 1.0;
+    const mult = pendingMult?.multiplier ?? multiplier?.multiplier ?? 1.0;
     
-    await handleMultiplierChange(accountId, multiplierValue, groupId, groupName);
+    // Update pending multiplier with group info (this handles both multiplier and group changes)
+    setPendingMultipliers((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(accountId, {
+        multiplier: mult,
+        groupId: groupId || undefined,
+        groupName: groupName || undefined,
+      });
+      return newMap;
+    });
+    
+    // Also update pending group assignments for tracking
+    setPendingGroupAssignments((prev) => {
+      const newMap = new Map(prev);
+      if (groupId && groupName) {
+        newMap.set(accountId, { groupId, groupName });
+      } else {
+        newMap.delete(accountId);
+      }
+      return newMap;
+    });
   };
 
-  const handleGroupSelect = async (accountId: number, groupName: string) => {
+  const handleGroupSelect = (accountId: number, groupName: string) => {
     const newGroupId = groupName ? `GROUP_${groupName.toUpperCase().replace(/\s+/g, "_")}` : "";
-    await handleGroupNameChange(accountId, newGroupId, groupName);
+    handleGroupNameChange(accountId, newGroupId, groupName);
   };
 
   const handleCreateNewGroup = async () => {
@@ -740,16 +817,39 @@ export default function ProfitCalculationPage() {
                                           return newMap;
                                         });
                                         
-                                        // Parse and save to backend
+                                        // Parse and store as pending change
                                         const parsed = parseFloat(inputValue);
                                         const newMult = inputValue === "" ? 0 : (isNaN(parsed) ? 1.0 : Math.max(0, parsed));
-                                        handleMultiplierChange(account.id, newMult, groupId || undefined, groupName || undefined);
+                                        
+                                        // Store as pending change
+                                        setPendingMultipliers((prev) => {
+                                          const newMap = new Map(prev);
+                                          newMap.set(account.id, {
+                                            multiplier: newMult,
+                                            groupId: groupId || undefined,
+                                            groupName: groupName || undefined,
+                                          });
+                                          return newMap;
+                                        });
                                       }}
                                       onBlur={(e) => {
-                                        // When field loses focus, if empty, save 0
+                                        // When field loses focus, if empty, set to 0
                                         const inputValue = e.target.value;
                                         if (inputValue === "") {
-                                          handleMultiplierChange(account.id, 0, groupId || undefined, groupName || undefined);
+                                          setMultiplierInputs((prev) => {
+                                            const newMap = new Map(prev);
+                                            newMap.set(account.id, "0");
+                                            return newMap;
+                                          });
+                                          setPendingMultipliers((prev) => {
+                                            const newMap = new Map(prev);
+                                            newMap.set(account.id, {
+                                              multiplier: 0,
+                                              groupId: groupId || undefined,
+                                              groupName: groupName || undefined,
+                                            });
+                                            return newMap;
+                                          });
                                         }
                                       }}
                                       onWheel={(e) => (e.target as HTMLInputElement).blur()}
@@ -986,8 +1086,16 @@ export default function ProfitCalculationPage() {
                           className="w-full rounded border border-slate-200 px-2 py-1"
                           value={rate > 0 ? rate : (currency === calculationDetails.targetCurrencyCode ? 1 : "")}
                           onChange={(e) => {
-                            const newRate = parseFloat(e.target.value) || (currency === calculationDetails.targetCurrencyCode ? 1 : 0);
-                            handleExchangeRateChange(currency, calculationDetails.targetCurrencyCode, newRate);
+                            const inputValue = e.target.value;
+                            const newRate = parseFloat(inputValue) || (currency === calculationDetails.targetCurrencyCode ? 1 : 0);
+                            
+                            // Store as pending change
+                            const key = `${currency}_${calculationDetails.targetCurrencyCode}`;
+                            setPendingExchangeRates((prev) => {
+                              const newMap = new Map(prev);
+                              newMap.set(key, newRate);
+                              return newMap;
+                            });
                           }}
                           onWheel={(e) => (e.target as HTMLInputElement).blur()}
                         />
@@ -1033,10 +1141,10 @@ export default function ProfitCalculationPage() {
                   step="0.01"
                   min="0"
                   className="w-full md:w-64 rounded-lg border border-slate-200 px-3 py-2"
-                  value={calculationDetails.initialInvestment}
+                  value={pendingInitialInvestment !== null ? pendingInitialInvestment : calculationDetails.initialInvestment}
                   onChange={(e) => {
                     const investment = parseFloat(e.target.value) || 0;
-                    handleInitialInvestmentChange(investment);
+                    setPendingInitialInvestment(investment);
                   }}
                   onWheel={(e) => (e.target as HTMLInputElement).blur()}
                 />
@@ -1052,7 +1160,7 @@ export default function ProfitCalculationPage() {
                 <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                   <div className="text-sm text-slate-600 mb-1">{t("profit.initialInvestment")}</div>
                   <div className="text-2xl font-bold text-slate-900">
-                    {formatCurrency(calculationDetails.initialInvestment, calculationDetails.targetCurrencyCode)}
+                    {formatCurrency(pendingInitialInvestment !== null ? pendingInitialInvestment : calculationDetails.initialInvestment, calculationDetails.targetCurrencyCode)}
                   </div>
                 </div>
               </div>
@@ -1071,6 +1179,24 @@ export default function ProfitCalculationPage() {
               </div>
             </div>
           </SectionCard>
+          
+          {/* Save Button - Show when there are unsaved changes */}
+          {hasUnsavedChanges ? (
+            <SectionCard title={t("common.saveAll") || "Save All Changes"}>
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-amber-600 font-semibold">
+                  {t("profit.unsavedChanges") || "You have unsaved changes"}
+                </div>
+                <button
+                  onClick={handleSaveAllChanges}
+                  disabled={isSaving}
+                  className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSaving ? (t("common.saving") || "Saving...") : (t("common.saveAll") || "Save All Changes")}
+                </button>
+              </div>
+            </SectionCard>
+          ) : null}
         </>
       )}
 
