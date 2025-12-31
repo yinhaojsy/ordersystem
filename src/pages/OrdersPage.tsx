@@ -36,7 +36,7 @@ export default function OrdersPage() {
   const authUser = useAppSelector((s) => s.auth.user);
   const { data: roles = [] } = useGetRolesQuery();
 
-  const { data: orders = [], isLoading, refetch: refetchOrders } = useGetOrdersQuery();
+  const { data: orders = [], isLoading } = useGetOrdersQuery();
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: users = [] } = useGetUsersQuery();
@@ -284,7 +284,7 @@ export default function OrdersPage() {
   const [paymentDragOver, setPaymentDragOver] = useState(false);
   const [activeUploadType, setActiveUploadType] = useState<"receipt" | "payment" | null>(null);
 
-  const { data: orderDetails, refetch: refetchOrderDetails } = useGetOrderDetailsQuery(viewModalOrderId || 0, {
+  const { data: orderDetails } = useGetOrderDetailsQuery(viewModalOrderId || 0, {
     skip: !viewModalOrderId,
   });
 
@@ -294,6 +294,13 @@ export default function OrdersPage() {
       setFlexOrderRate(String(orderDetails.order.actualRate || orderDetails.order.rate || ""));
     }
   }, [orderDetails]);
+
+  // Auto-close the view modal once the order completes (when no excess payment warning)
+  useEffect(() => {
+    if (orderDetails?.order?.status === "completed" && !excessPaymentWarning) {
+      setViewModalOrderId(null);
+    }
+  }, [orderDetails?.order?.status, excessPaymentWarning]);
 
   const resetForm = () => {
     setForm({
@@ -701,9 +708,6 @@ export default function OrdersPage() {
     setReceiptUploads([{ image: "", amount: "", accountId: "" }]);
     setReceiptUploadKey((prev) => prev + 1); // Force React to recreate file inputs
     
-    // Refetch both order details and orders list to update UI immediately
-    await refetchOrderDetails();
-    await refetchOrders();
   };
 
   const handleAddBeneficiary = async (event: FormEvent) => {
@@ -765,8 +769,6 @@ export default function OrdersPage() {
     setMakePaymentModalOrderId(null);
     setOpenMenuId(null);
     
-    // Refetch orders to get updated hasBeneficiaries flag, then open view modal
-    await refetchOrders();
     setViewModalOrderId(orderId);
   };
 
@@ -862,17 +864,6 @@ export default function OrdersPage() {
     setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
     setPaymentUploadKey((prev) => prev + 1); // Force React to recreate file inputs
     
-    // Refetch order details to get updated status and payments
-    await refetchOrderDetails();
-    
-    // Refetch orders list to get updated status
-    const { data: updatedOrders } = await refetchOrders();
-    const updatedOrder = updatedOrders?.find((o) => o.id === viewModalOrderId);
-    
-    // If order is completed and no excess warning, close the modal
-    if (updatedOrder?.status === "completed" && !excessPaymentWarning) {
-      setViewModalOrderId(null);
-    }
   };
 
   const handleImageUpload = (file: File, index: number, type: "receipt" | "payment") => {
@@ -1122,7 +1113,6 @@ export default function OrdersPage() {
       await Promise.all(selectedOrderIds.map((id) => deleteOrder(id).unwrap()));
       setSelectedOrderIds([]);
       setIsBatchDeleteMode(false);
-      await refetchOrders();
       setConfirmModal({ isOpen: false, message: "", orderId: null, isBulk: false });
     } catch (error: any) {
       let message = "Cannot delete orders. An error occurred.";
@@ -2909,8 +2899,6 @@ export default function OrdersPage() {
                                       id: viewModalOrderId,
                                       rate: rateValue,
                                     }).unwrap();
-                                    await refetchOrderDetails();
-                                    await refetchOrders();
                                     alert(t("orders.exchangeRateUpdatedSuccessfully"));
                                   } catch (error) {
                                     console.error("Error updating exchange rate:", error);
@@ -3013,15 +3001,8 @@ export default function OrdersPage() {
                           onClick={async () => {
                             if (!viewModalOrderId) return;
                             
-                            // Refetch order details to ensure we have the latest data
-                            const latestDetailsResult = await refetchOrderDetails();
-                            // RTK Query refetch returns { data, error, ... }
-                            const currentOrderDetails = latestDetailsResult?.data || orderDetails;
-                            
-                            if (!currentOrderDetails) {
-                              console.error("No order details available");
-                              return;
-                            }
+                            const currentOrderDetails = orderDetails;
+                            if (!currentOrderDetails) return;
                             
                             // Validate amounts match according to exchange rate
                             // Use the same calculation as the view window (calculateAmountSell helper)
@@ -3116,8 +3097,6 @@ export default function OrdersPage() {
                                 id: viewModalOrderId,
                                 status: "completed",
                               }).unwrap();
-                              await refetchOrderDetails();
-                              await refetchOrders();
                             }
                           }}
                           className="px-6 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
@@ -3459,9 +3438,6 @@ export default function OrdersPage() {
                             if (!viewModalOrderId) return;
                             if (window.confirm(`Proceed with ${orderDetails.totalReceiptAmount.toFixed(2)} ${orderDetails.order.fromCurrency} instead of ${orderDetails.order.amountBuy}?`)) {
                               await proceedWithPartialReceipts(viewModalOrderId).unwrap();
-                              // Refetch both order details and orders list to update UI immediately
-                              await refetchOrderDetails();
-                              await refetchOrders();
                             }
                           }}
                           className="w-full rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-purple-700 transition-colors"
@@ -3555,9 +3531,6 @@ export default function OrdersPage() {
                                       id: viewModalOrderId,
                                       rate: rateValue,
                                     }).unwrap();
-                                    // Refetch both order details and orders list to update UI immediately
-                                    await refetchOrderDetails();
-                                    await refetchOrders();
                                     alert(t("orders.exchangeRateUpdatedSuccessfully"));
                                   } catch (error) {
                                     console.error("Error updating exchange rate:", error);

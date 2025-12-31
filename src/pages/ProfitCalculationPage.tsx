@@ -78,7 +78,7 @@ export default function ProfitCalculationPage() {
   const [pendingGroupAssignments, setPendingGroupAssignments] = useState<Map<number, { groupId: string; groupName: string }>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
 
-  const { data: calculationDetails, refetch: refetchCalculation } = useGetProfitCalculationQuery(
+  const { data: calculationDetails } = useGetProfitCalculationQuery(
     selectedCalculationId || 0,
     { skip: !selectedCalculationId }
   );
@@ -394,10 +394,8 @@ export default function ProfitCalculationPage() {
       // Note: Group assignments are already included in pendingMultipliers above,
       // so we don't need to save them separately
       
-      // Wait for all updates to complete
       await Promise.all(promises);
       
-      // Clear all pending changes
       setPendingMultipliers(new Map());
       setPendingExchangeRates(new Map());
       setPendingInitialInvestment(null);
@@ -405,10 +403,7 @@ export default function ProfitCalculationPage() {
       
       // Clear multiplier inputs to sync with database
       setMultiplierInputs(new Map());
-      
-      // Refetch to update UI
-      refetchCalculation();
-      
+
       setAlertModal({
         isOpen: true,
         message: t("profit.changesSaved") || "All changes saved successfully",
@@ -449,7 +444,6 @@ export default function ProfitCalculationPage() {
         oldGroupName: editingGroupName,
         newGroupName: editingGroupNewName.trim(),
       }).unwrap();
-      refetchCalculation();
       setEditingGroupName(null);
       setEditingGroupNewName("");
       setAlertModal({
@@ -489,7 +483,6 @@ export default function ProfitCalculationPage() {
         calculationId: selectedCalculationId,
         groupName: deleteGroupModal.groupName,
       }).unwrap();
-      refetchCalculation();
       setDeleteGroupModal({ isOpen: false, groupName: null });
       setAlertModal({
         isOpen: true,
@@ -583,10 +576,7 @@ export default function ProfitCalculationPage() {
         id: selectedCalculationId,
         data: { groups: updatedGroups },
       }).unwrap();
-      
-      // Refetch to update UI immediately
-      refetchCalculation();
-      
+
       // If we're creating a group for a specific account, assign it immediately
       if (creatingGroupForAccount !== null) {
         const newGroupId = `GROUP_${groupNameTrimmed.toUpperCase().replace(/\s+/g, "_")}`;
