@@ -235,12 +235,16 @@ export const deleteOrder = (req, res, next) => {
       return res.status(404).json({ message: "Order not found" });
     }
     
-    // Get all receipts with accountId and amount for reversing balances
-    const receipts = db.prepare("SELECT accountId, amount, imagePath FROM order_receipts WHERE orderId = ?;").all(id);
-    // Get all payments with accountId and amount for reversing balances
-    const payments = db.prepare("SELECT accountId, amount, imagePath FROM order_payments WHERE orderId = ?;").all(id);
+    // Get all confirmed receipts with accountId and amount for reversing balances (only reverse confirmed ones)
+    const receipts = db.prepare("SELECT accountId, amount, imagePath, status FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(id);
+    // Get all confirmed payments with accountId and amount for reversing balances (only reverse confirmed ones)
+    const payments = db.prepare("SELECT accountId, amount, imagePath, status FROM order_payments WHERE orderId = ? AND status = 'confirmed';").all(id);
     
-    // Reverse account balances for receipts
+    // Get all receipts and payments for file deletion (including drafts)
+    const allReceipts = db.prepare("SELECT imagePath FROM order_receipts WHERE orderId = ?;").all(id);
+    const allPayments = db.prepare("SELECT imagePath FROM order_payments WHERE orderId = ?;").all(id);
+    
+    // Reverse account balances for confirmed receipts only
     // Receipts added to account balance, so we need to subtract
     receipts.forEach((receipt) => {
       if (receipt.accountId && receipt.amount) {
@@ -286,11 +290,11 @@ export const deleteOrder = (req, res, next) => {
       }
     });
     
-    // Delete associated files
-    receipts.forEach((receipt) => deleteFile(receipt.imagePath));
-    payments.forEach((payment) => deleteFile(payment.imagePath));
+    // Delete associated files (including drafts)
+    allReceipts.forEach((receipt) => deleteFile(receipt.imagePath));
+    allPayments.forEach((payment) => deleteFile(payment.imagePath));
     
-    // Collect all unique account IDs that were affected
+    // Collect all unique account IDs that were affected (only from confirmed)
     const affectedAccountIds = new Set();
     receipts.forEach((receipt) => {
       if (receipt.accountId) {
@@ -358,8 +362,9 @@ export const getOrderDetails = (req, res, next) => {
       )
       .all(id);
 
-    const totalReceiptAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
-    const totalPaymentAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+    // Calculate totals only from confirmed receipts/payments for balance calculations
+    const totalReceiptAmount = receipts.filter(r => r.status === 'confirmed').reduce((sum, r) => sum + r.amount, 0);
+    const totalPaymentAmount = payments.filter(p => p.status === 'confirmed').reduce((sum, p) => sum + p.amount, 0);
     
     // Use the original amountBuy and amountSell from order creation
     const receiptBalance = order.amountBuy - totalReceiptAmount;
@@ -594,10 +599,10 @@ export const addReceipt = (req, res, next) => {
 
     const receiptAmount = parseFloat(amount);
 
-    // Insert receipt with accountId
+    // Insert receipt with accountId and draft status (not confirmed yet)
     const stmt = db.prepare(
-      `INSERT INTO order_receipts (orderId, imagePath, amount, accountId, createdAt)
-       VALUES (@orderId, @imagePath, @amount, @accountId, @createdAt);`
+      `INSERT INTO order_receipts (orderId, imagePath, amount, accountId, status, createdAt)
+       VALUES (@orderId, @imagePath, @amount, @accountId, @status, @createdAt);`
     );
 
     const result = stmt.run({
@@ -605,6 +610,7 @@ export const addReceipt = (req, res, next) => {
       imagePath,
       amount: receiptAmount,
       accountId: receiptAccountId,
+      status: 'draft', // Create as draft - balances will be updated when confirmed
       createdAt: new Date().toISOString(),
     });
 
@@ -623,29 +629,12 @@ export const addReceipt = (req, res, next) => {
       imagePath: receipt.imagePath.startsWith('data:') ? receipt.imagePath : getFileUrl(receipt.imagePath),
     };
 
-    // Update account balance immediately
-    const receiptAccountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(receiptAccountId);
-    if (receiptAccountForBalance) {
-      db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(
-        receiptAmount,
-        receiptAccountId
-      );
-      db.prepare(
-        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-         VALUES (?, 'add', ?, ?, ?);`
-      ).run(
-        receiptAccountId,
-        receiptAmount,
-        `Order #${id} - Receipt from customer`,
-        new Date().toISOString()
-      );
-    } else {
-      return res.status(400).json({ message: "Receipt account not found" });
-    }
+    // Note: Account balance and transaction history will only be updated when receipt is confirmed
+    // This allows users to save drafts and confirm later
 
-    // Check if total receipts match expected amount
+    // Check if total confirmed receipts match expected amount (only count confirmed)
     const receipts = db
-      .prepare("SELECT * FROM order_receipts WHERE orderId = ?;")
+      .prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';")
       .all(id);
     const totalAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
     
@@ -925,10 +914,10 @@ export const addPayment = (req, res, next) => {
 
     const paymentAmount = parseFloat(amount);
 
-    // Insert payment with accountId
+    // Insert payment with accountId and draft status (not confirmed yet)
     const stmt = db.prepare(
-      `INSERT INTO order_payments (orderId, imagePath, amount, accountId, createdAt)
-       VALUES (@orderId, @imagePath, @amount, @accountId, @createdAt);`
+      `INSERT INTO order_payments (orderId, imagePath, amount, accountId, status, createdAt)
+       VALUES (@orderId, @imagePath, @amount, @accountId, @status, @createdAt);`
     );
 
     const result = stmt.run({
@@ -936,6 +925,7 @@ export const addPayment = (req, res, next) => {
       imagePath,
       amount: paymentAmount,
       accountId: paymentAccountId,
+      status: 'draft', // Create as draft - balances will be updated when confirmed
       createdAt: new Date().toISOString(),
     });
 
@@ -954,31 +944,12 @@ export const addPayment = (req, res, next) => {
       imagePath: payment.imagePath.startsWith('data:') ? payment.imagePath : getFileUrl(payment.imagePath),
     };
 
-    // Update account balance immediately
-    const accountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(paymentAccountId);
-    if (accountForBalance) {
-      const oldBalance = accountForBalance.balance;
-      const newBalance = oldBalance - paymentAmount;
-      
-      // Use explicit calculation to ensure negative values work
-      db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, paymentAccountId);
-      
-      db.prepare(
-        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-         VALUES (?, 'withdraw', ?, ?, ?);`
-      ).run(
-        paymentAccountId,
-        paymentAmount,
-        `Order #${id} - Payment to customer`,
-        new Date().toISOString()
-      );
-    } else {
-      return res.status(400).json({ message: "Payment account not found" });
-    }
+    // Note: Account balance and transaction history will only be updated when payment is confirmed
+    // This allows users to save drafts and confirm later
 
-    // Check if total payments match expected amount
+    // Check if total confirmed payments match expected amount (only count confirmed)
     const payments = db
-      .prepare("SELECT * FROM order_payments WHERE orderId = ?;")
+      .prepare("SELECT * FROM order_payments WHERE orderId = ? AND status = 'confirmed';")
       .all(id);
     const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
     
@@ -1003,8 +974,8 @@ export const addPayment = (req, res, next) => {
       const orderWithActual = db.prepare("SELECT actualRate, rate, actualAmountBuy FROM orders WHERE id = ?;").get(id);
       const effectiveRate = orderWithActual?.actualRate || orderWithActual?.rate || order.rate;
       
-      // Get total receipts to use as current actualAmountBuy if not set
-      const receipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ?;").all(id);
+      // Get total confirmed receipts to use as current actualAmountBuy if not set
+      const receipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(id);
       const totalReceiptAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
       
       // Calculate additional receipts needed using reverse calculation
@@ -1053,8 +1024,8 @@ export const addPayment = (req, res, next) => {
         db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(id);
       }
     } else if (isFlexOrder && totalAmount >= expectedAmount) {
-      // For flex orders, check if all receipts match the required amount after excess
-      const receipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ?;").all(id);
+      // For flex orders, check if all confirmed receipts match the required amount after excess
+      const receipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(id);
       const totalReceiptAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
       const orderWithActual = db.prepare("SELECT actualAmountBuy FROM orders WHERE id = ?;").get(id);
       const expectedReceiptAmount = orderWithActual?.actualAmountBuy;
@@ -1090,12 +1061,12 @@ export const proceedWithPartialReceipts = (req, res, next) => {
       return res.status(400).json({ message: "This endpoint is only for flex orders" });
     }
     
-    // Get total receipts
-    const receipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ?;").all(id);
+    // Get total confirmed receipts
+    const receipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(id);
     const totalReceiptAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
     
     if (totalReceiptAmount <= 0) {
-      return res.status(400).json({ message: "No receipts found for this order" });
+      return res.status(400).json({ message: "No confirmed receipts found for this order" });
     }
     
     // Update actualAmountBuy to total receipts
@@ -1179,6 +1150,472 @@ export const adjustFlexOrderRate = (req, res, next) => {
     res.json(updatedOrder);
   } catch (error) {
     console.error("Error adjusting flex order rate:", error);
+    next(error);
+  }
+};
+
+// Update a draft receipt (can only update drafts)
+export const updateReceipt = (req, res, next) => {
+  try {
+    const { receiptId } = req.params;
+    const { amount, accountId } = req.body;
+    const file = req.file;
+
+    // Check if receipt exists and is a draft
+    const existingReceipt = db.prepare("SELECT * FROM order_receipts WHERE id = ?;").get(receiptId);
+    if (!existingReceipt) {
+      return res.status(404).json({ message: "Receipt not found" });
+    }
+    if (existingReceipt.status !== 'draft') {
+      return res.status(400).json({ message: "Only draft receipts can be updated" });
+    }
+
+    // Get order details
+    const order = db.prepare("SELECT id, fromCurrency FROM orders WHERE id = ?;").get(existingReceipt.orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    let imagePath = existingReceipt.imagePath;
+    
+    // Update file if provided
+    if (file) {
+      // Delete old file
+      if (imagePath && !imagePath.startsWith('data:')) {
+        deleteFile(imagePath);
+      }
+      const filename = generateOrderReceiptFilename(order.id, file.mimetype, file.originalname);
+      imagePath = saveFile(file.buffer, filename, "order");
+    }
+
+    // Validate account if provided
+    let accountIdToUse = existingReceipt.accountId;
+    if (accountId !== undefined && accountId !== null && accountId !== "") {
+      const receiptAccount = db.prepare("SELECT id, currencyCode FROM accounts WHERE id = ?;").get(Number(accountId));
+      if (!receiptAccount) {
+        return res.status(400).json({ message: "Receipt account not found" });
+      }
+      if (receiptAccount.currencyCode !== order.fromCurrency) {
+        return res.status(400).json({ 
+          message: `Receipt account currency (${receiptAccount.currencyCode}) does not match order fromCurrency (${order.fromCurrency})` 
+        });
+      }
+      accountIdToUse = Number(accountId);
+    }
+
+    const receiptAmount = amount !== undefined ? parseFloat(amount) : existingReceipt.amount;
+
+    // Update receipt
+    db.prepare(
+      `UPDATE order_receipts 
+       SET imagePath = @imagePath, amount = @amount, accountId = @accountId
+       WHERE id = @id;`
+    ).run({
+      id: receiptId,
+      imagePath,
+      amount: receiptAmount,
+      accountId: accountIdToUse,
+    });
+
+    const updatedReceipt = db
+      .prepare(
+        `SELECT r.*, a.name as accountName 
+         FROM order_receipts r
+         LEFT JOIN accounts a ON a.id = r.accountId
+         WHERE r.id = ?;`
+      )
+      .get(receiptId);
+    
+    const receiptWithUrl = {
+      ...updatedReceipt,
+      imagePath: updatedReceipt.imagePath.startsWith('data:') ? updatedReceipt.imagePath : getFileUrl(updatedReceipt.imagePath),
+    };
+
+    res.json(receiptWithUrl);
+  } catch (error) {
+    console.error("Error updating receipt:", error);
+    next(error);
+  }
+};
+
+// Delete a draft receipt (can only delete drafts)
+export const deleteReceipt = (req, res, next) => {
+  try {
+    const { receiptId } = req.params;
+
+    // Check if receipt exists and is a draft
+    const receipt = db.prepare("SELECT * FROM order_receipts WHERE id = ?;").get(receiptId);
+    if (!receipt) {
+      return res.status(404).json({ message: "Receipt not found" });
+    }
+    if (receipt.status !== 'draft') {
+      return res.status(400).json({ message: "Only draft receipts can be deleted" });
+    }
+
+    // Delete file
+    if (receipt.imagePath && !receipt.imagePath.startsWith('data:')) {
+      deleteFile(receipt.imagePath);
+    }
+
+    // Store orderId before deletion
+    const orderId = receipt.orderId;
+
+    // Delete receipt
+    db.prepare("DELETE FROM order_receipts WHERE id = ?;").run(receiptId);
+
+    res.json({ success: true, orderId });
+  } catch (error) {
+    console.error("Error deleting receipt:", error);
+    next(error);
+  }
+};
+
+// Confirm a draft receipt (updates account balance)
+export const confirmReceipt = (req, res, next) => {
+  try {
+    const { receiptId } = req.params;
+
+    // Check if receipt exists and is a draft
+    const receipt = db.prepare("SELECT * FROM order_receipts WHERE id = ?;").get(receiptId);
+    if (!receipt) {
+      return res.status(404).json({ message: "Receipt not found" });
+    }
+    if (receipt.status !== 'draft') {
+      return res.status(400).json({ message: "Only draft receipts can be confirmed" });
+    }
+
+    if (!receipt.accountId) {
+      return res.status(400).json({ message: "Receipt must have an account before confirmation" });
+    }
+
+    // Update receipt status to confirmed
+    db.prepare("UPDATE order_receipts SET status = 'confirmed' WHERE id = ?;").run(receiptId);
+
+    // Update account balance
+    const receiptAccount = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(receipt.accountId);
+    if (receiptAccount) {
+      db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(
+        receipt.amount,
+        receipt.accountId
+      );
+      db.prepare(
+        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+         VALUES (?, 'add', ?, ?, ?);`
+      ).run(
+        receipt.accountId,
+        receipt.amount,
+        `Order #${receipt.orderId} - Receipt from customer`,
+        new Date().toISOString()
+      );
+    }
+
+    // Get updated receipt
+    const confirmedReceipt = db
+      .prepare(
+        `SELECT r.*, a.name as accountName 
+         FROM order_receipts r
+         LEFT JOIN accounts a ON a.id = r.accountId
+         WHERE r.id = ?;`
+      )
+      .get(receiptId);
+    
+    const receiptWithUrl = {
+      ...confirmedReceipt,
+      imagePath: confirmedReceipt.imagePath.startsWith('data:') ? confirmedReceipt.imagePath : getFileUrl(confirmedReceipt.imagePath),
+    };
+
+    // Check if order should be updated based on confirmed receipts
+    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, paymentFlow, isFlexOrder, actualAmountBuy, rate, actualRate FROM orders WHERE id = ?;").get(receipt.orderId);
+    if (order) {
+      const confirmedReceipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(receipt.orderId);
+      const totalAmount = confirmedReceipts.reduce((sum, r) => sum + r.amount, 0);
+      
+      const isFlexOrder = order.isFlexOrder === 1;
+      const paymentFlow = order.paymentFlow || "receive_first";
+      
+      // For flex orders, update actualAmountBuy/actualAmountSell
+      if (isFlexOrder) {
+        const effectiveRate = order.actualRate || order.rate;
+        const calculatedAmountSell = calculateAmountSell(totalAmount, effectiveRate, order.fromCurrency, order.toCurrency);
+        db.prepare(
+          `UPDATE orders 
+           SET actualAmountBuy = @actualAmountBuy,
+               actualAmountSell = @actualAmountSell,
+               actualRate = @actualRate
+           WHERE id = @id;`
+        ).run({
+          id: Number(receipt.orderId),
+          actualAmountBuy: totalAmount,
+          actualAmountSell: calculatedAmountSell,
+          actualRate: effectiveRate,
+        });
+      }
+      
+      // For regular orders, check if status should be updated
+      if (!isFlexOrder && totalAmount >= order.amountBuy) {
+        if (paymentFlow === "pay_first") {
+          db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(receipt.orderId);
+        } else {
+          db.prepare("UPDATE orders SET status = 'waiting_for_payment' WHERE id = ?;").run(receipt.orderId);
+        }
+      }
+    }
+
+    res.json(receiptWithUrl);
+  } catch (error) {
+    console.error("Error confirming receipt:", error);
+    next(error);
+  }
+};
+
+// Update a draft payment (can only update drafts)
+export const updatePayment = (req, res, next) => {
+  try {
+    const { paymentId } = req.params;
+    const { amount, accountId } = req.body;
+    const file = req.file;
+
+    // Check if payment exists and is a draft
+    const existingPayment = db.prepare("SELECT * FROM order_payments WHERE id = ?;").get(paymentId);
+    if (!existingPayment) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+    if (existingPayment.status !== 'draft') {
+      return res.status(400).json({ message: "Only draft payments can be updated" });
+    }
+
+    // Get order details
+    const order = db.prepare("SELECT id, toCurrency FROM orders WHERE id = ?;").get(existingPayment.orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    let imagePath = existingPayment.imagePath;
+    
+    // Update file if provided
+    if (file) {
+      // Delete old file
+      if (imagePath && !imagePath.startsWith('data:')) {
+        deleteFile(imagePath);
+      }
+      const filename = generateOrderPaymentFilename(order.id, file.mimetype, file.originalname);
+      imagePath = saveFile(file.buffer, filename, "order");
+    }
+
+    // Validate account if provided
+    let accountIdToUse = existingPayment.accountId;
+    if (accountId !== undefined && accountId !== null && accountId !== "") {
+      const paymentAccount = db.prepare("SELECT id, currencyCode FROM accounts WHERE id = ?;").get(Number(accountId));
+      if (!paymentAccount) {
+        return res.status(400).json({ message: "Payment account not found" });
+      }
+      if (paymentAccount.currencyCode !== order.toCurrency) {
+        return res.status(400).json({ 
+          message: `Payment account currency (${paymentAccount.currencyCode}) does not match order toCurrency (${order.toCurrency})` 
+        });
+      }
+      accountIdToUse = Number(accountId);
+    }
+
+    const paymentAmount = amount !== undefined ? parseFloat(amount) : existingPayment.amount;
+
+    // Update payment
+    db.prepare(
+      `UPDATE order_payments 
+       SET imagePath = @imagePath, amount = @amount, accountId = @accountId
+       WHERE id = @id;`
+    ).run({
+      id: paymentId,
+      imagePath,
+      amount: paymentAmount,
+      accountId: accountIdToUse,
+    });
+
+    const updatedPayment = db
+      .prepare(
+        `SELECT p.*, a.name as accountName 
+         FROM order_payments p
+         LEFT JOIN accounts a ON a.id = p.accountId
+         WHERE p.id = ?;`
+      )
+      .get(paymentId);
+    
+    const paymentWithUrl = {
+      ...updatedPayment,
+      imagePath: updatedPayment.imagePath.startsWith('data:') ? updatedPayment.imagePath : getFileUrl(updatedPayment.imagePath),
+    };
+
+    res.json(paymentWithUrl);
+  } catch (error) {
+    console.error("Error updating payment:", error);
+    next(error);
+  }
+};
+
+// Delete a draft payment (can only delete drafts)
+export const deletePayment = (req, res, next) => {
+  try {
+    const { paymentId } = req.params;
+
+    // Check if payment exists and is a draft
+    const payment = db.prepare("SELECT * FROM order_payments WHERE id = ?;").get(paymentId);
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+    if (payment.status !== 'draft') {
+      return res.status(400).json({ message: "Only draft payments can be deleted" });
+    }
+
+    // Delete file
+    if (payment.imagePath && !payment.imagePath.startsWith('data:')) {
+      deleteFile(payment.imagePath);
+    }
+
+    // Store orderId before deletion
+    const orderId = payment.orderId;
+
+    // Delete payment
+    db.prepare("DELETE FROM order_payments WHERE id = ?;").run(paymentId);
+
+    res.json({ success: true, orderId });
+  } catch (error) {
+    console.error("Error deleting payment:", error);
+    next(error);
+  }
+};
+
+// Confirm a draft payment (updates account balance)
+export const confirmPayment = (req, res, next) => {
+  try {
+    const { paymentId } = req.params;
+
+    // Check if payment exists and is a draft
+    const payment = db.prepare("SELECT * FROM order_payments WHERE id = ?;").get(paymentId);
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+    if (payment.status !== 'draft') {
+      return res.status(400).json({ message: "Only draft payments can be confirmed" });
+    }
+
+    if (!payment.accountId) {
+      return res.status(400).json({ message: "Payment must have an account before confirmation" });
+    }
+
+    // Update payment status to confirmed
+    db.prepare("UPDATE order_payments SET status = 'confirmed' WHERE id = ?;").run(paymentId);
+
+    // Update account balance
+    const accountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(payment.accountId);
+    if (accountForBalance) {
+      const oldBalance = accountForBalance.balance;
+      const newBalance = oldBalance - payment.amount;
+      
+      db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, payment.accountId);
+      
+      db.prepare(
+        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+         VALUES (?, 'withdraw', ?, ?, ?);`
+      ).run(
+        payment.accountId,
+        payment.amount,
+        `Order #${payment.orderId} - Payment to customer`,
+        new Date().toISOString()
+      );
+    }
+
+    // Get updated payment
+    const confirmedPayment = db
+      .prepare(
+        `SELECT p.*, a.name as accountName 
+         FROM order_payments p
+         LEFT JOIN accounts a ON a.id = p.accountId
+         WHERE p.id = ?;`
+      )
+      .get(paymentId);
+    
+    const paymentWithUrl = {
+      ...confirmedPayment,
+      imagePath: confirmedPayment.imagePath.startsWith('data:') ? confirmedPayment.imagePath : getFileUrl(confirmedPayment.imagePath),
+    };
+
+    // Check if order should be updated based on confirmed payments
+    const order = db.prepare("SELECT id, toCurrency, amountSell, paymentFlow, isFlexOrder, actualAmountBuy, actualAmountSell, rate, actualRate FROM orders WHERE id = ?;").get(payment.orderId);
+    if (order) {
+      const confirmedPayments = db.prepare("SELECT * FROM order_payments WHERE orderId = ? AND status = 'confirmed';").all(payment.orderId);
+      const totalAmount = confirmedPayments.reduce((sum, p) => sum + p.amount, 0);
+      
+      const isFlexOrder = order.isFlexOrder === 1;
+      const paymentFlow = order.paymentFlow || "receive_first";
+      
+      let expectedAmount = order.amountSell;
+      if (isFlexOrder) {
+        const orderWithActual = db.prepare("SELECT actualAmountBuy, actualAmountSell, actualRate, rate FROM orders WHERE id = ?;").get(payment.orderId);
+        const effectiveRate = orderWithActual?.actualRate || orderWithActual?.rate || order.rate;
+        const effectiveAmountBuy = orderWithActual?.actualAmountBuy || order.actualAmountBuy;
+        
+        if (orderWithActual?.actualAmountSell !== null && orderWithActual?.actualAmountSell !== undefined) {
+          expectedAmount = orderWithActual.actualAmountSell;
+        } else if (effectiveAmountBuy !== null && effectiveAmountBuy !== undefined) {
+          expectedAmount = effectiveAmountBuy * effectiveRate;
+        }
+      }
+      
+      // For flex orders, check for excess payments
+      if (isFlexOrder && totalAmount > expectedAmount) {
+        const excessAmount = totalAmount - expectedAmount;
+        const orderWithActual = db.prepare("SELECT actualRate, rate, actualAmountBuy FROM orders WHERE id = ?;").get(payment.orderId);
+        const effectiveRate = orderWithActual?.actualRate || orderWithActual?.rate || order.rate;
+        
+        const confirmedReceipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(payment.orderId);
+        const totalReceiptAmount = confirmedReceipts.reduce((sum, r) => sum + r.amount, 0);
+        
+        const additionalReceiptsNeeded = calculateAmountBuy(excessAmount, effectiveRate, order.fromCurrency || '', order.toCurrency);
+        const currentActualAmountBuy = orderWithActual?.actualAmountBuy !== null && orderWithActual?.actualAmountBuy !== undefined 
+          ? orderWithActual.actualAmountBuy 
+          : totalReceiptAmount;
+        const newActualAmountBuy = currentActualAmountBuy + additionalReceiptsNeeded;
+        
+        db.prepare(
+          `UPDATE orders 
+           SET actualAmountSell = @actualAmountSell,
+               actualAmountBuy = @actualAmountBuy,
+               actualRate = @actualRate
+           WHERE id = @id;`
+        ).run({
+          id: Number(payment.orderId),
+          actualAmountSell: totalAmount,
+          actualAmountBuy: newActualAmountBuy,
+          actualRate: effectiveRate,
+        });
+      }
+      
+      // For regular orders or flex orders without excess, update status normally
+      if (!isFlexOrder && totalAmount >= expectedAmount) {
+        if (paymentFlow === "pay_first") {
+          db.prepare("UPDATE orders SET status = 'waiting_for_receipt' WHERE id = ?;").run(payment.orderId);
+        } else {
+          db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(payment.orderId);
+        }
+      } else if (isFlexOrder && totalAmount >= expectedAmount) {
+        const confirmedReceipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(payment.orderId);
+        const totalReceiptAmount = confirmedReceipts.reduce((sum, r) => sum + r.amount, 0);
+        const orderWithActual = db.prepare("SELECT actualAmountBuy FROM orders WHERE id = ?;").get(payment.orderId);
+        const expectedReceiptAmount = orderWithActual?.actualAmountBuy;
+        
+        if (expectedReceiptAmount !== null && expectedReceiptAmount !== undefined && totalReceiptAmount >= expectedReceiptAmount) {
+          if (paymentFlow === "pay_first") {
+            db.prepare("UPDATE orders SET status = 'waiting_for_receipt' WHERE id = ?;").run(payment.orderId);
+          } else {
+            db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(payment.orderId);
+          }
+        }
+      }
+    }
+
+    res.json(paymentWithUrl);
+  } catch (error) {
+    console.error("Error confirming payment:", error);
     next(error);
   }
 };

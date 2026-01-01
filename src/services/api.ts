@@ -509,6 +509,132 @@ export const api = createApi({
         { type: "Account", id: "LIST" },
       ],
     }),
+    updateReceipt: builder.mutation<
+      OrderReceipt,
+      { receiptId: number; file?: File; amount?: number; accountId?: number }
+    >({
+      query: ({ receiptId, file, ...body }) => {
+        if (file) {
+          const formData = new FormData();
+          formData.append("file", file);
+          if (body.amount !== undefined) {
+            formData.append("amount", String(body.amount));
+          }
+          if (body.accountId !== undefined) {
+            formData.append("accountId", String(body.accountId));
+          }
+          return {
+            url: `orders/receipts/${receiptId}`,
+            method: "PUT",
+            body: formData,
+          };
+        } else {
+          return {
+            url: `orders/receipts/${receiptId}`,
+            method: "PUT",
+            body,
+          };
+        }
+      },
+      invalidatesTags: (_res, _err, { receiptId }) => [
+        { type: "Order", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    deleteReceipt: builder.mutation<{ success: boolean; orderId?: number }, number>({
+      query: (receiptId) => ({
+        url: `orders/receipts/${receiptId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result) => {
+        const tags: Array<{ type: "Order"; id: number | "LIST" }> = [
+          { type: "Order", id: "LIST" },
+        ];
+        if (result?.orderId) {
+          tags.push({ type: "Order", id: result.orderId });
+        }
+        return tags;
+      },
+    }),
+    confirmReceipt: builder.mutation<OrderReceipt, number>({
+      query: (receiptId) => ({
+        url: `orders/receipts/${receiptId}/confirm`,
+        method: "POST",
+      }),
+      invalidatesTags: (result) => {
+        if (result) {
+          return [
+            { type: "Order", id: result.orderId },
+            { type: "Order", id: "LIST" },
+            { type: "Account", id: "LIST" },
+          ];
+        }
+        return [{ type: "Order", id: "LIST" }, { type: "Account", id: "LIST" }];
+      },
+    }),
+    updatePayment: builder.mutation<
+      OrderPayment,
+      { paymentId: number; file?: File; amount?: number; accountId?: number }
+    >({
+      query: ({ paymentId, file, ...body }) => {
+        if (file) {
+          const formData = new FormData();
+          formData.append("file", file);
+          if (body.amount !== undefined) {
+            formData.append("amount", String(body.amount));
+          }
+          if (body.accountId !== undefined) {
+            formData.append("accountId", String(body.accountId));
+          }
+          return {
+            url: `orders/payments/${paymentId}`,
+            method: "PUT",
+            body: formData,
+          };
+        } else {
+          return {
+            url: `orders/payments/${paymentId}`,
+            method: "PUT",
+            body,
+          };
+        }
+      },
+      invalidatesTags: () => [
+        { type: "Order", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    deletePayment: builder.mutation<{ success: boolean; orderId?: number }, number>({
+      query: (paymentId) => ({
+        url: `orders/payments/${paymentId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result) => {
+        const tags: Array<{ type: "Order"; id: number | "LIST" }> = [
+          { type: "Order", id: "LIST" },
+        ];
+        if (result?.orderId) {
+          tags.push({ type: "Order", id: result.orderId });
+        }
+        return tags;
+      },
+    }),
+    confirmPayment: builder.mutation<OrderPayment, number>({
+      query: (paymentId) => ({
+        url: `orders/payments/${paymentId}/confirm`,
+        method: "POST",
+      }),
+      invalidatesTags: (result) => {
+        if (result) {
+          return [
+            { type: "Order", id: result.orderId },
+            { type: "Order", id: "LIST" },
+            { type: "Account", id: "LIST" },
+          ];
+        }
+        return [{ type: "Order", id: "LIST" }, { type: "Account", id: "LIST" }];
+      },
+    }),
     proceedWithPartialReceipts: builder.mutation<Order, number>({
       query: (id) => ({
         url: `orders/${id}/proceed-partial-receipts`,
@@ -1000,8 +1126,14 @@ export const {
   useGetOrderDetailsQuery,
   useProcessOrderMutation,
   useAddReceiptMutation,
+  useUpdateReceiptMutation,
+  useDeleteReceiptMutation,
+  useConfirmReceiptMutation,
   useAddBeneficiaryMutation,
   useAddPaymentMutation,
+  useUpdatePaymentMutation,
+  useDeletePaymentMutation,
+  useConfirmPaymentMutation,
   useProceedWithPartialReceiptsMutation,
   useAdjustFlexOrderRateMutation,
   useGetAccountsQuery,

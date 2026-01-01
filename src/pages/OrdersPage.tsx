@@ -16,8 +16,14 @@ import {
   useGetOrderDetailsQuery,
   useProcessOrderMutation,
   useAddReceiptMutation,
+  useUpdateReceiptMutation,
+  useDeleteReceiptMutation,
+  useConfirmReceiptMutation,
   useAddBeneficiaryMutation,
   useAddPaymentMutation,
+  useUpdatePaymentMutation,
+  useDeletePaymentMutation,
+  useConfirmPaymentMutation,
   useGetCustomerBeneficiariesQuery,
   useAddCustomerBeneficiaryMutation,
   useGetAccountsQuery,
@@ -106,8 +112,14 @@ export default function OrdersPage() {
   const [addCustomer, { isLoading: isCreatingCustomer }] = useAddCustomerMutation();
   const [processOrder] = useProcessOrderMutation();
   const [addReceipt] = useAddReceiptMutation();
+  const [updateReceipt] = useUpdateReceiptMutation();
+  const [deleteReceipt] = useDeleteReceiptMutation();
+  const [confirmReceipt] = useConfirmReceiptMutation();
   const [addBeneficiary] = useAddBeneficiaryMutation();
   const [addPayment] = useAddPaymentMutation();
+  const [updatePayment] = useUpdatePaymentMutation();
+  const [deletePayment] = useDeletePaymentMutation();
+  const [confirmPayment] = useConfirmPaymentMutation();
   const [addCustomerBeneficiary] = useAddCustomerBeneficiaryMutation();
   const [proceedWithPartialReceipts] = useProceedWithPartialReceiptsMutation();
   const [adjustFlexOrderRate] = useAdjustFlexOrderRateMutation();
@@ -2319,8 +2331,59 @@ export default function OrdersPage() {
                     {orderDetails.receipts.map((receipt) => (
                       <div
                         key={receipt.id}
-                        className="mb-4 p-3 border border-slate-200 rounded-lg"
+                        className={`mb-4 p-3 border rounded-lg ${
+                          receipt.status === 'draft' 
+                            ? 'border-yellow-300 bg-yellow-50' 
+                            : 'border-slate-200'
+                        }`}
                       >
+                        <div className="flex items-center justify-between mb-2">
+                          {receipt.status === 'draft' && (
+                            <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
+                              Draft
+                            </span>
+                          )}
+                          {receipt.status === 'draft' && (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!viewModalOrderId) return;
+                                  if (window.confirm(t("orders.confirmReceiptQuestion") || "Confirm this receipt?")) {
+                                    try {
+                                      await confirmReceipt(receipt.id).unwrap();
+                                    } catch (error: any) {
+                                      console.error("Error confirming receipt:", error);
+                                      const errorMessage = error?.data?.message || error?.message || "Failed to confirm receipt";
+                                      alert(errorMessage);
+                                    }
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                              >
+                                {t("common.confirm") || "Confirm"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!viewModalOrderId) return;
+                                  if (window.confirm(t("orders.deleteReceiptQuestion") || "Delete this receipt?")) {
+                                    try {
+                                      await deleteReceipt(receipt.id).unwrap();
+                                    } catch (error: any) {
+                                      console.error("Error deleting receipt:", error);
+                                      const errorMessage = error?.data?.message || error?.message || "Failed to delete receipt";
+                                      alert(errorMessage);
+                                    }
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                              >
+                                {t("common.delete") || "Delete"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         {getFileType(receipt.imagePath) === 'image' ? (
                           <img
                             src={receipt.imagePath}
@@ -2615,8 +2678,59 @@ export default function OrdersPage() {
                     {orderDetails.payments.map((payment) => (
                       <div
                         key={payment.id}
-                        className="mb-4 p-3 border border-slate-200 rounded-lg"
+                        className={`mb-4 p-3 border rounded-lg ${
+                          payment.status === 'draft' 
+                            ? 'border-yellow-300 bg-yellow-50' 
+                            : 'border-slate-200'
+                        }`}
                       >
+                        <div className="flex items-center justify-between mb-2">
+                          {payment.status === 'draft' && (
+                            <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
+                              Draft
+                            </span>
+                          )}
+                          {payment.status === 'draft' && (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!viewModalOrderId) return;
+                                  if (window.confirm(t("orders.confirmPaymentQuestion") || "Confirm this payment?")) {
+                                    try {
+                                      await confirmPayment(payment.id).unwrap();
+                                    } catch (error: any) {
+                                      console.error("Error confirming payment:", error);
+                                      const errorMessage = error?.data?.message || error?.message || "Failed to confirm payment";
+                                      alert(errorMessage);
+                                    }
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                              >
+                                {t("common.confirm") || "Confirm"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!viewModalOrderId) return;
+                                  if (window.confirm(t("orders.deletePaymentQuestion") || "Delete this payment?")) {
+                                    try {
+                                      await deletePayment(payment.id).unwrap();
+                                    } catch (error: any) {
+                                      console.error("Error deleting payment:", error);
+                                      const errorMessage = error?.data?.message || error?.message || "Failed to delete payment";
+                                      alert(errorMessage);
+                                    }
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                              >
+                                {t("common.delete") || "Delete"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         {getFileType(payment.imagePath) === 'image' ? (
                           <img
                             src={payment.imagePath}
@@ -3194,8 +3308,59 @@ export default function OrdersPage() {
                     {orderDetails.receipts.map((receipt) => (
                       <div
                         key={receipt.id}
-                        className="mb-4 p-3 border border-slate-200 rounded-lg"
+                        className={`mb-4 p-3 border rounded-lg ${
+                          receipt.status === 'draft' 
+                            ? 'border-yellow-300 bg-yellow-50' 
+                            : 'border-slate-200'
+                        }`}
                       >
+                        <div className="flex items-center justify-between mb-2">
+                          {receipt.status === 'draft' && (
+                            <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
+                              Draft
+                            </span>
+                          )}
+                          {receipt.status === 'draft' && (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!viewModalOrderId) return;
+                                  if (window.confirm(t("orders.confirmReceiptQuestion") || "Confirm this receipt?")) {
+                                    try {
+                                      await confirmReceipt(receipt.id).unwrap();
+                                    } catch (error: any) {
+                                      console.error("Error confirming receipt:", error);
+                                      const errorMessage = error?.data?.message || error?.message || "Failed to confirm receipt";
+                                      alert(errorMessage);
+                                    }
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                              >
+                                {t("common.confirm") || "Confirm"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!viewModalOrderId) return;
+                                  if (window.confirm(t("orders.deleteReceiptQuestion") || "Delete this receipt?")) {
+                                    try {
+                                      await deleteReceipt(receipt.id).unwrap();
+                                    } catch (error: any) {
+                                      console.error("Error deleting receipt:", error);
+                                      const errorMessage = error?.data?.message || error?.message || "Failed to delete receipt";
+                                      alert(errorMessage);
+                                    }
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                              >
+                                {t("common.delete") || "Delete"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         {getFileType(receipt.imagePath) === 'image' ? (
                           <img
                             src={receipt.imagePath}
@@ -3617,8 +3782,59 @@ export default function OrdersPage() {
                     {orderDetails.payments.map((payment) => (
                       <div
                         key={payment.id}
-                        className="mb-4 p-3 border border-slate-200 rounded-lg"
+                        className={`mb-4 p-3 border rounded-lg ${
+                          payment.status === 'draft' 
+                            ? 'border-yellow-300 bg-yellow-50' 
+                            : 'border-slate-200'
+                        }`}
                       >
+                        <div className="flex items-center justify-between mb-2">
+                          {payment.status === 'draft' && (
+                            <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
+                              Draft
+                            </span>
+                          )}
+                          {payment.status === 'draft' && (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!viewModalOrderId) return;
+                                  if (window.confirm(t("orders.confirmPaymentQuestion") || "Confirm this payment?")) {
+                                    try {
+                                      await confirmPayment(payment.id).unwrap();
+                                    } catch (error: any) {
+                                      console.error("Error confirming payment:", error);
+                                      const errorMessage = error?.data?.message || error?.message || "Failed to confirm payment";
+                                      alert(errorMessage);
+                                    }
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                              >
+                                {t("common.confirm") || "Confirm"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!viewModalOrderId) return;
+                                  if (window.confirm(t("orders.deletePaymentQuestion") || "Delete this payment?")) {
+                                    try {
+                                      await deletePayment(payment.id).unwrap();
+                                    } catch (error: any) {
+                                      console.error("Error deleting payment:", error);
+                                      const errorMessage = error?.data?.message || error?.message || "Failed to delete payment";
+                                      alert(errorMessage);
+                                    }
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                              >
+                                {t("common.delete") || "Delete"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         {getFileType(payment.imagePath) === 'image' ? (
                           <img
                             src={payment.imagePath}
@@ -4037,8 +4253,58 @@ export default function OrdersPage() {
                       {orderDetails.receipts.map((receipt) => (
                         <div
                           key={receipt.id}
-                          className="mb-4 p-3 border border-slate-200 rounded-lg"
+                          className={`mb-4 p-3 border rounded-lg ${
+                            receipt.status === 'draft' 
+                              ? 'border-yellow-300 bg-yellow-50' 
+                              : 'border-slate-200'
+                          }`}
                         >
+                          <div className="flex items-center justify-between mb-2">
+                            {receipt.status === 'draft' && (
+                              <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
+                                Draft
+                              </span>
+                            )}
+                            {receipt.status === 'draft' && (
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!viewModalOrderId) return;
+                                    if (window.confirm(t("orders.confirmReceiptQuestion") || "Confirm this receipt?")) {
+                                      try {
+                                        await confirmReceipt(receipt.id).unwrap();
+                                      } catch (error) {
+                                        console.error("Error confirming receipt:", error);
+                                        alert(t("orders.failedToConfirmReceipt") || "Failed to confirm receipt");
+                                      }
+                                    }
+                                  }}
+                                  className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                                >
+                                  {t("common.confirm") || "Confirm"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!viewModalOrderId) return;
+                                    if (window.confirm(t("orders.deleteReceiptQuestion") || "Delete this receipt?")) {
+                                      try {
+                                        await deleteReceipt(receipt.id).unwrap();
+                                      } catch (error: any) {
+                                        console.error("Error deleting receipt:", error);
+                                        const errorMessage = error?.data?.message || error?.message || "Failed to delete receipt";
+                                        alert(errorMessage);
+                                      }
+                                    }
+                                  }}
+                                  className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                                >
+                                  {t("common.delete") || "Delete"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                           {getFileType(receipt.imagePath) === 'image' ? (
                             <img
                               src={receipt.imagePath}
@@ -4094,8 +4360,58 @@ export default function OrdersPage() {
                       {orderDetails.payments.map((payment) => (
                         <div
                           key={payment.id}
-                          className="mb-4 p-3 border border-slate-200 rounded-lg"
+                          className={`mb-4 p-3 border rounded-lg ${
+                            payment.status === 'draft' 
+                              ? 'border-yellow-300 bg-yellow-50' 
+                              : 'border-slate-200'
+                          }`}
                         >
+                          <div className="flex items-center justify-between mb-2">
+                            {payment.status === 'draft' && (
+                              <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
+                                Draft
+                              </span>
+                            )}
+                            {payment.status === 'draft' && (
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!viewModalOrderId) return;
+                                    if (window.confirm(t("orders.confirmPaymentQuestion") || "Confirm this payment?")) {
+                                      try {
+                                        await confirmPayment(payment.id).unwrap();
+                                      } catch (error) {
+                                        console.error("Error confirming payment:", error);
+                                        alert(t("orders.failedToConfirmPayment") || "Failed to confirm payment");
+                                      }
+                                    }
+                                  }}
+                                  className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                                >
+                                  {t("common.confirm") || "Confirm"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!viewModalOrderId) return;
+                                    if (window.confirm(t("orders.deletePaymentQuestion") || "Delete this payment?")) {
+                                      try {
+                                        await deletePayment(payment.id).unwrap();
+                                      } catch (error: any) {
+                                        console.error("Error deleting payment:", error);
+                                        const errorMessage = error?.data?.message || error?.message || "Failed to delete payment";
+                                        alert(errorMessage);
+                                      }
+                                    }
+                                  }}
+                                  className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                                >
+                                  {t("common.delete") || "Delete"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                           {getFileType(payment.imagePath) === 'image' ? (
                             <img
                               src={payment.imagePath}

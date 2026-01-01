@@ -527,6 +527,20 @@ const migrateDatabase = () => {
     if (!receiptColumnNames.includes("accountId")) {
       db.prepare("ALTER TABLE order_receipts ADD COLUMN accountId INTEGER REFERENCES accounts(id)").run();
     }
+    if (!receiptColumnNames.includes("status")) {
+      // Default existing records to 'confirmed' to maintain backward compatibility
+      db.prepare("ALTER TABLE order_receipts ADD COLUMN status TEXT DEFAULT 'confirmed'").run();
+      // Update all existing records to confirmed
+      db.prepare("UPDATE order_receipts SET status = 'confirmed' WHERE status IS NULL").run();
+    }
+
+    // Check order_payments table for status column
+    if (!paymentColumnNames.includes("status")) {
+      // Default existing records to 'confirmed' to maintain backward compatibility
+      db.prepare("ALTER TABLE order_payments ADD COLUMN status TEXT DEFAULT 'confirmed'").run();
+      // Update all existing records to confirmed
+      db.prepare("UPDATE order_payments SET status = 'confirmed' WHERE status IS NULL").run();
+    }
 
     // Check transfers table for new columns
     const transferTableInfo = db.prepare("PRAGMA table_info(internal_transfers)").all();

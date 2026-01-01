@@ -90,6 +90,7 @@ export interface OrderReceipt {
   amount: number;
   accountId?: number;
   accountName?: string;
+  status?: "draft" | "confirmed";
   createdAt: string;
 }
 
@@ -115,6 +116,7 @@ export interface OrderPayment {
   amount: number;
   accountId?: number;
   accountName?: string;
+  status?: "draft" | "confirmed";
   createdAt: string;
 }
 

@@ -44,6 +44,12 @@ import {
   addPayment,
   proceedWithPartialReceipts,
   adjustFlexOrderRate,
+  updateReceipt,
+  deleteReceipt,
+  confirmReceipt,
+  updatePayment,
+  deletePayment,
+  confirmPayment,
 } from "../controllers/ordersController.js";
 import { upload } from "../middleware/upload.js";
 import {
@@ -127,8 +133,14 @@ router.post("/orders", createOrder);
 router.get("/orders/:id/details", getOrderDetails);
 router.post("/orders/:id/process", processOrder);
 router.post("/orders/:id/receipts", upload.single("file"), addReceipt);
+router.put("/orders/receipts/:receiptId", upload.single("file"), updateReceipt);
+router.delete("/orders/receipts/:receiptId", deleteReceipt);
+router.post("/orders/receipts/:receiptId/confirm", confirmReceipt);
 router.post("/orders/:id/beneficiaries", addBeneficiary);
 router.post("/orders/:id/payments", upload.single("file"), addPayment);
+router.put("/orders/payments/:paymentId", upload.single("file"), updatePayment);
+router.delete("/orders/payments/:paymentId", deletePayment);
+router.post("/orders/payments/:paymentId/confirm", confirmPayment);
 router.post("/orders/:id/proceed-partial-receipts", proceedWithPartialReceipts);
 router.post("/orders/:id/adjust-rate", adjustFlexOrderRate);
 router.patch("/orders/:id/status", updateOrderStatus);
