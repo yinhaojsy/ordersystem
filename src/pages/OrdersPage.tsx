@@ -52,6 +52,9 @@ export default function OrdersPage() {
 
   // Helper function to calculate amountSell from amountBuy using the same logic as order creation
   const calculateAmountSell = (amountBuy: number, rate: number, fromCurrency: string, toCurrency: string): number => {
+    if (!Number.isFinite(rate) || rate <= 0) {
+      return 0;
+    }
     // Determine which side is the "stronger" currency so we know which way to apply the rate.
     // Heuristic: USDT (or any currency with rate <= 1) is the base; otherwise pick the currency with the smaller rate.
     const getCurrencyRate = (code: string) => {
@@ -141,7 +144,7 @@ export default function OrdersPage() {
   const [calculatedField, setCalculatedField] = useState<"buy" | "sell" | null>(null);
   const [receiptUploadKey, setReceiptUploadKey] = useState(0);
   const [paymentUploadKey, setPaymentUploadKey] = useState(0);
-  const [flexOrderRate, setFlexOrderRate] = useState<string>("");
+  const [flexOrderRate, setFlexOrderRate] = useState<string | null>(null);
   const [excessPaymentWarning, setExcessPaymentWarning] = useState<{
     excessAmount: number;
     additionalReceiptsNeeded: number;
@@ -291,9 +294,30 @@ export default function OrdersPage() {
   // Initialize flex order rate when modal opens
   useEffect(() => {
     if (orderDetails?.order && orderDetails.order.isFlexOrder) {
-      setFlexOrderRate(String(orderDetails.order.actualRate || orderDetails.order.rate || ""));
+      const initialRate = orderDetails.order.actualRate ?? orderDetails.order.rate;
+      setFlexOrderRate(
+        initialRate !== undefined && initialRate !== null ? String(initialRate) : null
+      );
     }
   }, [orderDetails]);
+
+  const resolveFlexOrderRate = (details?: typeof orderDetails) => {
+    const fallbackRate = details?.order?.actualRate ?? details?.order?.rate ?? 0;
+    const parsedRate =
+      flexOrderRate === ""
+        ? 0
+        : flexOrderRate !== null
+          ? Number(flexOrderRate)
+          : Number(fallbackRate);
+
+    if (!Number.isFinite(parsedRate)) {
+      return 0;
+    }
+
+    return parsedRate;
+  };
+
+  const resolvedFlexRate = resolveFlexOrderRate(orderDetails);
 
   // Auto-close the view modal once the order completes (when no excess payment warning)
   useEffect(() => {
@@ -530,7 +554,7 @@ export default function OrdersPage() {
     setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
     setReceiptUploadKey(0);
     setPaymentUploadKey(0);
-    setFlexOrderRate("");
+    setFlexOrderRate(null);
     setExcessPaymentWarning(null);
     // Clear refs
     receiptFileInputRefs.current = {};
@@ -2872,7 +2896,7 @@ export default function OrdersPage() {
                             <input
                               type="number"
                               step="0.01"
-                              value={flexOrderRate || orderDetails.order.actualRate || orderDetails.order.rate}
+                              value={flexOrderRate ?? String(orderDetails.order.actualRate ?? orderDetails.order.rate ?? "")}
                               onChange={(e) => setFlexOrderRate(e.target.value)}
                               onWheel={handleNumberInputWheel}
                               className="w-24 rounded border border-purple-300 px-2 py-1"
@@ -2884,7 +2908,9 @@ export default function OrdersPage() {
                                 type="button"
                                 onClick={async () => {
                                   if (!viewModalOrderId) return;
-                                  const rateToUse = flexOrderRate || String(orderDetails.order.actualRate || orderDetails.order.rate);
+                                  const rateToUse =
+                                    flexOrderRate ??
+                                    String(orderDetails.order.actualRate ?? orderDetails.order.rate ?? "");
                                   if (!rateToUse) {
                                     alert(t("orders.pleaseEnterExchangeRate"));
                                     return;
@@ -2916,7 +2942,7 @@ export default function OrdersPage() {
                           {t("orders.expectedToPay")}:{" "}
                           {calculateAmountSell(
                             orderDetails.order.actualAmountBuy || orderDetails.order.amountBuy,
-                            Number(flexOrderRate || orderDetails.order.actualRate || orderDetails.order.rate),
+                            resolvedFlexRate,
                             orderDetails.order.fromCurrency,
                             orderDetails.order.toCurrency
                           ).toFixed(2)}{" "}
@@ -2959,7 +2985,7 @@ export default function OrdersPage() {
                               <span className="text-purple-800 text-xs">
                                 {calculateAmountSell(
                                   orderDetails.totalReceiptAmount,
-                                  Number(flexOrderRate || orderDetails.order.actualRate || orderDetails.order.rate),
+                                  resolvedFlexRate,
                                   orderDetails.order.fromCurrency,
                                   orderDetails.order.toCurrency
                                 ).toFixed(2)}
@@ -3007,7 +3033,7 @@ export default function OrdersPage() {
                             // Validate amounts match according to exchange rate
                             // Use the same calculation as the view window (calculateAmountSell helper)
                             // Use flexOrderRate if set (user may have adjusted but not saved), otherwise use saved actualRate or original rate
-                            const effectiveRate = flexOrderRate ? Number(flexOrderRate) : (currentOrderDetails.order.actualRate || currentOrderDetails.order.rate);
+                            const effectiveRate = resolveFlexOrderRate(currentOrderDetails);
                             // For flex orders, use totalReceiptAmount (actual receipts) to calculate expected payment
                             // This ensures we're checking against what was actually received, not adjusted amounts
                             const actualAmountBuy = currentOrderDetails.totalReceiptAmount || currentOrderDetails.order.actualAmountBuy || 0;
@@ -3504,7 +3530,7 @@ export default function OrdersPage() {
                             <input
                               type="number"
                               step="0.01"
-                              value={flexOrderRate || orderDetails.order.actualRate || orderDetails.order.rate}
+                              value={flexOrderRate ?? String(orderDetails.order.actualRate ?? orderDetails.order.rate ?? "")}
                               onChange={(e) => setFlexOrderRate(e.target.value)}
                               onWheel={handleNumberInputWheel}
                               className="w-24 rounded border border-purple-300 px-2 py-1"
@@ -3516,7 +3542,9 @@ export default function OrdersPage() {
                                 type="button"
                                 onClick={async () => {
                                   if (!viewModalOrderId) return;
-                                  const rateToUse = flexOrderRate || String(orderDetails.order.actualRate || orderDetails.order.rate);
+                                  const rateToUse =
+                                    flexOrderRate ??
+                                    String(orderDetails.order.actualRate ?? orderDetails.order.rate ?? "");
                                   if (!rateToUse) {
                                     alert(t("orders.pleaseEnterExchangeRate"));
                                     return;
@@ -3548,7 +3576,7 @@ export default function OrdersPage() {
                           Calculated Amount to Pay:{" "}
                           {calculateAmountSell(
                             orderDetails.order.actualAmountBuy || orderDetails.order.amountBuy,
-                            Number(flexOrderRate || orderDetails.order.actualRate || orderDetails.order.rate),
+                            resolvedFlexRate,
                             orderDetails.order.fromCurrency,
                             orderDetails.order.toCurrency
                           ).toFixed(2)}{" "}
