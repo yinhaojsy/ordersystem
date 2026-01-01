@@ -13,7 +13,7 @@ export const login = async (req, res, next) => {
 
     // If user not found, allow bootstrapping a default admin account
     if (!user) {
-      if (email === "alice@fx.com" && password === "admin123") {
+      if (email === "admin@test.com" && password === "admin123") {
         const hashed = await bcrypt.hash(password, 10);
         const stmt = db.prepare(
           `INSERT INTO users (name, email, password, role) VALUES (@name, @email, @password, @role);`,
