@@ -511,6 +511,24 @@ const migrateDatabase = () => {
     if (!columnNames.includes("isFlexOrder")) {
       db.prepare("ALTER TABLE orders ADD COLUMN isFlexOrder INTEGER DEFAULT 0").run();
     }
+    if (!columnNames.includes("serviceChargeAmount")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN serviceChargeAmount REAL").run();
+    }
+    if (!columnNames.includes("serviceChargeCurrency")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN serviceChargeCurrency TEXT").run();
+    }
+    if (!columnNames.includes("profitAmount")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN profitAmount REAL").run();
+    }
+    if (!columnNames.includes("profitCurrency")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN profitCurrency TEXT").run();
+    }
+    if (!columnNames.includes("profitAccountId")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN profitAccountId INTEGER REFERENCES accounts(id)").run();
+    }
+    if (!columnNames.includes("serviceChargeAccountId")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN serviceChargeAccountId INTEGER REFERENCES accounts(id)").run();
+    }
 
     // Check order_payments table for new columns
     const paymentTableInfo = db.prepare("PRAGMA table_info(order_payments)").all();

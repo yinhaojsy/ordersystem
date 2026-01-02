@@ -114,12 +114,51 @@ export const listOrders = (_req, res) => {
         .get(order.id);
       const hasBeneficiaries = (beneficiaryCount?.count || 0) > 0;
 
+      // Aggregate account data from receipts (buy accounts)
+      const receipts = db
+        .prepare(
+          `SELECT r.accountId, a.name as accountName, SUM(r.amount) as totalAmount, MIN(r.createdAt) as firstCreatedAt
+           FROM order_receipts r
+           LEFT JOIN accounts a ON a.id = r.accountId
+           WHERE r.orderId = ? AND r.accountId IS NOT NULL
+           GROUP BY r.accountId, a.name
+           ORDER BY firstCreatedAt ASC;`
+        )
+        .all(order.id);
+      
+      // Aggregate account data from payments (sell accounts)
+      const payments = db
+        .prepare(
+          `SELECT p.accountId, a.name as accountName, SUM(p.amount) as totalAmount, MIN(p.createdAt) as firstCreatedAt
+           FROM order_payments p
+           LEFT JOIN accounts a ON a.id = p.accountId
+           WHERE p.orderId = ? AND p.accountId IS NOT NULL
+           GROUP BY p.accountId, a.name
+           ORDER BY firstCreatedAt ASC;`
+        )
+        .all(order.id);
+
+      // Format the account data
+      const buyAccounts = receipts.map(r => ({
+        accountId: r.accountId,
+        accountName: r.accountName || `Account #${r.accountId}`,
+        amount: r.totalAmount
+      }));
+
+      const sellAccounts = payments.map(p => ({
+        accountId: p.accountId,
+        accountName: p.accountName || `Account #${p.accountId}`,
+        amount: p.totalAmount
+      }));
+
       return {
         ...order,
         walletAddresses: order.walletAddresses ? JSON.parse(order.walletAddresses) : null,
         bankDetails: order.bankDetails ? JSON.parse(order.bankDetails) : null,
         hasBeneficiaries,
         isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
+        buyAccounts: buyAccounts.length > 0 ? buyAccounts : null,
+        sellAccounts: sellAccounts.length > 0 ? sellAccounts : null,
       };
     } catch (e) {
       return {
@@ -128,6 +167,8 @@ export const listOrders = (_req, res) => {
         bankDetails: null,
         hasBeneficiaries: false,
         isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
+        buyAccounts: null,
+        sellAccounts: null,
       };
     }
   });
@@ -168,28 +209,193 @@ export const updateOrder = (req, res, next) => {
     const { id } = req.params;
     const updates = req.body || {};
     
-    // Check if order exists and is in pending status
-    const existingOrder = db.prepare("SELECT id, status FROM orders WHERE id = ?").get(id);
+    // Check if order exists and get existing profit/service charge data
+    const existingOrder = db.prepare("SELECT id, status, fromCurrency, toCurrency, profitAmount, profitAccountId, profitCurrency, serviceChargeAmount, serviceChargeAccountId, serviceChargeCurrency FROM orders WHERE id = ?").get(id);
     if (!existingOrder) {
       return res.status(404).json({ message: "Order not found" });
     }
-    if (existingOrder.status !== "pending") {
-      return res.status(400).json({ message: "Only pending orders can be edited" });
+
+    // Fields that can only be updated when order is pending
+    const pendingOnlyFields = ["customerId", "fromCurrency", "toCurrency", "amountBuy", "amountSell", "rate"];
+    // Fields that can be updated at any time (service charges and profit)
+    const alwaysUpdatableFields = ["serviceChargeAmount", "serviceChargeCurrency", "serviceChargeAccountId", "profitAmount", "profitCurrency", "profitAccountId"];
+    
+    // Separate updates into pending-only and always-updatable
+    const pendingOnlyUpdates = {};
+    const alwaysUpdatableUpdates = {};
+    
+    Object.keys(updates).forEach(key => {
+      if (pendingOnlyFields.includes(key)) {
+        pendingOnlyUpdates[key] = updates[key];
+      } else if (alwaysUpdatableFields.includes(key)) {
+        alwaysUpdatableUpdates[key] = updates[key];
+      }
+    });
+
+    // If trying to update pending-only fields, check status
+    if (Object.keys(pendingOnlyUpdates).length > 0 && existingOrder.status !== "pending") {
+      return res.status(400).json({ message: "Only pending orders can have their core fields edited" });
     }
 
-    // Build update query dynamically
-    const allowedFields = ["customerId", "fromCurrency", "toCurrency", "amountBuy", "amountSell", "rate"];
-    const fieldsToUpdate = Object.keys(updates).filter(key => allowedFields.includes(key));
+    // Service charges and profit can be updated for any status except "completed"
+    if (Object.keys(alwaysUpdatableUpdates).length > 0 && existingOrder.status === "completed") {
+      return res.status(400).json({ message: "Cannot update service charges or profit for completed orders" });
+    }
+
+    // Validate service charge and profit currency fields
+    if (alwaysUpdatableUpdates.serviceChargeCurrency !== undefined) {
+      const currency = alwaysUpdatableUpdates.serviceChargeCurrency;
+      if (currency !== null && currency !== "" && currency !== existingOrder.fromCurrency && currency !== existingOrder.toCurrency) {
+        return res.status(400).json({ message: "Service charge currency must be either fromCurrency or toCurrency" });
+      }
+    }
+    if (alwaysUpdatableUpdates.profitCurrency !== undefined) {
+      const currency = alwaysUpdatableUpdates.profitCurrency;
+      if (currency !== null && currency !== "" && currency !== existingOrder.fromCurrency && currency !== existingOrder.toCurrency) {
+        return res.status(400).json({ message: "Profit currency must be either fromCurrency or toCurrency" });
+      }
+    }
+
+    // Handle account balance updates and transaction logging for profit
+    if (alwaysUpdatableUpdates.profitAmount !== undefined || alwaysUpdatableUpdates.profitAccountId !== undefined || alwaysUpdatableUpdates.profitCurrency !== undefined) {
+      const newProfitAmount = alwaysUpdatableUpdates.profitAmount !== undefined ? alwaysUpdatableUpdates.profitAmount : existingOrder.profitAmount;
+      const newProfitAccountId = alwaysUpdatableUpdates.profitAccountId !== undefined ? alwaysUpdatableUpdates.profitAccountId : existingOrder.profitAccountId;
+      const oldProfitAmount = existingOrder.profitAmount;
+      const oldProfitAccountId = existingOrder.profitAccountId;
+
+      // If profit was previously set, reverse the old transaction
+      if (oldProfitAmount !== null && oldProfitAmount !== undefined && oldProfitAccountId) {
+        // Reverse: subtract the old profit amount
+        db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(oldProfitAmount, oldProfitAccountId);
+        db.prepare(
+          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+           VALUES (?, 'withdraw', ?, ?, ?);`
+        ).run(
+          oldProfitAccountId,
+          oldProfitAmount,
+          `Order #${id} - Reversal of profit (Order updated)`,
+          new Date().toISOString()
+        );
+      }
+
+      // If new profit is set, add it to the account
+      if (newProfitAmount !== null && newProfitAmount !== undefined && newProfitAccountId) {
+        const amount = Number(newProfitAmount);
+        if (!isNaN(amount) && amount > 0) {
+          // Add profit to account balance
+          db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(amount, newProfitAccountId);
+          db.prepare(
+            `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+             VALUES (?, 'add', ?, ?, ?);`
+          ).run(
+            newProfitAccountId,
+            amount,
+            `Order #${id} - Profit`,
+            new Date().toISOString()
+          );
+        }
+      }
+    }
+
+    // Handle account balance updates and transaction logging for service charges
+    if (alwaysUpdatableUpdates.serviceChargeAmount !== undefined || alwaysUpdatableUpdates.serviceChargeAccountId !== undefined || alwaysUpdatableUpdates.serviceChargeCurrency !== undefined) {
+      const newServiceChargeAmount = alwaysUpdatableUpdates.serviceChargeAmount !== undefined ? alwaysUpdatableUpdates.serviceChargeAmount : existingOrder.serviceChargeAmount;
+      const newServiceChargeAccountId = alwaysUpdatableUpdates.serviceChargeAccountId !== undefined ? alwaysUpdatableUpdates.serviceChargeAccountId : existingOrder.serviceChargeAccountId;
+      const oldServiceChargeAmount = existingOrder.serviceChargeAmount;
+      const oldServiceChargeAccountId = existingOrder.serviceChargeAccountId;
+
+      // If service charge was previously set, reverse the old transaction
+      if (oldServiceChargeAmount !== null && oldServiceChargeAmount !== undefined && oldServiceChargeAccountId) {
+        const oldAmount = Number(oldServiceChargeAmount);
+        if (!isNaN(oldAmount)) {
+          if (oldAmount > 0) {
+            // Reverse positive service charge: subtract (was added before)
+            db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(oldAmount, oldServiceChargeAccountId);
+            db.prepare(
+              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+               VALUES (?, 'withdraw', ?, ?, ?);`
+            ).run(
+              oldServiceChargeAccountId,
+              oldAmount,
+              `Order #${id} - Reversal of service charge (Order updated)`,
+              new Date().toISOString()
+            );
+          } else if (oldAmount < 0) {
+            // Reverse negative service charge: add back (was subtracted before)
+            const absAmount = Math.abs(oldAmount);
+            db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(absAmount, oldServiceChargeAccountId);
+            db.prepare(
+              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+               VALUES (?, 'add', ?, ?, ?);`
+            ).run(
+              oldServiceChargeAccountId,
+              absAmount,
+              `Order #${id} - Reversal of service charge paid by us (Order updated)`,
+              new Date().toISOString()
+            );
+          }
+        }
+      }
+
+      // If new service charge is set, update account balance
+      if (newServiceChargeAmount !== null && newServiceChargeAmount !== undefined && newServiceChargeAccountId) {
+        const amount = Number(newServiceChargeAmount);
+        if (!isNaN(amount) && amount !== 0) {
+          if (amount > 0) {
+            // Positive service charge: add to account (we receive it)
+            db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(amount, newServiceChargeAccountId);
+            db.prepare(
+              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+               VALUES (?, 'add', ?, ?, ?);`
+            ).run(
+              newServiceChargeAccountId,
+              amount,
+              `Order #${id} - Service charge`,
+              new Date().toISOString()
+            );
+          } else {
+            // Negative service charge: subtract from account (we pay it)
+            const absAmount = Math.abs(amount);
+            db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(absAmount, newServiceChargeAccountId);
+            db.prepare(
+              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+               VALUES (?, 'withdraw', ?, ?, ?);`
+            ).run(
+              newServiceChargeAccountId,
+              absAmount,
+              `Order #${id} - Service charge paid by us`,
+              new Date().toISOString()
+            );
+          }
+        }
+      }
+    }
+
+    // Combine all updates
+    const allUpdates = { ...pendingOnlyUpdates, ...alwaysUpdatableUpdates };
+    const fieldsToUpdate = Object.keys(allUpdates);
     
     if (fieldsToUpdate.length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
 
-    const assignments = fieldsToUpdate.map((field) => `${field} = @${field}`).join(", ");
-    db.prepare(`UPDATE orders SET ${assignments} WHERE id = @id;`).run({
-      ...updates,
-      id: Number(id),
+    // Handle null values properly (to clear fields)
+    const updateValues = {};
+    fieldsToUpdate.forEach(field => {
+      const value = allUpdates[field];
+      if (value === null || value === "" || (typeof value === "string" && value.trim() === "")) {
+        updateValues[field] = null;
+      } else if (field === "profitAccountId" || field === "serviceChargeAccountId") {
+        // Handle account IDs - convert empty string to null
+        updateValues[field] = value === "" ? null : (value ? Number(value) : null);
+      } else {
+        updateValues[field] = value;
+      }
     });
+    updateValues.id = Number(id);
+
+    const assignments = fieldsToUpdate.map((field) => `${field} = @${field}`).join(", ");
+    db.prepare(`UPDATE orders SET ${assignments} WHERE id = @id;`).run(updateValues);
 
     const row = db
       .prepare(
@@ -632,6 +838,11 @@ export const addReceipt = (req, res, next) => {
     // Note: Account balance and transaction history will only be updated when receipt is confirmed
     // This allows users to save drafts and confirm later
 
+    // Update order's buyAccountId if not already set (use the account from the first receipt)
+    if (receiptAccountId && !order.buyAccountId) {
+      db.prepare("UPDATE orders SET buyAccountId = ? WHERE id = ?;").run(receiptAccountId, id);
+    }
+
     // Check if total confirmed receipts match expected amount (only count confirmed)
     const receipts = db
       .prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';")
@@ -946,6 +1157,11 @@ export const addPayment = (req, res, next) => {
 
     // Note: Account balance and transaction history will only be updated when payment is confirmed
     // This allows users to save drafts and confirm later
+
+    // Update order's sellAccountId if not already set (use the account from the first payment)
+    if (paymentAccountId && !order.sellAccountId) {
+      db.prepare("UPDATE orders SET sellAccountId = ? WHERE id = ?;").run(paymentAccountId, id);
+    }
 
     // Check if total confirmed payments match expected amount (only count confirmed)
     const payments = db

@@ -1,9 +1,96 @@
-import { useState, type FormEvent, useEffect, useRef } from "react";
+import { useState, type FormEvent, useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
+
+// Component for account tooltip with overflow handling
+function AccountTooltip({ 
+  accounts, 
+  label, 
+  children 
+}: { 
+  accounts: Array<{ accountId: number; accountName: string; amount: number }>; 
+  label: string;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const [position, setPosition] = useState<'above' | 'below'>('below');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const checkPosition = () => {
+      if (!containerRef.current || !tooltipRef.current) return;
+      
+      const containerElement = containerRef.current;
+      const tooltipElement = tooltipRef.current;
+      
+      // Use requestAnimationFrame to ensure tooltip is rendered
+      requestAnimationFrame(() => {
+        const containerRect = containerElement.getBoundingClientRect();
+        const tooltipHeight = tooltipElement.offsetHeight || 200; // Approximate height if not measured yet
+        const spaceBelow = window.innerHeight - containerRect.bottom;
+        const spaceAbove = containerRect.top;
+        
+        // Position above if there's not enough space below, or if there's more space above
+        const shouldPositionAbove = spaceBelow < tooltipHeight || spaceAbove > spaceBelow;
+        
+        setPosition(shouldPositionAbove ? 'above' : 'below');
+      });
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      const handleMouseEnter = () => {
+        checkPosition();
+        // Double-check after a brief delay to ensure tooltip is fully rendered
+        setTimeout(checkPosition, 10);
+      };
+      
+      container.addEventListener('mouseenter', handleMouseEnter);
+      // Also check on scroll
+      window.addEventListener('scroll', checkPosition, true);
+      return () => {
+        container.removeEventListener('mouseenter', handleMouseEnter);
+        window.removeEventListener('scroll', checkPosition, true);
+      };
+    }
+  }, [accounts.length]);
+
+  return (
+    <div ref={containerRef} className="relative group">
+      {children}
+      <div
+        ref={tooltipRef}
+        className={`absolute left-0 z-50 hidden group-hover:block bg-white border border-slate-200 rounded-lg shadow-xl p-3 min-w-[220px] max-w-[300px] ${
+          position === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+        }`}
+        style={{
+          maxHeight: `${Math.min(window.innerHeight - 40, 400)}px`,
+          overflowY: 'auto',
+          overflowX: 'visible'
+        }}
+      >
+        <div className="text-xs font-semibold text-slate-700 mb-2 pb-2 border-b border-slate-200">
+          {label} ({accounts.length})
+        </div>
+        <div className="space-y-2">
+          {accounts.map((acc, idx) => (
+            <div key={idx} className="text-xs text-slate-600 flex justify-between items-center gap-3">
+              <span className="truncate">{acc.accountName}</span>
+              <span className="font-medium text-slate-800 whitespace-nowrap">
+                {acc.amount.toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 import {
   useAddOrderMutation,
   useGetCurrenciesQuery,
@@ -128,6 +215,79 @@ export default function OrdersPage() {
   const [menuPositionAbove, setMenuPositionAbove] = useState<{ [key: number]: boolean }>({});
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [isBatchDeleteMode, setIsBatchDeleteMode] = useState(false);
+  
+  // Column visibility state
+  const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
+  const columnDropdownRef = useRef<HTMLDivElement | null>(null);
+  
+  // Define all available column keys (used for initialization)
+  const columnKeys = ["id", "date", "handler", "customer", "pair", "buy", "sell", "rate", "status", "buyAccount", "sellAccount", "profit", "serviceCharges"];
+  
+  // Define all available columns (with translated labels) - this is the master list
+  const getAvailableColumns = () => [
+    { key: "id", label: t("orders.orderId") },
+    { key: "date", label: t("orders.date") },
+    { key: "handler", label: t("orders.handler") },
+    { key: "customer", label: t("orders.customer") },
+    { key: "pair", label: t("orders.pair") },
+    { key: "buy", label: t("orders.buy") },
+    { key: "sell", label: t("orders.sell") },
+    { key: "rate", label: t("orders.rate") },
+    { key: "status", label: t("orders.status") },
+    { key: "buyAccount", label: t("orders.buyAccount") },
+    { key: "sellAccount", label: t("orders.sellAccount") },
+    { key: "profit", label: t("orders.profit") },
+    { key: "serviceCharges", label: t("orders.serviceCharges") },
+  ];
+  
+  // Initialize column order from localStorage or default order
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    const saved = localStorage.getItem("ordersPage_columnOrder");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Validate that it's an array of strings
+        if (Array.isArray(parsed) && parsed.every((item): item is string => typeof item === "string")) {
+          // Validate that all columns are present
+          const savedSet = new Set(parsed);
+          const defaultSet = new Set(columnKeys);
+          if (savedSet.size === defaultSet.size && [...savedSet].every(key => defaultSet.has(key))) {
+            return parsed;
+          }
+        }
+      } catch {
+        // If parsing fails, use default order
+      }
+    }
+    // Default order
+    return [...columnKeys];
+  });
+  
+  // Get ordered columns based on columnOrder
+  const availableColumns = columnOrder.map(key => {
+    const column = getAvailableColumns().find(col => col.key === key);
+    return column || { key, label: key };
+  }).filter(col => col);
+  
+  // Initialize column visibility from localStorage or default to all visible
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem("ordersPage_visibleColumns");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return new Set(parsed);
+      } catch {
+        // If parsing fails, return all columns visible
+        return new Set(columnKeys);
+      }
+    }
+    // Default: all columns visible
+    return new Set(columnKeys);
+  });
+  
+  // Drag and drop state
+  const [draggedColumnIndex, setDraggedColumnIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
     isOpen: false,
@@ -148,6 +308,7 @@ export default function OrdersPage() {
   const [processModalOrderId, setProcessModalOrderId] = useState<number | null>(null);
   const [viewModalOrderId, setViewModalOrderId] = useState<number | null>(null);
   const [makePaymentModalOrderId, setMakePaymentModalOrderId] = useState<number | null>(null);
+  const previousOrderStatusRef = useRef<string | null>(null);
   
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const menuElementRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
@@ -331,12 +492,32 @@ export default function OrdersPage() {
 
   const resolvedFlexRate = resolveFlexOrderRate(orderDetails);
 
-  // Auto-close the view modal once the order completes (when no excess payment warning)
+  // Track order status when modal opens
   useEffect(() => {
-    if (orderDetails?.order?.status === "completed" && !excessPaymentWarning) {
-      setViewModalOrderId(null);
+    if (viewModalOrderId && orderDetails?.order) {
+      // Store the status when modal opens or order details load
+      previousOrderStatusRef.current = orderDetails.order.status;
+    } else if (!viewModalOrderId) {
+      // Reset when modal closes
+      previousOrderStatusRef.current = null;
     }
-  }, [orderDetails?.order?.status, excessPaymentWarning]);
+  }, [viewModalOrderId, orderDetails?.order?.id]);
+
+  // Auto-close the view modal only if order transitions TO completed while modal is open
+  // (not if it's already completed when user opens it)
+  useEffect(() => {
+    if (
+      viewModalOrderId &&
+      orderDetails?.order?.status === "completed" &&
+      previousOrderStatusRef.current !== "completed" &&
+      previousOrderStatusRef.current !== null &&
+      !excessPaymentWarning
+    ) {
+      // Order just transitioned to completed, auto-close
+      setViewModalOrderId(null);
+      previousOrderStatusRef.current = null;
+    }
+  }, [orderDetails?.order?.status, excessPaymentWarning, viewModalOrderId]);
 
   const resetForm = () => {
     setForm({
@@ -1451,6 +1632,236 @@ export default function OrdersPage() {
     }
   }, [viewerModal]);
 
+  // Save column visibility to localStorage
+  useEffect(() => {
+    localStorage.setItem("ordersPage_visibleColumns", JSON.stringify(Array.from(visibleColumns)));
+  }, [visibleColumns]);
+
+  // Save column order to localStorage
+  useEffect(() => {
+    localStorage.setItem("ordersPage_columnOrder", JSON.stringify(columnOrder));
+  }, [columnOrder]);
+
+  // Handle click outside column dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isColumnDropdownOpen && columnDropdownRef.current && !columnDropdownRef.current.contains(event.target as Node)) {
+        setIsColumnDropdownOpen(false);
+      }
+    };
+
+    if (isColumnDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [isColumnDropdownOpen]);
+
+  // Drag and drop handlers for column reordering
+  const handleColumnDragStart = (index: number) => {
+    setDraggedColumnIndex(index);
+  };
+
+  const handleColumnDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleColumnDragEnd = () => {
+    if (draggedColumnIndex !== null && dragOverIndex !== null && draggedColumnIndex !== dragOverIndex) {
+      const newOrder = [...columnOrder];
+      const [removed] = newOrder.splice(draggedColumnIndex, 1);
+      newOrder.splice(dragOverIndex, 0, removed);
+      setColumnOrder(newOrder);
+    }
+    setDraggedColumnIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleColumnDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  // Helper function to get column label
+  const getColumnLabel = (key: string): string => {
+    const column = getAvailableColumns().find(col => col.key === key);
+    return column?.label || key;
+  };
+
+  // Helper function to render cell content for a column
+  const renderCellContent = (columnKey: string, order: typeof orders[0]) => {
+    switch (columnKey) {
+      case "id":
+        return <td key={columnKey} className="py-2 font-mono text-slate-600">#{order.id}</td>;
+      case "date":
+        return <td key={columnKey} className="py-2">{formatDate(order.createdAt)}</td>;
+      case "handler":
+        return (
+          <td key={columnKey} className="py-2">
+            {order.handlerName ? (
+              order.handlerName
+            ) : (
+              <span className="text-rose-600">
+                {t("orders.noHandlerAssigned")}
+              </span>
+            )}
+          </td>
+        );
+      case "customer":
+        return (
+          <td key={columnKey} className="py-2 font-semibold">
+            <div className="flex items-center gap-2">
+              {order.customerName || order.customerId}
+              {order.isFlexOrder && (
+                <Badge tone="purple">
+                  Flex Order
+                </Badge>
+              )}
+            </div>
+          </td>
+        );
+      case "pair":
+        return (
+          <td key={columnKey} className="py-2">
+            {order.fromCurrency} → {order.toCurrency}
+          </td>
+        );
+      case "buy":
+        return (
+          <td key={columnKey} className="py-2">
+            {order.isFlexOrder && order.actualAmountBuy ? (
+              <span>
+                <span className="text-purple-600 font-semibold">{Math.round(order.actualAmountBuy)}</span>
+                <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountBuy)}</span>
+              </span>
+            ) : (
+              Math.round(order.amountBuy)
+            )}
+          </td>
+        );
+      case "sell":
+        return (
+          <td key={columnKey} className="py-2">
+            {order.isFlexOrder && order.actualAmountSell ? (
+              <span>
+                -<span className="text-purple-600 font-semibold">{Math.round(order.actualAmountSell)}</span>
+                <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountSell)}</span>
+              </span>
+            ) : (
+              `-${Math.round(order.amountSell)}`
+            )}
+          </td>
+        );
+      case "rate":
+        return (
+          <td key={columnKey} className="py-2">
+            {order.isFlexOrder && order.actualRate ? (
+              <span>
+                <span className="text-purple-600 font-semibold">{order.actualRate}</span>
+                <span className="text-slate-400 text-xs ml-1 line-through">{order.rate}</span>
+              </span>
+            ) : (
+              order.rate
+            )}
+          </td>
+        );
+      case "status":
+        return (
+          <td key={columnKey} className="py-2">
+            <Badge tone={getStatusTone(order.status)}>
+              {t(`orders.${order.status}`)}
+            </Badge>
+          </td>
+        );
+      case "buyAccount": {
+        const buyAccounts = order.buyAccounts || [];
+        const firstAccount = buyAccounts.length > 0 ? buyAccounts[0] : null;
+        const accountName = firstAccount?.accountName || "-";
+        const hasMultiple = buyAccounts.length > 1;
+        
+        return (
+          <td key={columnKey} className="py-2 text-slate-600">
+            {hasMultiple ? (
+              <AccountTooltip accounts={buyAccounts} label={t("orders.buyAccount")}>
+                <div className="flex items-center gap-2 cursor-default">
+                  <span>{accountName}</span>
+                  <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
+                    {buyAccounts.length}
+                  </span>
+                </div>
+              </AccountTooltip>
+            ) : (
+              <span>{accountName}</span>
+            )}
+          </td>
+        );
+      }
+      case "sellAccount": {
+        const sellAccounts = order.sellAccounts || [];
+        const firstAccount = sellAccounts.length > 0 ? sellAccounts[0] : null;
+        const accountName = firstAccount?.accountName || "-";
+        const hasMultiple = sellAccounts.length > 1;
+        
+        return (
+          <td key={columnKey} className="py-2 text-slate-600">
+            {hasMultiple ? (
+              <AccountTooltip accounts={sellAccounts} label={t("orders.sellAccount")}>
+                <div className="flex items-center gap-2 cursor-default">
+                  <span>{accountName}</span>
+                  <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
+                    {sellAccounts.length}
+                  </span>
+                </div>
+              </AccountTooltip>
+            ) : (
+              <span>{accountName}</span>
+            )}
+          </td>
+        );
+      }
+      case "profit":
+        return (
+          <td key={columnKey} className="py-2 text-slate-600">
+            {order.profitAmount !== null && order.profitAmount !== undefined ? (
+              <span className="text-blue-700 font-medium">
+                {order.profitAmount > 0 ? "+" : ""}{order.profitAmount.toFixed(2)} {order.profitCurrency || ""}
+              </span>
+            ) : (
+              <span className="text-slate-400">-</span>
+            )}
+          </td>
+        );
+      case "serviceCharges":
+        return (
+          <td key={columnKey} className="py-2 text-slate-600">
+            {order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined ? (
+              <span className={`font-medium ${order.serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"}`}>
+                {order.serviceChargeAmount > 0 ? "+" : ""}{order.serviceChargeAmount.toFixed(2)} {order.serviceChargeCurrency || ""}
+              </span>
+            ) : (
+              <span className="text-slate-400">-</span>
+            )}
+          </td>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Toggle column visibility
+  const toggleColumnVisibility = (columnKey: string) => {
+    setVisibleColumns((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(columnKey)) {
+        newSet.delete(columnKey);
+      } else {
+        newSet.add(columnKey);
+      }
+      return newSet;
+    });
+  };
+
   const currentOrder = orders.find((o) => o.id === viewModalOrderId);
   const makePaymentOrder = orders.find((o) => o.id === makePaymentModalOrderId);
   const isWaitingForReceipt = currentOrder?.status === "waiting_for_receipt";
@@ -1517,6 +1928,98 @@ export default function OrdersPage() {
                     : t("orders.batchDelete")}
               </button>
             )}
+            <div className="relative" ref={columnDropdownRef}>
+              <button
+                onClick={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
+                aria-label={t("orders.columns") || "Columns"}
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+                {t("orders.columns") || "Columns"}
+                <svg
+                  className={`w-4 h-4 transition-transform ${isColumnDropdownOpen ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+              {isColumnDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-slate-200 z-50 py-2">
+                  <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200">
+                    {t("orders.showColumns") || "Show Columns"}
+                  </div>
+                  {availableColumns.map((column, index) => (
+                    <div
+                      key={column.key}
+                      onDragOver={(e) => handleColumnDragOver(e, index)}
+                      onDragLeave={handleColumnDragLeave}
+                      className={`flex items-center gap-2 px-4 py-2 hover:bg-slate-50 ${
+                        dragOverIndex === index ? 'bg-blue-50 border-t-2 border-blue-500' : ''
+                      } ${draggedColumnIndex === index ? 'opacity-50' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.has(column.key)}
+                        onChange={() => toggleColumnVisibility(column.key)}
+                        onClick={(e) => e.stopPropagation()}
+                        onDragStart={(e) => e.preventDefault()}
+                        className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 flex-shrink-0"
+                      />
+                      <span 
+                        className="text-sm text-slate-700 flex-1"
+                        onDragStart={(e) => e.preventDefault()}
+                      >
+                        {column.label}
+                      </span>
+                      <div
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', index.toString());
+                          handleColumnDragStart(index);
+                        }}
+                        onDragEnd={handleColumnDragEnd}
+                        className="cursor-move flex-shrink-0 text-slate-400 hover:text-slate-600 select-none"
+                        style={{ userSelect: 'none' }}
+                      >
+                        <svg
+                          className="w-4 h-4 pointer-events-none"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 8h16M4 16h16"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         }
       >
@@ -1544,14 +2047,11 @@ export default function OrdersPage() {
                     />
                   </th>
                 )}
-                <th className="py-2">{t("orders.date")}</th>
-                <th className="py-2">{t("orders.handler")}</th>
-                <th className="py-2">{t("orders.customer")}</th>
-                <th className="py-2">{t("orders.pair")}</th>
-                <th className="py-2">{t("orders.buy")}</th>
-                <th className="py-2">{t("orders.sell")}</th>
-                <th className="py-2">{t("orders.rate")}</th>
-                <th className="py-2">{t("orders.status")}</th>
+                {columnOrder.map((columnKey) => 
+                  visibleColumns.has(columnKey) && (
+                    <th key={columnKey} className="py-2">{getColumnLabel(columnKey)}</th>
+                  )
+                )}
                 <th className="py-2">{t("orders.actions")}</th>
               </tr>
             </thead>
@@ -1580,64 +2080,9 @@ export default function OrdersPage() {
                       />
                     </td>
                   )}
-                  <td className="py-2">{formatDate(order.createdAt)}</td>
-                  <td className="py-2">
-                    {order.handlerName ? (
-                      order.handlerName
-                    ) : (
-                      <span className="text-rose-600">
-                        {t("orders.noHandlerAssigned")}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 font-semibold">
-                    <div className="flex items-center gap-2">
-                      {order.customerName || order.customerId}
-                      {order.isFlexOrder && (
-                        <Badge tone="purple">
-                          Flex Order
-                        </Badge>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-2">
-                    {order.fromCurrency} → {order.toCurrency}
-                  </td>
-                  <td className="py-2">
-                    {order.isFlexOrder && order.actualAmountBuy ? (
-                      <span>
-                        <span className="text-purple-600 font-semibold">{Math.round(order.actualAmountBuy)}</span>
-                        <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountBuy)}</span>
-                      </span>
-                    ) : (
-                      Math.round(order.amountBuy)
-                    )}
-                  </td>
-                  <td className="py-2">
-                    {order.isFlexOrder && order.actualAmountSell ? (
-                      <span>
-                        -<span className="text-purple-600 font-semibold">{Math.round(order.actualAmountSell)}</span>
-                        <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountSell)}</span>
-                      </span>
-                    ) : (
-                      `-${Math.round(order.amountSell)}`
-                    )}
-                  </td>
-                  <td className="py-2">
-                    {order.isFlexOrder && order.actualRate ? (
-                      <span>
-                        <span className="text-purple-600 font-semibold">{order.actualRate}</span>
-                        <span className="text-slate-400 text-xs ml-1 line-through">{order.rate}</span>
-                      </span>
-                    ) : (
-                      order.rate
-                    )}
-                  </td>
-                  <td className="py-2">
-                    <Badge tone={getStatusTone(order.status)}>
-                      {t(`orders.${order.status}`)}
-                    </Badge>
-                  </td>
+                  {columnOrder.map((columnKey) => 
+                    visibleColumns.has(columnKey) ? renderCellContent(columnKey, order) : null
+                  )}
                   <td className="py-2">
                     <div
                       className="relative inline-block"
@@ -4342,8 +4787,13 @@ export default function OrdersPage() {
                             </div>
                           ) : null}
                           <p className="text-sm text-slate-600">
-                            Amount: {receipt.amount}
+                            {t("orders.amount")}: {receipt.amount}
                           </p>
+                          {receipt.accountName && (
+                            <p className="text-sm text-slate-500">
+                              {t("orders.account")}: {receipt.accountName}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -4449,8 +4899,13 @@ export default function OrdersPage() {
                             </div>
                           ) : null}
                           <p className="text-sm text-slate-600">
-                            Amount: {payment.amount}
+                            {t("orders.amount")}: {payment.amount}
                           </p>
+                          {payment.accountName && (
+                            <p className="text-sm text-slate-500">
+                              {t("orders.account")}: {payment.accountName}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>

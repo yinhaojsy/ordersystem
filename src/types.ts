@@ -75,11 +75,21 @@ export interface Order {
   hasBeneficiaries?: boolean;
   buyAccountId?: number;
   sellAccountId?: number;
+  buyAccountName?: string;
+  sellAccountName?: string;
+  buyAccounts?: Array<{ accountId: number; accountName: string; amount: number }>;
+  sellAccounts?: Array<{ accountId: number; accountName: string; amount: number }>;
   paymentFlow?: PaymentFlow;
   actualAmountBuy?: number;
   actualAmountSell?: number;
   actualRate?: number;
   isFlexOrder?: boolean;
+  serviceChargeAmount?: number;
+  serviceChargeCurrency?: string;
+  serviceChargeAccountId?: number;
+  profitAmount?: number;
+  profitCurrency?: string;
+  profitAccountId?: number;
   createdAt: string;
 }
 

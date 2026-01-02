@@ -197,7 +197,12 @@
     "rate": "汇率",
     "date": "日期",
     "status": "状态",
+    "orderId": "订单ID",
+    "buyAccount": "买入账户",
+    "sellAccount": "卖出账户",
     "actions": "操作",
+    "columns": "列",
+    "showColumns": "显示列",
     "noOrders": "暂无订单。",
     "createOrder": "创建订单",
     "process": "处理",
@@ -417,7 +422,10 @@
     "noAccountsFound": "未找到账户",
     "addFavorite": "添加到收藏",
     "removeFavorite": "从收藏中移除",
-    "errorDeleting": "删除转账时出错"
+    "errorDeleting": "删除转账时出错",
+    "columns": "列",
+    "showColumns": "显示列",
+    "transferId": "转账ID"
   },
   "expenses": {
     "title": "开支",
@@ -466,7 +474,10 @@
     "deleteSelected": "删除所选开支",
     "noAccountsFound": "未找到账户",
     "addFavorite": "添加到收藏",
-    "removeFavorite": "从收藏中移除"
+    "removeFavorite": "从收藏中移除",
+    "columns": "列",
+    "showColumns": "显示列",
+    "expenseId": "开支ID"
   },
   "profit": {
     "calculationSelection": "利润计算",

@@ -194,7 +194,12 @@
     "rate": "Rate",
     "date": "Date",
     "status": "Status",
+    "orderId": "Order ID",
+    "buyAccount": "Buy Account",
+    "sellAccount": "Sell Account",
     "actions": "Actions",
+    "columns": "Columns",
+    "showColumns": "Show Columns",
     "noOrders": "No orders yet.",
     "createOrder": "Create Order",
     "process": "Process",
@@ -424,7 +429,10 @@
     "noAccountsFound": "No accounts found",
     "addFavorite": "Add to favorites",
     "removeFavorite": "Remove from favorites",
-    "errorDeleting": "Error deleting transfer"
+    "errorDeleting": "Error deleting transfer",
+    "columns": "Columns",
+    "showColumns": "Show Columns",
+    "transferId": "Transfer ID"
   },
   "expenses": {
     "title": "Expenses",
@@ -475,7 +483,10 @@
     "noAccountsFound": "No accounts found",
     "addFavorite": "Add to favorites",
     "removeFavorite": "Remove from favorites",
-    "description": "Description"
+    "description": "Description",
+    "columns": "Columns",
+    "showColumns": "Show Columns",
+    "expenseId": "Expense ID"
   },
   "profit": {
     "calculationSelection": "Profit Calculation",
