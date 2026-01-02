@@ -945,52 +945,25 @@ export const processOrder = (req, res, next) => {
     }
 
     // Determine status based on order type
-    let status = "pending";
-    if (existingOrder.isFlexOrder === 1) {
-      // Flex orders go to "under_process" status
-      status = "under_process";
-    } else {
-      // Regular orders use payment flow to determine status
-      if (paymentFlow === "pay_first") {
-        status = "waiting_for_payment";
-      } else {
-        status = "waiting_for_receipt";
-      }
-    }
+    // Both flex orders and regular orders now go to "under_process" status
+    let status = "under_process";
 
     console.log("processOrder: Updating order", { id, handlerId, paymentFlow, status, isFlexOrder: existingOrder.isFlexOrder });
 
-    // Update order with handler, payment flow (if provided), and status
+    // Update order with handler and status
+    // Both flex orders and regular orders now follow the same flow
     try {
-      let updateResult;
-      // For flex orders, paymentFlow is optional
-      if (existingOrder.isFlexOrder === 1) {
-        const updateStmt = db.prepare(
-          `UPDATE orders 
-           SET handlerId = @handlerId, 
-               status = @status
-           WHERE id = @id;`
-        );
-        updateResult = updateStmt.run({
-          id: Number(id),
-          handlerId: Number(handlerId),
-          status: status,
-        });
-      } else {
-        const updateStmt = db.prepare(
-          `UPDATE orders 
-           SET handlerId = @handlerId, 
-               paymentFlow = @paymentFlow,
-               status = @status
-           WHERE id = @id;`
-        );
-        updateResult = updateStmt.run({
-          id: Number(id),
-          handlerId: Number(handlerId),
-          paymentFlow: paymentFlow || "receive_first",
-          status: status,
-        });
-      }
+      const updateStmt = db.prepare(
+        `UPDATE orders 
+         SET handlerId = @handlerId, 
+             status = @status
+         WHERE id = @id;`
+      );
+      const updateResult = updateStmt.run({
+        id: Number(id),
+        handlerId: Number(handlerId),
+        status: status,
+      });
 
       console.log("processOrder: Update result", updateResult);
     } catch (updateError) {
@@ -1068,8 +1041,8 @@ export const addReceipt = (req, res, next) => {
       return res.status(400).json({ message: "File/image and amount are required" });
     }
 
-    // Check if order exists first and get paymentFlow
-    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, amountSell, paymentFlow, buyAccountId, isFlexOrder FROM orders WHERE id = ?;").get(id);
+    // Check if order exists first and get paymentFlow and status
+    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, amountSell, paymentFlow, buyAccountId, isFlexOrder, status FROM orders WHERE id = ?;").get(id);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
@@ -1170,18 +1143,8 @@ export const addReceipt = (req, res, next) => {
       expectedAmount = orderWithActual.actualAmountBuy;
     }
 
-    // For flex orders, don't auto-advance status - let user proceed manually
-    // For regular orders, advance when total >= expected
-    if (!isFlexOrder && totalAmount >= expectedAmount) {
-      // Update status based on payment flow
-      if (paymentFlow === "pay_first") {
-        // In pay-first flow, when receipts are complete, order is completed
-        db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(id);
-      } else {
-        // In receive-first flow, when receipts are complete, wait for payment
-        db.prepare("UPDATE orders SET status = 'waiting_for_payment' WHERE id = ?;").run(id);
-      }
-    }
+    // For orders in "under_process" status (both flex and regular), don't auto-advance status - let user proceed manually
+    // Status should only change when manually completing the order
 
     res.json(receiptWithUrl);
   } catch (error) {
@@ -1521,32 +1484,8 @@ export const addPayment = (req, res, next) => {
       });
     }
 
-    // For regular orders or flex orders without excess, update status normally
-    if (!isFlexOrder && totalAmount >= expectedAmount) {
-      // Update status based on payment flow
-      if (paymentFlow === "pay_first") {
-        // In pay-first flow, when payments are complete, wait for receipt
-        db.prepare("UPDATE orders SET status = 'waiting_for_receipt' WHERE id = ?;").run(id);
-      } else {
-        // In receive-first flow, when payments are complete, order is completed
-        db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(id);
-      }
-    } else if (isFlexOrder && totalAmount >= expectedAmount) {
-      // For flex orders, check if all confirmed receipts match the required amount after excess
-      const receipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(id);
-      const totalReceiptAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
-      const orderWithActual = db.prepare("SELECT actualAmountBuy FROM orders WHERE id = ?;").get(id);
-      const expectedReceiptAmount = orderWithActual?.actualAmountBuy;
-      
-      if (expectedReceiptAmount !== null && expectedReceiptAmount !== undefined && totalReceiptAmount >= expectedReceiptAmount) {
-        // All receipts received, complete the order
-        if (paymentFlow === "pay_first") {
-          db.prepare("UPDATE orders SET status = 'waiting_for_receipt' WHERE id = ?;").run(id);
-        } else {
-          db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(id);
-        }
-      }
-    }
+    // For orders in "under_process" status, don't auto-advance status - let user proceed manually
+    // Status should only change when manually completing the order
 
     res.json(paymentWithUrl);
   } catch (error) {
@@ -1833,16 +1772,19 @@ export const confirmReceipt = (req, res, next) => {
     };
 
     // Check if order should be updated based on confirmed receipts
-    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, paymentFlow, isFlexOrder, actualAmountBuy, rate, actualRate FROM orders WHERE id = ?;").get(receipt.orderId);
+    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, paymentFlow, isFlexOrder, actualAmountBuy, rate, actualRate, status FROM orders WHERE id = ?;").get(receipt.orderId);
     if (order) {
       const confirmedReceipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(receipt.orderId);
       const totalAmount = confirmedReceipts.reduce((sum, r) => sum + r.amount, 0);
       
       const isFlexOrder = order.isFlexOrder === 1;
       const paymentFlow = order.paymentFlow || "receive_first";
+      const currentOrderStatus = order.status;
+      const isUnderProcess = currentOrderStatus === "under_process";
       
-      // For flex orders, update actualAmountBuy/actualAmountSell
-      if (isFlexOrder) {
+      // For flex orders and regular orders in "under_process" status, update actualAmountBuy/actualAmountSell
+      // Both follow the same flow - don't auto-advance status, let user proceed manually
+      if (isFlexOrder || isUnderProcess) {
         const effectiveRate = order.actualRate || order.rate;
         const calculatedAmountSell = calculateAmountSell(totalAmount, effectiveRate, order.fromCurrency, order.toCurrency);
         db.prepare(
@@ -1859,14 +1801,9 @@ export const confirmReceipt = (req, res, next) => {
         });
       }
       
-      // For regular orders, check if status should be updated
-      if (!isFlexOrder && totalAmount >= order.amountBuy) {
-        if (paymentFlow === "pay_first") {
-          db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(receipt.orderId);
-        } else {
-          db.prepare("UPDATE orders SET status = 'waiting_for_payment' WHERE id = ?;").run(receipt.orderId);
-        }
-      }
+      // CRITICAL: Never change status for orders in "under_process" - they behave exactly like flex orders
+      // For orders in "under_process" status, don't auto-advance status - let user proceed manually
+      // Status should only change when manually completing the order
     }
 
     res.json(receiptWithUrl);
@@ -2048,7 +1985,7 @@ export const confirmPayment = (req, res, next) => {
     };
 
     // Check if order should be updated based on confirmed payments
-    const order = db.prepare("SELECT id, toCurrency, amountSell, paymentFlow, isFlexOrder, actualAmountBuy, actualAmountSell, rate, actualRate FROM orders WHERE id = ?;").get(payment.orderId);
+    const order = db.prepare("SELECT id, toCurrency, amountSell, paymentFlow, isFlexOrder, actualAmountBuy, actualAmountSell, rate, actualRate, status FROM orders WHERE id = ?;").get(payment.orderId);
     if (order) {
       const confirmedPayments = db.prepare("SELECT * FROM order_payments WHERE orderId = ? AND status = 'confirmed';").all(payment.orderId);
       const totalAmount = confirmedPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -2098,27 +2035,9 @@ export const confirmPayment = (req, res, next) => {
         });
       }
       
-      // For regular orders or flex orders without excess, update status normally
-      if (!isFlexOrder && totalAmount >= expectedAmount) {
-        if (paymentFlow === "pay_first") {
-          db.prepare("UPDATE orders SET status = 'waiting_for_receipt' WHERE id = ?;").run(payment.orderId);
-        } else {
-          db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(payment.orderId);
-        }
-      } else if (isFlexOrder && totalAmount >= expectedAmount) {
-        const confirmedReceipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(payment.orderId);
-        const totalReceiptAmount = confirmedReceipts.reduce((sum, r) => sum + r.amount, 0);
-        const orderWithActual = db.prepare("SELECT actualAmountBuy FROM orders WHERE id = ?;").get(payment.orderId);
-        const expectedReceiptAmount = orderWithActual?.actualAmountBuy;
-        
-        if (expectedReceiptAmount !== null && expectedReceiptAmount !== undefined && totalReceiptAmount >= expectedReceiptAmount) {
-          if (paymentFlow === "pay_first") {
-            db.prepare("UPDATE orders SET status = 'waiting_for_receipt' WHERE id = ?;").run(payment.orderId);
-          } else {
-            db.prepare("UPDATE orders SET status = 'completed' WHERE id = ?;").run(payment.orderId);
-          }
-        }
-      }
+      // For regular orders in "under_process" status, don't auto-advance status - let user proceed manually
+      // For orders in "under_process" status, don't auto-advance status - let user proceed manually
+      // Status should only change when manually completing the order
     }
 
     res.json(paymentWithUrl);

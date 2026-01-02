@@ -358,8 +358,6 @@
     "page": "Page",
     "previous": "Previous",
     "next": "Next",
-    "waitingForReceipt": "Waiting for Receipt",
-    "waitingForPayment": "Waiting for Payment",
     "underProcess": "Under Process",
     "selectHandler": "Type to search handlers...",
     "selectCustomer": "Type to search customers...",

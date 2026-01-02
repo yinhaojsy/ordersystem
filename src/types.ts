@@ -46,7 +46,7 @@ export interface Role {
   updatedAt?: string;
 }
 
-export type OrderStatus = "pending" | "waiting_for_receipt" | "waiting_for_payment" | "under_process" | "completed" | "cancelled";
+export type OrderStatus = "pending" | "under_process" | "completed" | "cancelled";
 export type PaymentFlow = "receive_first" | "pay_first";
 
 export interface Order {

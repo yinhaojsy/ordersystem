@@ -776,8 +776,6 @@ export default function OrdersPage() {
           const statusStr = String(row["Status"] || row["status"] || "pending").trim().toLowerCase();
           const statusMap: Record<string, OrderStatus> = {
             "pending": "pending",
-            "waiting_for_receipt": "waiting_for_receipt",
-            "waiting_for_payment": "waiting_for_payment",
             "under_process": "under_process",
             "completed": "completed",
             "cancelled": "cancelled",
@@ -1026,8 +1024,8 @@ export default function OrdersPage() {
   
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const menuElementRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
-  const receiptFileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
-  const paymentFileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+  const receiptFileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  const paymentFileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const [calculatedField, setCalculatedField] = useState<"buy" | "sell" | null>(null);
   const [receiptUploadKey, setReceiptUploadKey] = useState(0);
   const [paymentUploadKey, setPaymentUploadKey] = useState(0);
@@ -1541,11 +1539,6 @@ export default function OrdersPage() {
       id: processModalOrderId,
       handlerId: Number(processForm.handlerId),
     };
-    
-    // Only include paymentFlow for regular orders
-    if (!isFlex) {
-      payload.paymentFlow = processForm.paymentFlow;
-    }
 
     // Commented out for future use:
     // paymentType: processForm.paymentType,
@@ -1897,6 +1890,13 @@ export default function OrdersPage() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, index: number, type: "receipt" | "payment") => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file, index, type);
+    }
+  };
+
   // Handle paste event
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -2109,36 +2109,6 @@ export default function OrdersPage() {
       );
     }
 
-    if (order.status === "waiting_for_receipt") {
-      buttons.push(
-        <button
-          key="view"
-          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
-          onClick={() => {
-            setViewModalOrderId(order.id);
-            setOpenMenuId(null);
-          }}
-        >
-          {t("orders.view")}
-        </button>
-      );
-    }
-
-    if (order.status === "waiting_for_payment") {
-      // Show View button - accounts are selected when uploading payments
-      buttons.push(
-        <button
-          key="view"
-          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
-          onClick={() => {
-            setViewModalOrderId(order.id);
-            setOpenMenuId(null);
-          }}
-        >
-          {t("orders.view")}
-        </button>
-      );
-    }
 
     if (order.status === "under_process") {
       // Show View button for flex orders under process
@@ -2204,8 +2174,6 @@ export default function OrdersPage() {
     switch (status) {
       case "pending":
         return "amber";
-      case "waiting_for_receipt":
-      case "waiting_for_payment":
       case "under_process":
         return "blue";
       case "completed":
@@ -2697,9 +2665,9 @@ export default function OrdersPage() {
 
   const currentOrder = orders.find((o) => o.id === viewModalOrderId);
   const makePaymentOrder = orders.find((o) => o.id === makePaymentModalOrderId);
-  const isWaitingForReceipt = currentOrder?.status === "waiting_for_receipt";
-  const isWaitingForPayment = currentOrder?.status === "waiting_for_payment";
-  const isUnderProcess = currentOrder?.status === "under_process";
+  // Use orderDetails.order.status if available (more up-to-date), otherwise fall back to currentOrder
+  const orderStatusForView = orderDetails?.order?.status || currentOrder?.status;
+  const isUnderProcess = orderStatusForView === "under_process";
 
   const { data: customerBeneficiaries = [] } = useGetCustomerBeneficiariesQuery(
     makePaymentOrder?.customerId ?? 0,
@@ -3048,8 +3016,6 @@ export default function OrdersPage() {
                 >
                   <option value="">{t("orders.all") || "All"}</option>
                   <option value="pending">{t("orders.pending") || "Pending"}</option>
-                  <option value="waiting_for_receipt">{t("orders.waitingForReceipt") || "Waiting for Receipt"}</option>
-                  <option value="waiting_for_payment">{t("orders.waitingForPayment") || "Waiting for Payment"}</option>
                   <option value="under_process">{t("orders.underProcess") || "Under Process"}</option>
                   <option value="completed">{t("orders.completed") || "Completed"}</option>
                   <option value="cancelled">{t("orders.cancelled") || "Cancelled"}</option>
@@ -3566,55 +3532,6 @@ export default function OrdersPage() {
                   </option>
                 ))}
               </select>
-
-              {/* Payment Flow Selection - Only for regular orders */}
-              {(() => {
-                const currentOrder = orders.find((o) => o.id === processModalOrderId);
-                if (currentOrder?.isFlexOrder) {
-                  return null; // Hide payment flow selection for flex orders
-                }
-                return (
-                  <div className="col-span-full">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      {t("orders.paymentFlow")}
-                    </label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          name="paymentFlow"
-                          value="receive_first"
-                          checked={processForm.paymentFlow === "receive_first"}
-                          onChange={(e) =>
-                            setProcessForm((p) => ({
-                              ...p,
-                              paymentFlow: e.target.value as "receive_first" | "pay_first",
-                            }))
-                          }
-                          className="mr-2"
-                        />
-                        {t("orders.receiveFirst")}
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          name="paymentFlow"
-                          value="pay_first"
-                          checked={processForm.paymentFlow === "pay_first"}
-                          onChange={(e) =>
-                            setProcessForm((p) => ({
-                              ...p,
-                              paymentFlow: e.target.value as "receive_first" | "pay_first",
-                            }))
-                          }
-                          className="mr-2"
-                        />
-                        {t("orders.payFirst")}
-                      </label>
-                    </div>
-                  </div>
-                );
-              })()}
 
               {/* Commented out for future use - CRYPTO/FIAT payment type selection */}
               {/* 
@@ -5144,47 +5061,10 @@ export default function OrdersPage() {
               ) : (
                 <>
                   {/* Regular order flow - show sections based on status */}
-              {isWaitingForReceipt && (
+                  {/* Regular order flow - show sections based on status */}
+              {isUnderProcess && !orderDetails.order.isFlexOrder && (
                 <>
-                  <div className="border-b pb-4">
-                    <h3 className="font-semibold text-slate-900 mb-2">
-                      {t("orders.handlerInformation")}
-                    </h3>
-                    <p className="text-sm text-slate-600">
-                      {t("orders.handler")}: {orderDetails.order.handlerName || "N/A"}
-                    </p>
-                    {orderDetails.order.paymentType === "CRYPTO" ? (
-                      <div className="mt-2">
-                        <p className="text-sm text-slate-600">
-                          {t("orders.network")}: {orderDetails.order.networkChain || "N/A"}
-                        </p>
-                        <p className="text-sm text-slate-600 mt-1">
-                          {t("orders.walletAddresses")}:
-                        </p>
-                        <ul className="list-disc list-inside text-sm text-slate-600 ml-4">
-                          {orderDetails.order.walletAddresses?.map(
-                            (addr, idx) => (
-                              <li key={idx}>{addr}</li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-sm text-slate-600">
-                        {orderDetails.order.bankDetails && (
-                          <>
-                            <p>{t("orders.bankName")}: {orderDetails.order.bankDetails.bankName || "N/A"}</p>
-                            <p>{t("orders.accountTitle")}: {orderDetails.order.bankDetails.accountTitle || "N/A"}</p>
-                            <p>{t("orders.accountNumber")}: {orderDetails.order.bankDetails.accountNumber || "N/A"}</p>
-                            <p>{t("orders.accountIban")}: {orderDetails.order.bankDetails.accountIban || "N/A"}</p>
-                            <p>{t("orders.swiftCode")}: {orderDetails.order.bankDetails.swiftCode || "N/A"}</p>
-                            <p>{t("orders.bankAddress")}: {orderDetails.order.bankDetails.bankAddress || "N/A"}</p>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
+                  {/* Regular orders in under_process status - show both receipt and payment uploads */}
                   <div className="border-b pb-4">
                     <h3 className="font-semibold text-slate-900 mb-2">
                       {t("orders.receiptUploads")}
@@ -5320,363 +5200,192 @@ export default function OrdersPage() {
                         )}
                         {showReceiptUpload && (
                           <form onSubmit={handleAddReceipt} className="mt-4">
-                      {receiptUploads.map((upload, index) => (
-                        <div
-                          key={`${receiptUploadKey}-${index}`}
-                          className={`mb-4 p-3 border-2 border-dashed rounded-lg transition-colors relative ${
-                            receiptDragOver && index === receiptUploads.length - 1
-                              ? "border-blue-500 bg-blue-50"
-                              : "border-slate-200"
-                          }`}
-                          onDrop={(e) => {
-                            handleDrop(e, index, "receipt");
-                            setActiveUploadType(null);
-                          }}
-                          onDragOver={(e) => {
-                            handleDragOver(e, "receipt");
-                            setActiveUploadType("receipt");
-                          }}
-                          onDragLeave={(e) => {
-                            handleDragLeave(e, "receipt");
-                            setActiveUploadType(null);
-                          }}
-                          onFocus={() => setActiveUploadType("receipt")}
-                          onClick={() => setActiveUploadType("receipt")}
-                        >
-                          {(!upload.image && !upload.amount && !upload.accountId) && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const newUploads = receiptUploads.filter((_, i) => i !== index);
-                                setReceiptUploads(newUploads);
-                                // If no uploads left, hide the section
-                                if (newUploads.length === 0) {
-                                  setShowReceiptUpload(false);
-                                }
-                              }}
-                              className="absolute top-2 right-2 w-6 h-6 rounded-full border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-300 flex items-center justify-center text-sm font-bold z-10"
-                              title={t("common.delete")}
-                            >
-                              −
-                            </button>
-                          )}
-                          {!upload.image && (
-                            <div className="text-center py-4 text-slate-500 text-sm">
-                              <p className="mb-2">Drag & drop file here (image or PDF), paste (Ctrl+V), or</p>
-                            </div>
-                          )}
-                          <div className="relative mb-2">
-                            <input
-                              type="file"
-                              accept="image/*,application/pdf"
-                              key={`receipt-file-${receiptUploadKey}-${index}`}
-                              ref={(el) => {
-                                receiptFileInputRefs.current[index] = el;
-                              }}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleImageUpload(file, index, "receipt");
-                                }
-                              }}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                              id={`receipt-file-input-${receiptUploadKey}-${index}`}
-                            />
-                            <label
-                              htmlFor={`receipt-file-input-${receiptUploadKey}-${index}`}
-                              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-blue-50 hover:bg-blue-100 border-2 border-blue-300 border-dashed rounded-lg text-blue-700 font-medium cursor-pointer transition-colors"
-                            >
-                              <svg
-                                className="w-5 h-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
+                            {receiptUploads.map((upload, index) => (
+                              <div
+                                key={`${receiptUploadKey}-${index}`}
+                                className={`mb-4 p-3 border-2 border-dashed rounded-lg transition-colors relative ${
+                                  receiptDragOver && index === receiptUploads.length - 1
+                                    ? "border-blue-500 bg-blue-50"
+                                    : "border-slate-200"
+                                }`}
+                                onDrop={(e) => {
+                                  handleDrop(e, index, "receipt");
+                                  setActiveUploadType(null);
+                                }}
+                                onDragOver={(e) => {
+                                  handleDragOver(e, "receipt");
+                                  setActiveUploadType("receipt");
+                                }}
+                                onDragLeave={(e) => {
+                                  handleDragLeave(e, "receipt");
+                                  setActiveUploadType(null);
+                                }}
+                                onFocus={() => setActiveUploadType("receipt")}
+                                onClick={() => setActiveUploadType("receipt")}
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                                />
-                              </svg>
-                              <span>Choose File (Image or PDF)</span>
-                            </label>
-                          </div>
-                          {upload.image && (
-                            <div className="relative mb-2">
-                              {upload.image.startsWith('data:image/') ? (
-                                <img
-                                  src={upload.image}
-                                  alt="Preview"
-                                  className="max-w-full max-h-96 w-auto h-auto object-contain rounded"
-                                />
-                              ) : upload.image.startsWith('data:application/pdf') ? (
-                                <div className="flex flex-col items-center justify-center p-8 bg-slate-50 border-2 border-slate-200 rounded-lg">
-                                  <svg
-                                    className="w-16 h-16 text-red-500 mb-2"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                {(!upload.image && !upload.amount && !upload.accountId) && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newUploads = receiptUploads.filter((_, i) => i !== index);
+                                      setReceiptUploads(newUploads);
+                                      if (newUploads.length === 0) {
+                                        setShowReceiptUpload(false);
+                                      }
+                                    }}
+                                    className="absolute top-2 right-2 text-slate-400 hover:text-slate-600"
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                    />
-                                  </svg>
-                                  <p className="text-sm font-medium text-slate-700">PDF Document</p>
-                                  <p className="text-xs text-slate-500 mt-1">Ready to upload</p>
-                                </div>
-                              ) : null}
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*,.pdf"
+                                  ref={(el) => {
+                                    if (el) {
+                                      const key: string = `receipt-${receiptUploadKey}-${index}`;
+                                      receiptFileInputRefs.current[key] = el;
+                                    }
+                                  }}
+                                  key={`receipt-file-${receiptUploadKey}-${index}`}
+                                  className="hidden"
+                                  id={`receipt-file-input-${receiptUploadKey}-${index}`}
+                                  onChange={(e) => handleFileChange(e, index, "receipt")}
+                                />
+                                <label
+                                  htmlFor={`receipt-file-input-${receiptUploadKey}-${index}`}
+                                  className="block cursor-pointer"
+                                >
+                                  {upload.image ? (
+                                    <div className="relative">
+                                      {getFileType(upload.image) === 'image' ? (
+                                        <img
+                                          src={upload.image}
+                                          alt="Receipt preview"
+                                          className="max-w-full max-h-48 w-auto h-auto mb-2 object-contain rounded"
+                                        />
+                                      ) : (
+                                        <div className="flex items-center justify-center gap-2 p-4 bg-slate-50 border-2 border-slate-200 rounded-lg mb-2">
+                                          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                          </svg>
+                                          <span className="text-sm text-slate-700">PDF Document</span>
+                                        </div>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const newUploads = [...receiptUploads];
+                                          newUploads[index] = { image: "", amount: newUploads[index].amount, accountId: newUploads[index].accountId };
+                                          setReceiptUploads(newUploads);
+                                        }}
+                                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-8 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-400 transition-colors">
+                                      <svg className="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                                      </svg>
+                                      <p className="mt-2 text-sm text-slate-600">Click or drag to upload receipt</p>
+                                    </div>
+                                  )}
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder={t("orders.amount")}
+                                  value={upload.amount}
+                                  onChange={(e) => {
+                                    const newUploads = [...receiptUploads];
+                                    newUploads[index] = { ...newUploads[index], amount: e.target.value };
+                                    setReceiptUploads(newUploads);
+                                  }}
+                                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"
+                                  required={!!upload.image}
+                                  onWheel={handleNumberInputWheel}
+                                />
+                                {(() => {
+                                  const currentOrder = orders.find((o) => o.id === viewModalOrderId);
+                                  return (
+                                    <select
+                                      className="w-full rounded-lg border border-slate-200 px-3 py-2 mb-2"
+                                      value={upload.accountId}
+                                      onChange={(e) => {
+                                        const newUploads = [...receiptUploads];
+                                        newUploads[index] = {
+                                          ...newUploads[index],
+                                          accountId: e.target.value,
+                                        };
+                                        setReceiptUploads(newUploads);
+                                      }}
+                                      required={!!upload.image}
+                                    >
+                                      <option value="">
+                                        {t("orders.selectReceiptAccount")} ({currentOrder?.fromCurrency || ""}) *
+                                      </option>
+                                      {accounts
+                                        .filter((acc) => acc.currencyCode === currentOrder?.fromCurrency)
+                                        .map((account) => (
+                                          <option key={account.id} value={account.id}>
+                                            {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
+                                          </option>
+                                        ))}
+                                    </select>
+                                  );
+                                })()}
+                                {index === receiptUploads.length - 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newUploads = [...receiptUploads, { image: "", amount: "", accountId: "" }];
+                                      setReceiptUploads(newUploads);
+                                    }}
+                                    className="mt-2 text-sm text-blue-600 hover:underline"
+                                  >
+                                    {t("orders.addAnotherReceipt") || "+ Add another receipt"}
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                              >
+                                {t("orders.uploadReceipts")}
+                              </button>
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newUploads = [...receiptUploads];
-                                  newUploads[index] = { image: "", amount: "", accountId: "" };
-                                  setReceiptUploads(newUploads);
-                                  // Reset file input
-                                  if (receiptFileInputRefs.current[index]) {
-                                    receiptFileInputRefs.current[index]!.value = "";
-                                  }
+                                onClick={() => {
+                                  setReceiptUploads([{ image: "", amount: "", accountId: "" }]);
+                                  setShowReceiptUpload(false);
                                 }}
-                                className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transition-colors"
-                                title={t("common.cancel")}
+                                className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors"
                               >
-                                <svg
-                                  className="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M6 18L18 6M6 6l12 12"
-                                  />
-                                </svg>
+                                {t("common.cancel")}
                               </button>
                             </div>
-                          )}
-                          <input
-                            type="number"
-                            step="0.01"
-                            placeholder={t("orders.amount")}
-                            value={upload.amount}
-                            onWheel={handleNumberInputWheel}
-                            onChange={(e) => {
-                              const newUploads = [...receiptUploads];
-                              newUploads[index] = {
-                                ...newUploads[index],
-                                amount: e.target.value,
-                              };
-                              setReceiptUploads(newUploads);
-                            }}
-                            className="w-full rounded-lg border border-slate-200 px-3 py-2 mb-2"
-                            required
-                          />
-                          {(() => {
-                            const currentOrder = orders.find((o) => o.id === viewModalOrderId);
-                            return (
-                              <select
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2 mb-2"
-                                value={upload.accountId}
-                                onChange={(e) => {
-                                  const newUploads = [...receiptUploads];
-                                  newUploads[index] = {
-                                    ...newUploads[index],
-                                    accountId: e.target.value,
-                                  };
-                                  setReceiptUploads(newUploads);
-                                }}
-                                required
-                              >
-                                <option value="">
-                                  {t("orders.selectReceiptAccount")} ({currentOrder?.fromCurrency || ""}) *
-                                </option>
-                                {accounts
-                                  .filter((acc) => acc.currencyCode === currentOrder?.fromCurrency)
-                                  .map((account) => (
-                                    <option key={account.id} value={account.id}>
-                                      {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
-                                    </option>
-                                  ))}
-                              </select>
-                            );
-                          })()}
-                          <button
-                            type="submit"
-                            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors mt-2"
-                          >
-                            {t("orders.uploadReceipts")}
-                          </button>
-                          </div>
-                        ))}
-                    </form>
+                          </form>
                         )}
                       </>
                     )}
-                    {orderDetails.order.isFlexOrder && orderDetails.receiptBalance > 0 && (
-                      <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                        <p className="text-sm text-purple-800 mb-2">
-                          This is a flex order. You can proceed with partial receipts.
-                        </p>
-                        <p className="text-sm text-purple-700 mb-3">
-                          Current receipts: {orderDetails.totalReceiptAmount.toFixed(2)} {orderDetails.order.fromCurrency}
-                          <br />
-                          Original expected: {orderDetails.order.amountBuy} {orderDetails.order.fromCurrency}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!viewModalOrderId) return;
-                            if (window.confirm(`Proceed with ${orderDetails.totalReceiptAmount.toFixed(2)} ${orderDetails.order.fromCurrency} instead of ${orderDetails.order.amountBuy}?`)) {
-                              await proceedWithPartialReceipts(viewModalOrderId).unwrap();
-                            }
-                          }}
-                          className="w-full rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-purple-700 transition-colors"
-                        >
-                          Proceed with Current Receipts
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {isWaitingForPayment && (
-                <>
-                  <div className="border-b pb-4">
-                    <h3 className="font-semibold text-slate-900 mb-2">
-                      {t("orders.customerBeneficiaryDetails")}
-                    </h3>
-                    {orderDetails.beneficiaries.map((beneficiary) => (
-                      <div key={beneficiary.id} className="mb-4">
-                        {beneficiary.paymentType === "CRYPTO" ? (
-                          <div className="text-sm text-slate-600">
-                            <p>{t("orders.type")}: {t("orders.crypto")}</p>
-                            <p>{t("orders.network")}: {beneficiary.networkChain || "N/A"}</p>
-                            <p>{t("orders.walletAddresses")}:</p>
-                            <ul className="list-disc list-inside ml-4">
-                              {beneficiary.walletAddresses?.map((addr, idx) => (
-                                <li key={idx}>{addr}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : (
-                          <div className="text-sm text-slate-600">
-                            <p>{t("orders.type")}: {t("orders.fiat")}</p>
-                            <p>{t("orders.bankName")}: {beneficiary.bankName || "N/A"}</p>
-                            <p>{t("orders.accountTitle")}: {beneficiary.accountTitle || "N/A"}</p>
-                            <p>{t("orders.accountNumber")}: {beneficiary.accountNumber || "N/A"}</p>
-                            <p>{t("orders.accountIban")}: {beneficiary.accountIban || "N/A"}</p>
-                            <p>{t("orders.swiftCode")}: {beneficiary.swiftCode || "N/A"}</p>
-                            <p>{t("orders.bankAddress")}: {beneficiary.bankAddress || "N/A"}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
                   </div>
 
                   <div className="border-b pb-4">
                     <h3 className="font-semibold text-slate-900 mb-2">
                       {t("orders.paymentUploads")}
                     </h3>
-                    {orderDetails.order.isFlexOrder && (
-                      <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                        <p className="text-sm font-semibold text-purple-900 mb-2">
-                          Flex Order - Adjust Exchange Rate
-                        </p>
-                        <div className="grid grid-cols-2 gap-4 mb-2">
-                          <div className="text-sm text-purple-700">
-                            <span className="font-medium">Current Received:</span>{" "}
-                            {orderDetails.order.actualAmountBuy || orderDetails.order.amountBuy}{" "}
-                            {orderDetails.order.fromCurrency}
-                          </div>
-                          <div className="text-sm text-purple-700 flex items-center gap-2">
-                            <span className="font-medium">Exchange Rate:</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={flexOrderRate ?? String(orderDetails.order.actualRate ?? orderDetails.order.rate ?? "")}
-                              onChange={(e) => setFlexOrderRate(e.target.value)}
-                              onWheel={handleNumberInputWheel}
-                              className="w-24 rounded border border-purple-300 px-2 py-1"
-                              placeholder={String(orderDetails.order.actualRate || orderDetails.order.rate)}
-                              disabled={orderDetails.order.status === "completed" || orderDetails.order.status === "cancelled"}
-                            />
-                            {orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  if (!viewModalOrderId) return;
-                                  const rateToUse =
-                                    flexOrderRate ??
-                                    String(orderDetails.order.actualRate ?? orderDetails.order.rate ?? "");
-                                  if (!rateToUse) {
-                                    alert(t("orders.pleaseEnterExchangeRate"));
-                                    return;
-                                  }
-                                  const rateValue = Number(rateToUse);
-                                  if (isNaN(rateValue) || rateValue <= 0) {
-                                    alert(t("orders.pleaseEnterValidExchangeRate"));
-                                    return;
-                                  }
-                                  try {
-                                    await adjustFlexOrderRate({
-                                      id: viewModalOrderId,
-                                      rate: rateValue,
-                                    }).unwrap();
-                                    alert(t("orders.exchangeRateUpdatedSuccessfully"));
-                                  } catch (error) {
-                                    console.error("Error updating exchange rate:", error);
-                                    alert(t("orders.failedToUpdateExchangeRate"));
-                                  }
-                                }}
-                                className="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                              >
-                                Update Exchange Rate
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-sm text-purple-800 font-medium">
-                          Calculated Amount to Pay:{" "}
-                          {calculateAmountSell(
-                            orderDetails.order.actualAmountBuy || orderDetails.order.amountBuy,
-                            resolvedFlexRate,
-                            orderDetails.order.fromCurrency,
-                            orderDetails.order.toCurrency
-                          ).toFixed(2)}{" "}
-                          {orderDetails.order.toCurrency}
-                        </div>
-                      </div>
-                    )}
-                    {excessPaymentWarning && (
-                      <div className="mb-4 p-4 bg-amber-50 border border-amber-300 rounded-lg">
-                        <p className="text-sm font-semibold text-amber-900 mb-2">
-                          ⚠️ Payment Exceeds Expected Amount
-                        </p>
-                        <div className="text-sm text-amber-800 space-y-1">
-                          <p>
-                            Excess Payment: {excessPaymentWarning.excessAmount.toFixed(2)}{" "}
-                            {orderDetails.order.toCurrency}
-                          </p>
-                          <p>
-                            Additional Receipts Required: {excessPaymentWarning.additionalReceiptsNeeded.toFixed(2)}{" "}
-                            {orderDetails.order.fromCurrency}
-                          </p>
-                          <p className="text-xs text-amber-700 mt-2">
-                            Please upload receipts for the additional amount before completing this order.
-                          </p>
-                        </div>
-                      </div>
-                    )}
                     <div className="text-sm text-slate-600 mb-2">
-                      {t("orders.amountSell")}: -{orderDetails.order.actualAmountSell || orderDetails.order.amountSell}
+                      {t("orders.amountSell")}: -{orderDetails.order.amountSell}
                     </div>
                     <div className="text-sm text-slate-600 mb-2">
                       {t("orders.amountPaid")}: {orderDetails.totalPaymentAmount.toFixed(2)}
@@ -5799,213 +5508,188 @@ export default function OrdersPage() {
                                 setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
                               }
                             }}
-                            className="mt-4 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                            className="mt-4 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
                           >
                             {t("orders.addPayment") || "ADD PAYMENT"}
                           </button>
                         )}
                         {showPaymentUpload && (
                           <form onSubmit={handleAddPayment} className="mt-4">
-                      {paymentUploads.map((upload, index) => (
-                        <div
-                          key={`${paymentUploadKey}-${index}`}
-                          className={`mb-4 p-3 border-2 border-dashed rounded-lg transition-colors relative ${
-                            paymentDragOver && index === paymentUploads.length - 1
-                              ? "border-blue-500 bg-blue-50"
-                              : "border-slate-200"
-                          }`}
-                          onDrop={(e) => {
-                            handleDrop(e, index, "payment");
-                            setActiveUploadType(null);
-                          }}
-                          onDragOver={(e) => {
-                            handleDragOver(e, "payment");
-                            setActiveUploadType("payment");
-                          }}
-                          onDragLeave={(e) => {
-                            handleDragLeave(e, "payment");
-                            setActiveUploadType(null);
-                          }}
-                          onFocus={() => setActiveUploadType("payment")}
-                          onClick={() => setActiveUploadType("payment")}
-                        >
-                          {(!upload.image && !upload.amount && !upload.accountId) && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const newUploads = paymentUploads.filter((_, i) => i !== index);
-                                setPaymentUploads(newUploads);
-                                // If no uploads left, hide the section
-                                if (newUploads.length === 0) {
-                                  setShowPaymentUpload(false);
-                                }
-                              }}
-                              className="absolute top-2 right-2 w-6 h-6 rounded-full border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-300 flex items-center justify-center text-sm font-bold z-10"
-                              title={t("common.delete")}
-                            >
-                              −
-                            </button>
-                          )}
-                          {!upload.image && (
-                            <div className="text-center py-4 text-slate-500 text-sm">
-                              <p className="mb-2">Drag & drop file here (image or PDF), paste (Ctrl+V), or</p>
-                            </div>
-                          )}
-                          <div className="relative mb-2">
-                            <input
-                              type="file"
-                              accept="image/*,application/pdf"
-                              key={`payment-file-${paymentUploadKey}-${index}`}
-                              ref={(el) => {
-                                paymentFileInputRefs.current[index] = el;
-                              }}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleImageUpload(file, index, "payment");
-                                }
-                              }}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                              id={`payment-file-input-${paymentUploadKey}-${index}`}
-                            />
-                            <label
-                              htmlFor={`payment-file-input-${paymentUploadKey}-${index}`}
-                              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-green-50 hover:bg-green-100 border-2 border-green-300 border-dashed rounded-lg text-green-700 font-medium cursor-pointer transition-colors"
-                            >
-                              <svg
-                                className="w-5 h-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
+                            {paymentUploads.map((upload, index) => (
+                              <div
+                                key={`${paymentUploadKey}-${index}`}
+                                className={`mb-4 p-3 border-2 border-dashed rounded-lg transition-colors relative ${
+                                  paymentDragOver && index === paymentUploads.length - 1
+                                    ? "border-blue-500 bg-blue-50"
+                                    : "border-slate-200"
+                                }`}
+                                onDrop={(e) => {
+                                  handleDrop(e, index, "payment");
+                                  setActiveUploadType(null);
+                                }}
+                                onDragOver={(e) => {
+                                  handleDragOver(e, "payment");
+                                  setActiveUploadType("payment");
+                                }}
+                                onDragLeave={(e) => {
+                                  handleDragLeave(e, "payment");
+                                  setActiveUploadType(null);
+                                }}
+                                onFocus={() => setActiveUploadType("payment")}
+                                onClick={() => setActiveUploadType("payment")}
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                                />
-                              </svg>
-                              <span>Choose File (Image or PDF)</span>
-                            </label>
-                          </div>
-                          {upload.image && (
-                            <div className="relative mb-2">
-                              {upload.image.startsWith('data:image/') ? (
-                                <img
-                                  src={upload.image}
-                                  alt="Preview"
-                                  className="max-w-full max-h-96 w-auto h-auto object-contain rounded"
-                                />
-                              ) : upload.image.startsWith('data:application/pdf') ? (
-                                <div className="flex flex-col items-center justify-center p-8 bg-slate-50 border-2 border-slate-200 rounded-lg">
-                                  <svg
-                                    className="w-16 h-16 text-red-500 mb-2"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                {(!upload.image && !upload.amount && !upload.accountId) && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newUploads = paymentUploads.filter((_, i) => i !== index);
+                                      setPaymentUploads(newUploads);
+                                      if (newUploads.length === 0) {
+                                        setShowPaymentUpload(false);
+                                      }
+                                    }}
+                                    className="absolute top-2 right-2 text-slate-400 hover:text-slate-600"
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                    />
-                                  </svg>
-                                  <p className="text-sm font-medium text-slate-700">PDF Document</p>
-                                  <p className="text-xs text-slate-500 mt-1">Ready to upload</p>
-                                </div>
-                              ) : null}
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*,.pdf"
+                                  ref={(el) => {
+                                    if (el) {
+                                      const key: string = `payment-${paymentUploadKey}-${index}`;
+                                      paymentFileInputRefs.current[key] = el;
+                                    }
+                                  }}
+                                  key={`payment-file-${paymentUploadKey}-${index}`}
+                                  className="hidden"
+                                  id={`payment-file-input-${paymentUploadKey}-${index}`}
+                                  onChange={(e) => handleFileChange(e, index, "payment")}
+                                />
+                                <label
+                                  htmlFor={`payment-file-input-${paymentUploadKey}-${index}`}
+                                  className="block cursor-pointer"
+                                >
+                                  {upload.image ? (
+                                    <div className="relative">
+                                      {getFileType(upload.image) === 'image' ? (
+                                        <img
+                                          src={upload.image}
+                                          alt="Payment preview"
+                                          className="max-w-full max-h-48 w-auto h-auto mb-2 object-contain rounded"
+                                        />
+                                      ) : (
+                                        <div className="flex items-center justify-center gap-2 p-4 bg-slate-50 border-2 border-slate-200 rounded-lg mb-2">
+                                          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                          </svg>
+                                          <span className="text-sm text-slate-700">PDF Document</span>
+                                        </div>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const newUploads = [...paymentUploads];
+                                          newUploads[index] = { ...newUploads[index], image: "", amount: newUploads[index].amount, accountId: newUploads[index].accountId };
+                                          setPaymentUploads(newUploads);
+                                        }}
+                                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-8 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-400 transition-colors">
+                                      <svg className="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                                      </svg>
+                                      <p className="mt-2 text-sm text-slate-600">Click or drag to upload payment</p>
+                                    </div>
+                                  )}
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder={t("orders.amount")}
+                                  value={upload.amount}
+                                  onChange={(e) => {
+                                    const newUploads = [...paymentUploads];
+                                    newUploads[index] = { ...newUploads[index], amount: e.target.value };
+                                    setPaymentUploads(newUploads);
+                                  }}
+                                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"
+                                  required={!!upload.image}
+                                  onWheel={handleNumberInputWheel}
+                                />
+                                {(() => {
+                                  const currentOrder = orders.find((o) => o.id === viewModalOrderId);
+                                  return (
+                                    <select
+                                      className="w-full rounded-lg border border-slate-200 px-3 py-2 mb-2"
+                                      value={upload.accountId}
+                                      onChange={(e) => {
+                                        const newUploads = [...paymentUploads];
+                                        newUploads[index] = {
+                                          ...newUploads[index],
+                                          accountId: e.target.value,
+                                        };
+                                        setPaymentUploads(newUploads);
+                                      }}
+                                      required={!!upload.image}
+                                    >
+                                      <option value="">
+                                        {t("orders.selectPaymentAccount")} ({currentOrder?.toCurrency || ""}) *
+                                      </option>
+                                      {accounts
+                                        .filter((acc) => acc.currencyCode === currentOrder?.toCurrency)
+                                        .map((account) => (
+                                          <option key={account.id} value={account.id}>
+                                            {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
+                                          </option>
+                                        ))}
+                                    </select>
+                                  );
+                                })()}
+                                {index === paymentUploads.length - 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newUploads = [...paymentUploads, { image: "", amount: "", accountId: "" }];
+                                      setPaymentUploads(newUploads);
+                                    }}
+                                    className="mt-2 text-sm text-blue-600 hover:underline"
+                                  >
+                                    {t("orders.addAnotherPayment") || "+ Add another payment"}
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                              >
+                                {t("orders.uploadPayments")}
+                              </button>
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newUploads = [...paymentUploads];
-                                  newUploads[index] = { image: "", amount: "", accountId: "" };
-                                  setPaymentUploads(newUploads);
-                                  // Reset file input
-                                  if (paymentFileInputRefs.current[index]) {
-                                    paymentFileInputRefs.current[index]!.value = "";
-                                  }
+                                onClick={() => {
+                                  setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
+                                  setShowPaymentUpload(false);
                                 }}
-                                className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transition-colors"
-                                title={t("common.cancel")}
+                                className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors"
                               >
-                                <svg
-                                  className="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M6 18L18 6M6 6l12 12"
-                                  />
-                                </svg>
+                                {t("common.cancel")}
                               </button>
                             </div>
-                          )}
-                          <input
-                            type="number"
-                            step="0.01"
-                            placeholder={t("orders.amount")}
-                            value={upload.amount}
-                            onWheel={handleNumberInputWheel}
-                            onChange={(e) => {
-                              const newUploads = [...paymentUploads];
-                              newUploads[index] = {
-                                ...newUploads[index],
-                                amount: e.target.value,
-                              };
-                              setPaymentUploads(newUploads);
-                            }}
-                            className="w-full rounded-lg border border-slate-200 px-3 py-2 mb-2"
-                            required
-                          />
-                          {(() => {
-                            const currentOrder = orders.find((o) => o.id === viewModalOrderId);
-                            return (
-                              <select
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                                value={upload.accountId}
-                                onChange={(e) => {
-                                  const newUploads = [...paymentUploads];
-                                  newUploads[index] = {
-                                    ...newUploads[index],
-                                    accountId: e.target.value,
-                                  };
-                                  setPaymentUploads(newUploads);
-                                }}
-                                required
-                              >
-                                <option value="">
-                                  {t("orders.selectPaymentAccount")} ({currentOrder?.toCurrency || ""}) *
-                                </option>
-                                {accounts
-                                  .filter((acc) => acc.currencyCode === currentOrder?.toCurrency)
-                                  .map((account) => {
-                                    const hasInsufficientBalance = currentOrder && account.balance < Number(upload.amount || 0);
-                                    return (
-                                      <option key={account.id} value={account.id}>
-                                        {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
-                                        {hasInsufficientBalance ? ` ⚠️ ${t("orders.insufficient")}` : ""}
-                                      </option>
-                                    );
-                                  })}
-                              </select>
-                            );
-                          })()}
-                          <button
-                            type="submit"
-                            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors mt-2"
-                          >
-                            {t("orders.uploadPayments")}
-                          </button>
-                        </div>
-                      ))}
-                    </form>
+                          </form>
                         )}
                       </>
                     )}
@@ -6013,7 +5697,7 @@ export default function OrdersPage() {
                 </>
               )}
 
-              {!isWaitingForReceipt && !isWaitingForPayment && !isUnderProcess && orderDetails && !orderDetails.order.isFlexOrder && (
+              {!isUnderProcess && orderDetails && !orderDetails.order.isFlexOrder && (
                 <>
                   <div className="border-b pb-4">
                     <h3 className="font-semibold text-slate-900 mb-3">
@@ -6701,6 +6385,112 @@ export default function OrdersPage() {
                   </div>
                 )}
               </div>
+              )}
+
+              {/* Complete Order Button for Regular Orders */}
+              {!orderDetails.order.isFlexOrder && orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
+                <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-900 mb-1">
+                        Ready to Complete Order
+                      </p>
+                      <p className="text-xs text-emerald-700">
+                        Total Receipts: {orderDetails.totalReceiptAmount.toFixed(2)} {orderDetails.order.fromCurrency} | 
+                        Total Payments: {orderDetails.totalPaymentAmount.toFixed(2)} {orderDetails.order.toCurrency}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!viewModalOrderId) return;
+                        
+                        const currentOrderDetails = orderDetails;
+                        if (!currentOrderDetails) return;
+                        
+                        // Validate that receipts have been uploaded
+                        if (currentOrderDetails.totalReceiptAmount <= 0) {
+                          alert(t("orders.pleaseUploadReceipts") || "Please upload at least one receipt before completing the order.");
+                          return;
+                        }
+                        
+                        // Validate that payments have been uploaded
+                        if (currentOrderDetails.totalPaymentAmount <= 0) {
+                          alert(t("orders.pleaseUploadPayments") || "Please upload at least one payment before completing the order.");
+                          return;
+                        }
+                        
+                        // Validate amounts match according to exchange rate
+                        const expectedPaymentAmount = calculateAmountSell(
+                          currentOrderDetails.order.amountBuy,
+                          currentOrderDetails.order.rate,
+                          currentOrderDetails.order.fromCurrency,
+                          currentOrderDetails.order.toCurrency
+                        );
+                        const actualPaymentAmount = currentOrderDetails.totalPaymentAmount;
+                        const actualReceiptAmount = currentOrderDetails.totalReceiptAmount;
+                        
+                        // Check if receipt amount matches expected
+                        const receiptDifference = Math.abs(actualReceiptAmount - currentOrderDetails.order.amountBuy);
+                        if (receiptDifference > 0.01) {
+                          const missing = currentOrderDetails.order.amountBuy - actualReceiptAmount;
+                          if (missing > 0) {
+                            alert(`Please upload receipts for the remaining amount: ${missing.toFixed(2)} ${currentOrderDetails.order.fromCurrency}`);
+                            return;
+                          }
+                        }
+                        
+                        // Check if payment amount matches expected
+                        const paymentDifference = Math.abs(actualPaymentAmount - expectedPaymentAmount);
+                        if (paymentDifference > 0.01) {
+                          const missing = expectedPaymentAmount - actualPaymentAmount;
+                          if (missing > 0) {
+                            alert(`Please upload payments for the remaining amount: ${missing.toFixed(2)} ${currentOrderDetails.order.toCurrency}`);
+                            return;
+                          } else {
+                            // Excess payment - user must upload additional receipts
+                            const excess = actualPaymentAmount - expectedPaymentAmount;
+                            // Calculate additional receipts needed: excess amount converted back to fromCurrency
+                            const getCurrencyRate = (code: string) => {
+                              const currency = currencies.find((c) => c.code === code);
+                              const candidate =
+                                currency?.conversionRateBuy ??
+                                currency?.baseRateBuy ??
+                                currency?.baseRateSell ??
+                                currency?.conversionRateSell;
+                              return typeof candidate === "number" ? candidate : null;
+                            };
+                            const fromRate = getCurrencyRate(currentOrderDetails.order.fromCurrency);
+                            const toRate = getCurrencyRate(currentOrderDetails.order.toCurrency);
+                            const inferredFromIsUSDT = fromRate !== null ? fromRate <= 1 : currentOrderDetails.order.fromCurrency === "USDT";
+                            const inferredToIsUSDT = toRate !== null ? toRate <= 1 : currentOrderDetails.order.toCurrency === "USDT";
+                            let baseIsFrom: boolean;
+                            if (inferredFromIsUSDT !== inferredToIsUSDT) {
+                              baseIsFrom = inferredFromIsUSDT;
+                            } else if (!inferredFromIsUSDT && !inferredToIsUSDT && fromRate !== null && toRate !== null) {
+                              baseIsFrom = fromRate < toRate;
+                            } else {
+                              baseIsFrom = true; // default
+                            }
+                            const additionalReceipts = baseIsFrom ? excess / currentOrderDetails.order.rate : excess * currentOrderDetails.order.rate;
+                            alert(`Payment exceeds expected amount. Please upload additional receipts: ${additionalReceipts.toFixed(2)} ${currentOrderDetails.order.fromCurrency}`);
+                            return;
+                          }
+                        }
+                        
+                        if (window.confirm("Are you sure you want to complete this order?")) {
+                          await updateOrderStatus({
+                            id: viewModalOrderId,
+                            status: "completed",
+                          }).unwrap();
+                        }
+                      }}
+                      className="px-6 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+                    >
+                      Complete Order
+                    </button>
+                  </div>
+                </div>
               )}
                 </>
               )}
