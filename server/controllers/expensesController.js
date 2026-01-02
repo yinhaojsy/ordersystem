@@ -14,13 +14,11 @@ export const listExpenses = (_req, res) => {
         e.*,
         acc.name as accountName,
         creator.name as createdByName,
-        updater.name as updatedByName,
-        deleter.name as deletedByName
+        updater.name as updatedByName
        FROM expenses e
        LEFT JOIN accounts acc ON acc.id = e.accountId
        LEFT JOIN users creator ON creator.id = e.createdBy
        LEFT JOIN users updater ON updater.id = e.updatedBy
-       LEFT JOIN users deleter ON deleter.id = e.deletedBy
        WHERE e.deletedAt IS NULL
        ORDER BY e.createdAt DESC;`,
     )
@@ -205,7 +203,7 @@ export const updateExpense = (req, res, next) => {
     const file = req.file; // Multer file object
 
     // Get existing expense
-    const existingExpense = db.prepare("SELECT * FROM expenses WHERE id = ? AND deletedAt IS NULL;").get(id);
+    const existingExpense = db.prepare("SELECT * FROM expenses WHERE id = ?;").get(id);
     if (!existingExpense) {
       return res.status(404).json({ message: "Expense not found" });
     }
@@ -456,10 +454,9 @@ export const getExpenseChanges = (req, res, next) => {
 export const deleteExpense = (req, res, next) => {
   try {
     const { id } = req.params;
-    const { deletedBy } = req.body || {};
     
     // Check if expense exists
-    const expense = db.prepare("SELECT * FROM expenses WHERE id = ? AND deletedAt IS NULL;").get(id);
+    const expense = db.prepare("SELECT * FROM expenses WHERE id = ?;").get(id);
     if (!expense) {
       return res.status(404).json({ message: "Expense not found" });
     }
@@ -469,7 +466,7 @@ export const deleteExpense = (req, res, next) => {
       deleteFile(expense.imagePath);
     }
 
-    // Perform soft delete in a transaction
+    // Perform hard delete in a transaction
     const transaction = db.transaction(() => {
       // Reverse the expense (add back the amount to account)
       db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(expense.amount, expense.accountId);
@@ -489,12 +486,8 @@ export const deleteExpense = (req, res, next) => {
         new Date().toISOString()
       );
 
-      // Soft delete the expense (mark as deleted with audit trail)
-      db.prepare("UPDATE expenses SET deletedBy = ?, deletedAt = ? WHERE id = ?;").run(
-        deletedBy || null,
-        new Date().toISOString(),
-        id
-      );
+      // Hard delete the expense (this will cascade delete expense_changes due to FK constraint)
+      db.prepare("DELETE FROM expenses WHERE id = ?;").run(id);
     });
 
     transaction();

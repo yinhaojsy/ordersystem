@@ -14,7 +14,7 @@ export const getAccountReferences = (req, res, next) => {
       .all(id, id);
     
     const expenses = db
-      .prepare("SELECT id, accountId, amount, currencyCode, description, deletedAt, createdAt FROM expenses WHERE accountId = ?")
+      .prepare("SELECT id, accountId, amount, currencyCode, description, createdAt FROM expenses WHERE accountId = ?")
       .all(id);
     
     const orderPayments = db
@@ -45,8 +45,6 @@ export const getAccountReferences = (req, res, next) => {
       },
       expenses: {
         count: expenses.length,
-        active: expenses.filter(e => !e.deletedAt).length,
-        deleted: expenses.filter(e => e.deletedAt).length,
         records: expenses
       },
       orderPayments: {
@@ -112,9 +110,7 @@ export const getAllReferences = (_req, res, next) => {
       .prepare(`
         SELECT 
           accountId,
-          COUNT(*) as total,
-          SUM(CASE WHEN deletedAt IS NULL THEN 1 ELSE 0 END) as active,
-          SUM(CASE WHEN deletedAt IS NOT NULL THEN 1 ELSE 0 END) as deleted
+          COUNT(*) as total
         FROM expenses 
         GROUP BY accountId
       `)
@@ -164,16 +160,14 @@ export const getAllReferences = (_req, res, next) => {
     
     // Get all expenses
     const allExpenses = db
-      .prepare("SELECT id, accountId, amount, currencyCode, description, deletedAt, createdAt FROM expenses")
+      .prepare("SELECT id, accountId, amount, currencyCode, description, createdAt FROM expenses")
       .all();
     
     res.json({
       summary: {
         totalOrders: allOrders.length,
         totalTransfers: allTransfers.length,
-        totalExpenses: allExpenses.length,
-        activeExpenses: allExpenses.filter(e => !e.deletedAt).length,
-        deletedExpenses: allExpenses.filter(e => e.deletedAt).length
+        totalExpenses: allExpenses.length
       },
       orders: allOrders,
       transfers: allTransfers,
@@ -343,7 +337,7 @@ export const updateAccount = (req, res, next) => {
 
     // Check if account is used in any expenses
     const expenseCount = db
-      .prepare("SELECT COUNT(*) as count FROM expenses WHERE accountId = ? AND deletedAt IS NULL")
+      .prepare("SELECT COUNT(*) as count FROM expenses WHERE accountId = ?")
       .get(id);
     if (expenseCount.count > 0) {
       return res.status(400).json({ 
@@ -395,22 +389,14 @@ export const deleteAccount = (req, res, next) => {
       });
     }
 
-    // Check for expenses (including soft-deleted ones, as they still have foreign key constraints)
+    // Check for expenses
     const expenseCount = db
       .prepare("SELECT COUNT(*) as count FROM expenses WHERE accountId = ?")
       .get(id);
     if (expenseCount.count > 0) {
-      // Check if there are non-deleted expenses
-      const activeExpenseCount = db
-        .prepare("SELECT COUNT(*) as count FROM expenses WHERE accountId = ? AND deletedAt IS NULL")
-        .get(id);
-      if (activeExpenseCount.count > 0) {
-        return res.status(400).json({ 
-          message: "Cannot delete account that is linked to existing expenses" 
-        });
-      }
-      // If only soft-deleted expenses exist, we can delete them
-      console.log(`Account ${id} has ${expenseCount.count} soft-deleted expenses. Will clean up.`);
+      return res.status(400).json({ 
+        message: "Cannot delete account that is linked to existing expenses" 
+      });
     }
 
     // Check for profit calculations - we'll delete these automatically, but log for info

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, useEffect, useRef, type ReactNode, useMemo } from "react";
+import React, { useState, type FormEvent, useEffect, useRef, type ReactNode, useMemo, useCallback, memo } from "react";
 import { useTranslation } from "react-i18next";
 import * as XLSX from "xlsx";
 import Badge from "../components/common/Badge";
@@ -7,14 +7,28 @@ import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
 
 // Component for account tooltip with overflow handling
-function AccountTooltip({ 
+const AccountTooltip = memo(function AccountTooltip({ 
   accounts, 
   label, 
-  children 
+  children,
+  profitAmount,
+  profitCurrency,
+  profitAccountName,
+  serviceChargeAmount,
+  serviceChargeCurrency,
+  serviceChargeAccountName,
+  isSellAccount = false
 }: { 
   accounts: Array<{ accountId: number; accountName: string; amount: number }>; 
   label: string;
   children: ReactNode;
+  profitAmount?: number | null;
+  profitCurrency?: string | null;
+  profitAccountName?: string | null;
+  serviceChargeAmount?: number | null;
+  serviceChargeCurrency?: string | null;
+  serviceChargeAccountName?: string | null;
+  isSellAccount?: boolean;
 }) {
   const { t } = useTranslation();
   const [position, setPosition] = useState<'above' | 'below'>('below');
@@ -82,18 +96,36 @@ function AccountTooltip({
             <div key={idx} className="text-xs text-slate-600 flex justify-between items-center gap-3">
               <span className="truncate">{acc.accountName}</span>
               <span className="font-medium text-slate-800 whitespace-nowrap">
-                {acc.amount.toFixed(2)}
+                {isSellAccount ? `-${acc.amount.toFixed(2)}` : acc.amount.toFixed(2)}
               </span>
             </div>
           ))}
+          {profitAmount !== null && profitAmount !== undefined && profitAccountName && (
+            <div className="text-xs text-blue-700 flex justify-between items-center gap-3 pt-2 border-t border-slate-200">
+              <span className="truncate font-semibold">Profit ({profitAccountName})</span>
+              <span className="font-medium whitespace-nowrap">
+                {profitAmount > 0 ? "+" : ""}{profitAmount.toFixed(2)} {profitCurrency || ""}
+              </span>
+            </div>
+          )}
+          {serviceChargeAmount !== null && serviceChargeAmount !== undefined && serviceChargeAccountName && (
+            <div className="text-xs flex justify-between items-center gap-3 pt-2 border-t border-slate-200">
+              <span className={`truncate font-semibold ${serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"}`}>
+                Fees ({serviceChargeAccountName})
+              </span>
+              <span className={`font-medium whitespace-nowrap ${serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"}`}>
+                {serviceChargeAmount > 0 ? "+" : ""}{serviceChargeAmount.toFixed(2)} {serviceChargeCurrency || ""}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
-}
+});
 
 // Searchable Select Component
-function SearchableSelect<T extends { id: number; name: string }>({
+const SearchableSelect = memo(function SearchableSelect<T extends { id: number; name: string }>({
   value,
   onChange,
   options,
@@ -279,7 +311,14 @@ function SearchableSelect<T extends { id: number; name: string }>({
       )}
     </div>
   );
-}
+}) as <T extends { id: number; name: string }>(props: {
+  value: number | null;
+  onChange: (value: number | null) => void;
+  options: T[];
+  placeholder: string;
+  label: string;
+  allOptionLabel: string;
+}) => React.ReactElement;
 
 import {
   useAddOrderMutation,
@@ -410,35 +449,59 @@ export default function OrdersPage() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
-  // Build query parameters for API
-  const queryParams: {
-    dateFrom?: string;
-    dateTo?: string;
-    handlerId?: number;
-    customerId?: number;
-    fromCurrency?: string;
-    toCurrency?: string;
-    buyAccountId?: number;
-    sellAccountId?: number;
-    status?: OrderStatus;
-    page?: number;
-    limit?: number;
-  } = {};
+  // Helper function to build query parameters from filters
+  const buildQueryParams = useCallback((
+    filterState: {
+      datePreset: 'all' | 'currentWeek' | 'lastWeek' | 'currentMonth' | 'lastMonth' | 'custom';
+      dateFrom: string | null;
+      dateTo: string | null;
+      handlerId: number | null;
+      customerId: number | null;
+      currencyPair: string | null;
+      buyAccountId: number | null;
+      sellAccountId: number | null;
+      status: OrderStatus | null;
+    },
+    includePagination = false,
+    page?: number
+  ) => {
+    const params: {
+      dateFrom?: string;
+      dateTo?: string;
+      handlerId?: number;
+      customerId?: number;
+      fromCurrency?: string;
+      toCurrency?: string;
+      buyAccountId?: number;
+      sellAccountId?: number;
+      status?: OrderStatus;
+      page?: number;
+      limit?: number;
+    } = {};
 
-  if (filters.dateFrom) queryParams.dateFrom = filters.dateFrom;
-  if (filters.dateTo) queryParams.dateTo = filters.dateTo;
-  if (filters.handlerId !== null) queryParams.handlerId = filters.handlerId;
-  if (filters.customerId !== null) queryParams.customerId = filters.customerId;
-  if (filters.currencyPair) {
-    const [from, to] = filters.currencyPair.split('/');
-    queryParams.fromCurrency = from;
-    queryParams.toCurrency = to;
-  }
-  if (filters.buyAccountId !== null) queryParams.buyAccountId = filters.buyAccountId;
-  if (filters.sellAccountId !== null) queryParams.sellAccountId = filters.sellAccountId;
-  if (filters.status) queryParams.status = filters.status;
-  queryParams.page = currentPage;
-  queryParams.limit = 20;
+    if (filterState.dateFrom) params.dateFrom = filterState.dateFrom;
+    if (filterState.dateTo) params.dateTo = filterState.dateTo;
+    if (filterState.handlerId !== null) params.handlerId = filterState.handlerId;
+    if (filterState.customerId !== null) params.customerId = filterState.customerId;
+    if (filterState.currencyPair) {
+      const [from, to] = filterState.currencyPair.split('/');
+      params.fromCurrency = from;
+      params.toCurrency = to;
+    }
+    if (filterState.buyAccountId !== null) params.buyAccountId = filterState.buyAccountId;
+    if (filterState.sellAccountId !== null) params.sellAccountId = filterState.sellAccountId;
+    if (filterState.status) params.status = filterState.status;
+    
+    if (includePagination) {
+      params.page = page ?? currentPage;
+      params.limit = 20;
+    }
+
+    return params;
+  }, [currentPage]);
+
+  // Build query parameters for API
+  const queryParams = useMemo(() => buildQueryParams(filters, true, currentPage), [filters, currentPage, buildQueryParams]);
 
   const { data: ordersData, isLoading } = useGetOrdersQuery(queryParams);
   const orders = ordersData?.orders || [];
@@ -468,7 +531,7 @@ export default function OrdersPage() {
   }, [currencies]);
 
   // Handle date preset changes
-  const handleDatePresetChange = (preset: 'all' | 'currentWeek' | 'lastWeek' | 'currentMonth' | 'lastMonth' | 'custom') => {
+  const handleDatePresetChange = useCallback((preset: 'all' | 'currentWeek' | 'lastWeek' | 'currentMonth' | 'lastMonth' | 'custom') => {
     let dateFrom: string | null = null;
     let dateTo: string | null = null;
 
@@ -502,10 +565,10 @@ export default function OrdersPage() {
       dateTo,
     }));
     setCurrentPage(1); // Reset to first page when filter changes
-  };
+  }, []);
 
   // Clear all filters
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setFilters({
       datePreset: 'all',
       dateFrom: null,
@@ -518,37 +581,14 @@ export default function OrdersPage() {
       status: null,
     });
     setCurrentPage(1);
-  };
+  }, []);
 
   // Build export query parameters (same as queryParams but without pagination)
-  const exportQueryParams: {
-    dateFrom?: string;
-    dateTo?: string;
-    handlerId?: number;
-    customerId?: number;
-    fromCurrency?: string;
-    toCurrency?: string;
-    buyAccountId?: number;
-    sellAccountId?: number;
-    status?: OrderStatus;
-  } = {};
-
-  if (filters.dateFrom) exportQueryParams.dateFrom = filters.dateFrom;
-  if (filters.dateTo) exportQueryParams.dateTo = filters.dateTo;
-  if (filters.handlerId !== null) exportQueryParams.handlerId = filters.handlerId;
-  if (filters.customerId !== null) exportQueryParams.customerId = filters.customerId;
-  if (filters.currencyPair) {
-    const [from, to] = filters.currencyPair.split('/');
-    exportQueryParams.fromCurrency = from;
-    exportQueryParams.toCurrency = to;
-  }
-  if (filters.buyAccountId !== null) exportQueryParams.buyAccountId = filters.buyAccountId;
-  if (filters.sellAccountId !== null) exportQueryParams.sellAccountId = filters.sellAccountId;
-  if (filters.status) exportQueryParams.status = filters.status;
+  const exportQueryParams = useMemo(() => buildQueryParams(filters, false), [filters, buildQueryParams]);
 
   // Export orders function
   const [isExporting, setIsExporting] = useState(false);
-  const handleExportOrders = async () => {
+  const handleExportOrders = useCallback(async () => {
     try {
       setIsExporting(true);
       
@@ -616,10 +656,10 @@ export default function OrdersPage() {
     } finally {
       setIsExporting(false);
     }
-  };
+  }, [exportQueryParams, t]);
 
   // Download import template
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = useCallback(() => {
     // Create template data with example rows
     const templateData = [
       {
@@ -649,10 +689,10 @@ export default function OrdersPage() {
 
     // Write file
     XLSX.writeFile(wb, "orders_import_template.xlsx");
-  };
+  }, []);
 
   // Import orders function
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -794,15 +834,15 @@ export default function OrdersPage() {
     } finally {
       setIsImporting(false);
     }
-  };
+  }, [t]);
 
   // Helper function to prevent number input from changing value on scroll
-  const handleNumberInputWheel = (e: React.WheelEvent<HTMLInputElement>) => {
+  const handleNumberInputWheel = useCallback((e: React.WheelEvent<HTMLInputElement>) => {
     const target = e.target as HTMLInputElement;
     if (document.activeElement === target) {
       target.blur();
     }
-  };
+  }, []);
 
   // Helper function to calculate amountSell from amountBuy using the same logic as order creation
   const calculateAmountSell = (amountBuy: number, rate: number, fromCurrency: string, toCurrency: string): number => {
@@ -1392,7 +1432,7 @@ export default function OrdersPage() {
     }
   };
 
-  const startEdit = (orderId: number) => {
+  const startEdit = useCallback((orderId: number) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order || order.status !== "pending") return;
     
@@ -1408,7 +1448,7 @@ export default function OrdersPage() {
     });
     setIsModalOpen(true);
     setOpenMenuId(null);
-  };
+  }, [orders]);
 
   const closeProcessModal = () => {
     resetProcessForm();
@@ -1961,7 +2001,7 @@ export default function OrdersPage() {
   }, [viewModalOrderId, makePaymentModalOrderId, activeUploadType]);
 
   // Helper function to determine if a file path is an image or PDF
-  const getFileType = (imagePath: string): 'image' | 'pdf' | null => {
+  const getFileType = useCallback((imagePath: string): 'image' | 'pdf' | null => {
     if (!imagePath) return null;
     
     // Check for base64 data URLs
@@ -1978,14 +2018,14 @@ export default function OrdersPage() {
     }
     
     return null;
-  };
+  }, []);
 
-  const setStatus = async (id: number, status: OrderStatus) => {
+  const setStatus = useCallback(async (id: number, status: OrderStatus) => {
     await updateOrderStatus({ id, status });
     setOpenMenuId(null);
-  };
+  }, [updateOrderStatus]);
 
-  const handleDeleteClick = (id: number) => {
+  const handleDeleteClick = useCallback((id: number) => {
     setConfirmModal({
       isOpen: true,
       message: t("orders.confirmDeleteOrder") || "Are you sure you want to delete this order?",
@@ -1993,7 +2033,7 @@ export default function OrdersPage() {
       isBulk: false,
     });
     setOpenMenuId(null);
-  };
+  }, [t]);
 
   const handleDelete = async (id: number) => {
     try {
@@ -2037,12 +2077,12 @@ export default function OrdersPage() {
     }
   };
 
-  const currentRole = roles.find((r) => r.name === authUser?.role);
-  const canCancelOrder = Boolean(currentRole?.permissions?.actions?.cancelOrder);
-  const canDeleteOrder = Boolean(currentRole?.permissions?.actions?.deleteOrder);
-  const canDeleteManyOrders = Boolean(currentRole?.permissions?.actions?.deleteManyOrders);
+  const currentRole = useMemo(() => roles.find((r) => r.name === authUser?.role), [roles, authUser?.role]);
+  const canCancelOrder = useMemo(() => Boolean(currentRole?.permissions?.actions?.cancelOrder), [currentRole]);
+  const canDeleteOrder = useMemo(() => Boolean(currentRole?.permissions?.actions?.deleteOrder), [currentRole]);
+  const canDeleteManyOrders = useMemo(() => Boolean(currentRole?.permissions?.actions?.deleteManyOrders), [currentRole]);
 
-  const getActionButtons = (order: typeof orders[0]) => {
+  const getActionButtons = useCallback((order: typeof orders[0]) => {
     const buttons = [];
     
     if (order.status === "pending") {
@@ -2158,9 +2198,9 @@ export default function OrdersPage() {
     }
 
     return buttons;
-  };
+  }, [startEdit, setProcessModalOrderId, setViewModalOrderId, setOpenMenuId, setStatus, handleDeleteClick, canCancelOrder, canDeleteOrder, isDeleting, t]);
 
-  const getStatusTone = (status: OrderStatus) => {
+  const getStatusTone = useCallback((status: OrderStatus) => {
     switch (status) {
       case "pending":
         return "amber";
@@ -2175,10 +2215,10 @@ export default function OrdersPage() {
       default:
         return "slate";
     }
-  };
+  }, []);
 
   // Helper function to open PDF data URI in a new tab
-  const openPdfInNewTab = (dataUri: string) => {
+  const openPdfInNewTab = useCallback((dataUri: string) => {
     // If it's a server URL, open it directly
     if (dataUri.startsWith('/api/uploads/')) {
       window.open(dataUri, '_blank');
@@ -2211,7 +2251,7 @@ export default function OrdersPage() {
       // Fallback: try opening directly
       window.open(dataUri, '_blank');
     }
-  };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -2468,17 +2508,68 @@ export default function OrdersPage() {
         const buyAccounts = order.buyAccounts || [];
         const firstAccount = buyAccounts.length > 0 ? buyAccounts[0] : null;
         const accountName = firstAccount?.accountName || "-";
-        const hasMultiple = buyAccounts.length > 1;
+        
+        // Check if profit or service charge should appear in buy account tooltip
+        // Buy account is for fromCurrency, so check if profit/service charge currency matches fromCurrency
+        const showProfitInBuy = order.profitCurrency === order.fromCurrency && 
+                                order.profitAmount !== null && 
+                                order.profitAmount !== undefined &&
+                                order.profitAccountId;
+        const showServiceChargeInBuy = order.serviceChargeCurrency === order.fromCurrency && 
+                                       order.serviceChargeAmount !== null && 
+                                       order.serviceChargeAmount !== undefined &&
+                                       order.serviceChargeAccountId;
+        
+        const profitAccountName = showProfitInBuy && order.profitAccountId 
+          ? accounts.find(acc => acc.id === order.profitAccountId)?.name || null
+          : null;
+        const serviceChargeAccountName = showServiceChargeInBuy && order.serviceChargeAccountId
+          ? accounts.find(acc => acc.id === order.serviceChargeAccountId)?.name || null
+          : null;
+        
+        // Check if profit/service charge accounts are different from buyAccounts
+        const profitAccountId = showProfitInBuy ? order.profitAccountId : null;
+        const serviceChargeAccountId = showServiceChargeInBuy ? order.serviceChargeAccountId : null;
+        
+        const profitAccountInBuyAccounts = profitAccountId 
+          ? buyAccounts.some(acc => acc.accountId === profitAccountId)
+          : false;
+        const serviceChargeAccountInBuyAccounts = serviceChargeAccountId
+          ? buyAccounts.some(acc => acc.accountId === serviceChargeAccountId)
+          : false;
+        
+        // Count includes buyAccounts plus profit/service charge accounts if they're different
+        let accountCount = buyAccounts.length;
+        if (profitAccountId && !profitAccountInBuyAccounts) {
+          accountCount++;
+        }
+        if (serviceChargeAccountId && !serviceChargeAccountInBuyAccounts) {
+          accountCount++;
+        }
+        
+        const hasMultiple = accountCount > 1;
+        const shouldShowTooltip = hasMultiple || showProfitInBuy || showServiceChargeInBuy;
         
         return (
           <td key={columnKey} className="py-2 text-slate-600">
-            {hasMultiple ? (
-              <AccountTooltip accounts={buyAccounts} label={t("orders.buyAccount")}>
+            {shouldShowTooltip ? (
+              <AccountTooltip 
+                accounts={buyAccounts} 
+                label={t("orders.buyAccount")}
+                profitAmount={showProfitInBuy ? order.profitAmount : null}
+                profitCurrency={showProfitInBuy ? order.profitCurrency : null}
+                profitAccountName={profitAccountName}
+                serviceChargeAmount={showServiceChargeInBuy ? order.serviceChargeAmount : null}
+                serviceChargeCurrency={showServiceChargeInBuy ? order.serviceChargeCurrency : null}
+                serviceChargeAccountName={serviceChargeAccountName}
+              >
                 <div className="flex items-center gap-2 cursor-default">
                   <span>{accountName}</span>
-                  <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
-                    {buyAccounts.length}
-                  </span>
+                  {hasMultiple && (
+                    <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
+                      {accountCount}
+                    </span>
+                  )}
                 </div>
               </AccountTooltip>
             ) : (
@@ -2491,17 +2582,69 @@ export default function OrdersPage() {
         const sellAccounts = order.sellAccounts || [];
         const firstAccount = sellAccounts.length > 0 ? sellAccounts[0] : null;
         const accountName = firstAccount?.accountName || "-";
-        const hasMultiple = sellAccounts.length > 1;
+        
+        // Check if profit or service charge should appear in sell account tooltip
+        // Sell account is for toCurrency, so check if profit/service charge currency matches toCurrency
+        const showProfitInSell = order.profitCurrency === order.toCurrency && 
+                                 order.profitAmount !== null && 
+                                 order.profitAmount !== undefined &&
+                                 order.profitAccountId;
+        const showServiceChargeInSell = order.serviceChargeCurrency === order.toCurrency && 
+                                        order.serviceChargeAmount !== null && 
+                                        order.serviceChargeAmount !== undefined &&
+                                        order.serviceChargeAccountId;
+        
+        const profitAccountName = showProfitInSell && order.profitAccountId 
+          ? accounts.find(acc => acc.id === order.profitAccountId)?.name || null
+          : null;
+        const serviceChargeAccountName = showServiceChargeInSell && order.serviceChargeAccountId
+          ? accounts.find(acc => acc.id === order.serviceChargeAccountId)?.name || null
+          : null;
+        
+        // Check if profit/service charge accounts are different from sellAccounts
+        const profitAccountId = showProfitInSell ? order.profitAccountId : null;
+        const serviceChargeAccountId = showServiceChargeInSell ? order.serviceChargeAccountId : null;
+        
+        const profitAccountInSellAccounts = profitAccountId 
+          ? sellAccounts.some(acc => acc.accountId === profitAccountId)
+          : false;
+        const serviceChargeAccountInSellAccounts = serviceChargeAccountId
+          ? sellAccounts.some(acc => acc.accountId === serviceChargeAccountId)
+          : false;
+        
+        // Count includes sellAccounts plus profit/service charge accounts if they're different
+        let accountCount = sellAccounts.length;
+        if (profitAccountId && !profitAccountInSellAccounts) {
+          accountCount++;
+        }
+        if (serviceChargeAccountId && !serviceChargeAccountInSellAccounts) {
+          accountCount++;
+        }
+        
+        const hasMultiple = accountCount > 1;
+        const shouldShowTooltip = hasMultiple || showProfitInSell || showServiceChargeInSell;
         
         return (
           <td key={columnKey} className="py-2 text-slate-600">
-            {hasMultiple ? (
-              <AccountTooltip accounts={sellAccounts} label={t("orders.sellAccount")}>
+            {shouldShowTooltip ? (
+              <AccountTooltip 
+                accounts={sellAccounts} 
+                label={t("orders.sellAccount")}
+                profitAmount={showProfitInSell ? order.profitAmount : null}
+                // profitCurrency={showProfitInSell ? order.profitCurrency : null}
+                profitAccountName={profitAccountName}
+                serviceChargeAmount={showServiceChargeInSell ? order.serviceChargeAmount : null}
+                // serviceChargeCurrency={showServiceChargeInSell ? order.serviceChargeCurrency : null}
+                serviceChargeAccountName={serviceChargeAccountName}
+                isSellAccount={true}
+              >
                 <div className="flex items-center gap-2 cursor-default">
                   <span>{accountName}</span>
-                  <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
-                    {sellAccounts.length}
-                  </span>
+                  {hasMultiple && (
+                    <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
+                      {accountCount}
+                    </span>
+                  )}
                 </div>
               </AccountTooltip>
             ) : (
