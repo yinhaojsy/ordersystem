@@ -193,6 +193,7 @@ export interface Transfer {
   amount: number;
   currencyCode: string;
   description?: string;
+  transactionFee?: number;
   createdBy?: number;
   createdByName?: string;
   createdAt: string;

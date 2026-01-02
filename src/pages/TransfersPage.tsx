@@ -52,6 +52,70 @@ export default function TransfersPage() {
   const [isBatchDeleteMode, setIsBatchDeleteMode] = useState(false);
   const [viewAuditTrailTransferId, setViewAuditTrailTransferId] = useState<number | null>(null);
   
+  // Column visibility state
+  const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
+  const columnDropdownRef = useRef<HTMLDivElement | null>(null);
+  
+  // Define all available column keys (used for initialization)
+  const columnKeys = ["id", "date", "description", "fromAccount", "toAccount", "amount", "transactionFee", "currency", "createdBy"];
+  
+  // Define all available columns (with translated labels) - this is the master list
+  const getAvailableColumns = () => [
+    { key: "id", label: t("transfers.transferId") },
+    { key: "date", label: t("transfers.date") },
+    { key: "description", label: t("transfers.description") },
+    { key: "fromAccount", label: t("transfers.fromAccount") },
+    { key: "toAccount", label: t("transfers.toAccount") },
+    { key: "amount", label: t("transfers.amount") },
+    { key: "transactionFee", label: t("transfers.transactionFee") },
+    { key: "currency", label: t("transfers.currency") },
+    { key: "createdBy", label: t("transfers.createdBy") },
+  ];
+  
+  // Initialize column order from localStorage or default order
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    const saved = localStorage.getItem("transfersPage_columnOrder");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.every((item): item is string => typeof item === "string")) {
+          const savedSet = new Set(parsed);
+          const defaultSet = new Set(columnKeys);
+          if (savedSet.size === defaultSet.size && [...savedSet].every(key => defaultSet.has(key))) {
+            return parsed;
+          }
+        }
+      } catch {
+        // If parsing fails, use default order
+      }
+    }
+    return [...columnKeys];
+  });
+  
+  // Get ordered columns based on columnOrder
+  const availableColumns = columnOrder.map(key => {
+    const column = getAvailableColumns().find(col => col.key === key);
+    return column || { key, label: key };
+  }).filter(col => col);
+  
+  // Initialize column visibility from localStorage or default to all visible
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem("transfersPage_visibleColumns");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return new Set(parsed);
+      } catch {
+        return new Set(columnKeys);
+      }
+    }
+    return new Set(columnKeys);
+  });
+  
+  // Drag and drop state
+  const [draggedColumnIndex, setDraggedColumnIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  
   // Searchable dropdown states
   const [fromAccountSearchQuery, setFromAccountSearchQuery] = useState("");
   const [isFromAccountDropdownOpen, setIsFromAccountDropdownOpen] = useState(false);
@@ -305,6 +369,142 @@ export default function TransfersPage() {
     }
   }, [viewAuditTrailTransferId]);
 
+  // Save column visibility to localStorage
+  useEffect(() => {
+    localStorage.setItem("transfersPage_visibleColumns", JSON.stringify(Array.from(visibleColumns)));
+  }, [visibleColumns]);
+
+  // Save column order to localStorage
+  useEffect(() => {
+    localStorage.setItem("transfersPage_columnOrder", JSON.stringify(columnOrder));
+  }, [columnOrder]);
+
+  // Handle click outside column dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isColumnDropdownOpen && columnDropdownRef.current && !columnDropdownRef.current.contains(event.target as Node)) {
+        setIsColumnDropdownOpen(false);
+      }
+    };
+
+    if (isColumnDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [isColumnDropdownOpen]);
+
+  // Drag and drop handlers for column reordering
+  const handleColumnDragStart = (index: number) => {
+    setDraggedColumnIndex(index);
+  };
+
+  const handleColumnDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleColumnDragEnd = () => {
+    if (draggedColumnIndex !== null && dragOverIndex !== null && draggedColumnIndex !== dragOverIndex) {
+      const newOrder = [...columnOrder];
+      const [removed] = newOrder.splice(draggedColumnIndex, 1);
+      newOrder.splice(dragOverIndex, 0, removed);
+      setColumnOrder(newOrder);
+    }
+    setDraggedColumnIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleColumnDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  // Helper function to get column label
+  const getColumnLabel = (key: string): string => {
+    const column = getAvailableColumns().find(col => col.key === key);
+    return column?.label || key;
+  };
+
+  // Toggle column visibility
+  const toggleColumnVisibility = (columnKey: string) => {
+    setVisibleColumns((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(columnKey)) {
+        newSet.delete(columnKey);
+      } else {
+        newSet.add(columnKey);
+      }
+      return newSet;
+    });
+  };
+
+  // Helper function to render cell content for a column
+  const renderCellContent = (columnKey: string, transfer: typeof transfers[0]) => {
+    switch (columnKey) {
+      case "id":
+        return <td key={columnKey} className="py-2 font-mono text-slate-600">#{transfer.id}</td>;
+      case "date":
+        return <td key={columnKey} className="py-2">{formatDate(transfer.createdAt)}</td>;
+      case "description":
+        return (
+          <td key={columnKey} className="py-2 text-slate-600">
+            {transfer.description ? (
+              <div className="relative group inline-block">
+                <span className="inline-block max-w-[10ch] truncate cursor-help">
+                  {transfer.description.length > 10 
+                    ? transfer.description.substring(0, 10) + "..."
+                    : transfer.description}
+                </span>
+                {transfer.description.length > 10 && (
+                  <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block bg-slate-900 text-white text-xs rounded px-3 py-2 whitespace-normal max-w-xs shadow-lg border border-slate-700">
+                    {transfer.description}
+                    <div className="absolute -top-1 left-4 w-2 h-2 bg-slate-900 border-l border-t border-slate-700 transform rotate-45"></div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              "-"
+            )}
+          </td>
+        );
+      case "fromAccount":
+        return (
+          <td key={columnKey} className="py-2 font-semibold text-slate-900">
+            {transfer.fromAccountName || transfer.fromAccountId}
+          </td>
+        );
+      case "toAccount":
+        return (
+          <td key={columnKey} className="py-2 font-semibold text-slate-900">
+            {transfer.toAccountName || transfer.toAccountId}
+          </td>
+        );
+      case "amount":
+        return (
+          <td key={columnKey} className="py-2 font-semibold text-slate-900">
+            {formatCurrency(transfer.amount, transfer.currencyCode)}
+          </td>
+        );
+      case "transactionFee":
+        return (
+          <td key={columnKey} className="py-2 text-slate-600">
+            {transfer.transactionFee !== null && transfer.transactionFee !== undefined ? formatCurrency(transfer.transactionFee, transfer.currencyCode) : "-"}
+          </td>
+        );
+      case "currency":
+        return <td key={columnKey} className="py-2">{transfer.currencyCode}</td>;
+      case "createdBy":
+        return (
+          <td key={columnKey} className="py-2 text-slate-600">
+            {transfer.createdByName || "-"}
+          </td>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <SectionCard
@@ -340,11 +540,103 @@ export default function TransfersPage() {
               >
                 {isDeleting 
                   ? t("common.deleting") 
-                  : isBatchDeleteMode 
+                  : isBatchDeleteMode
                     ? t("transfers.deleteSelected") 
                     : t("transfers.batchDelete")}
               </button>
             )}
+            <div className="relative" ref={columnDropdownRef}>
+              <button
+                onClick={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
+                aria-label={t("transfers.columns") || "Columns"}
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+                {t("transfers.columns") || "Columns"}
+                <svg
+                  className={`w-4 h-4 transition-transform ${isColumnDropdownOpen ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+              {isColumnDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-slate-200 z-50 py-2">
+                  <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200">
+                    {t("transfers.showColumns") || "Show Columns"}
+                  </div>
+                  {availableColumns.map((column, index) => (
+                    <div
+                      key={column.key}
+                      onDragOver={(e) => handleColumnDragOver(e, index)}
+                      onDragLeave={handleColumnDragLeave}
+                      className={`flex items-center gap-2 px-4 py-2 hover:bg-slate-50 ${
+                        dragOverIndex === index ? 'bg-blue-50 border-t-2 border-blue-500' : ''
+                      } ${draggedColumnIndex === index ? 'opacity-50' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.has(column.key)}
+                        onChange={() => toggleColumnVisibility(column.key)}
+                        onClick={(e) => e.stopPropagation()}
+                        onDragStart={(e) => e.preventDefault()}
+                        className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 flex-shrink-0"
+                      />
+                      <span 
+                        className="text-sm text-slate-700 flex-1"
+                        onDragStart={(e) => e.preventDefault()}
+                      >
+                        {column.label}
+                      </span>
+                      <div
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', index.toString());
+                          handleColumnDragStart(index);
+                        }}
+                        onDragEnd={handleColumnDragEnd}
+                        className="cursor-move flex-shrink-0 text-slate-400 hover:text-slate-600 select-none"
+                        style={{ userSelect: 'none' }}
+                      >
+                        <svg
+                          className="w-4 h-4 pointer-events-none"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 8h16M4 16h16"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         }
       >
@@ -369,14 +661,11 @@ export default function TransfersPage() {
                     />
                   </th>
                 )}
-                <th className="py-2">{t("transfers.date")}</th>
-                <th className="py-2">{t("transfers.description")}</th>
-                <th className="py-2">{t("transfers.fromAccount")}</th>
-                <th className="py-2">{t("transfers.toAccount")}</th>
-                <th className="py-2">{t("transfers.amount")}</th>
-                <th className="py-2">{t("transfers.transactionFee")}</th>
-                <th className="py-2">{t("transfers.currency")}</th>
-                <th className="py-2">{t("transfers.createdBy")}</th>
+                {columnOrder.map((columnKey) => 
+                  visibleColumns.has(columnKey) && (
+                    <th key={columnKey} className="py-2">{getColumnLabel(columnKey)}</th>
+                  )
+                )}
                 {!isBatchDeleteMode && <th className="py-2">{t("transfers.actions")}</th>}
               </tr>
             </thead>
@@ -405,42 +694,9 @@ export default function TransfersPage() {
                       />
                     </td>
                   )}
-                  <td className="py-2">{formatDate(transfer.createdAt)}</td>
-                  <td className="py-2 text-slate-600">
-                    {transfer.description ? (
-                      <div className="relative group inline-block">
-                        <span className="inline-block max-w-[10ch] truncate cursor-help">
-                          {transfer.description.length > 10 
-                            ? transfer.description.substring(0, 10) + "..."
-                            : transfer.description}
-                        </span>
-                        {transfer.description.length > 10 && (
-                          <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block bg-slate-900 text-white text-xs rounded px-3 py-2 whitespace-normal max-w-xs shadow-lg border border-slate-700">
-                            {transfer.description}
-                            <div className="absolute -top-1 left-4 w-2 h-2 bg-slate-900 border-l border-t border-slate-700 transform rotate-45"></div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="py-2 font-semibold text-slate-900">
-                    {transfer.fromAccountName || transfer.fromAccountId}
-                  </td>
-                  <td className="py-2 font-semibold text-slate-900">
-                    {transfer.toAccountName || transfer.toAccountId}
-                  </td>
-                  <td className="py-2 font-semibold text-slate-900">
-                    {formatCurrency(transfer.amount, transfer.currencyCode)}
-                  </td>
-                  <td className="py-2 text-slate-600">
-                    {transfer.transactionFee !== null && transfer.transactionFee !== undefined ? formatCurrency(transfer.transactionFee, transfer.currencyCode) : "-"}
-                  </td>
-                  <td className="py-2">{transfer.currencyCode}</td>
-                  <td className="py-2 text-slate-600">
-                    {transfer.createdByName || "-"}
-                  </td>
+                  {columnOrder.map((columnKey) => 
+                    visibleColumns.has(columnKey) ? renderCellContent(columnKey, transfer) : null
+                  )}
                   {!isBatchDeleteMode && (
                     <td className="py-2">
                       <div className="flex gap-2">
