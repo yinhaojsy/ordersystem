@@ -157,6 +157,12 @@ export interface OrderInput {
   sellAccountId?: number;
   paymentFlow?: PaymentFlow;
   isFlexOrder?: boolean;
+  serviceChargeAmount?: number;
+  serviceChargeCurrency?: string;
+  serviceChargeAccountId?: number;
+  profitAmount?: number;
+  profitCurrency?: string;
+  profitAccountId?: number;
 }
 
 export interface Account {
