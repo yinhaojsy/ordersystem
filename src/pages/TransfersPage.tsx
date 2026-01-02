@@ -523,25 +523,31 @@ export default function TransfersPage() {
               <button
                 onClick={async () => {
                   if (!isBatchDeleteMode) {
+                    // Enable batch delete mode
                     setIsBatchDeleteMode(true);
                   } else {
-                    if (!selectedTransferIds.length) return;
+                    // If no transfers selected, exit batch delete mode
+                    if (!selectedTransferIds.length) {
+                      setIsBatchDeleteMode(false);
+                      setSelectedTransferIds([]);
+                      return;
+                    }
+                    // Delete selected transfers
                     setConfirmModal({
                       isOpen: true,
                       message: t("transfers.confirmDelete") || "Are you sure you want to delete the selected transfers?",
                       transferId: -1,
                       isBulk: true,
                     });
-                    return;
                   }
                 }}
-                disabled={isDeleting || (isBatchDeleteMode && !selectedTransferIds.length)}
+                disabled={isDeleting}
                 className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
               >
                 {isDeleting 
                   ? t("common.deleting") 
                   : isBatchDeleteMode
-                    ? t("transfers.deleteSelected") 
+                    ? (selectedTransferIds.length > 0 ? t("transfers.deleteSelected") : t("common.cancel"))
                     : t("transfers.batchDelete")}
               </button>
             )}

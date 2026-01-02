@@ -730,26 +730,31 @@ export default function ExpensesPage() {
               <button
                 onClick={async () => {
                   if (!isBatchDeleteMode) {
+                    // Enable batch delete mode
                     setIsBatchDeleteMode(true);
                   } else {
-                    if (!selectedExpenseIds.length) return;
-                    if (!selectedExpenseIds.length) return;
+                    // If no expenses selected, exit batch delete mode
+                    if (!selectedExpenseIds.length) {
+                      setIsBatchDeleteMode(false);
+                      setSelectedExpenseIds([]);
+                      return;
+                    }
+                    // Delete selected expenses
                     setConfirmModal({
                       isOpen: true,
                       message: t("expenses.confirmDeleteSelected") || "Are you sure you want to delete the selected expenses?",
                       expenseId: -1,
                       isBulk: true,
                     });
-                    return;
                   }
                 }}
-                disabled={isDeleting || (isBatchDeleteMode && !selectedExpenseIds.length)}
+                disabled={isDeleting}
                 className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
               >
               {isDeleting
                 ? t("common.deleting")
                 : isBatchDeleteMode
-                ? t("expenses.deleteSelected")
+                ? (selectedExpenseIds.length > 0 ? t("expenses.deleteSelected") : t("common.cancel"))
                 : t("expenses.batchDelete")}
               </button>
             )}
@@ -874,7 +879,7 @@ export default function ExpensesPage() {
                     <th key={columnKey} className="py-2">{getColumnLabel(columnKey)}</th>
                   )
                 )}
-                <th className="py-2">{t("expenses.actions")}</th>
+                {!isBatchDeleteMode && <th className="py-2">{t("expenses.actions")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -905,32 +910,34 @@ export default function ExpensesPage() {
                   {columnOrder.map((columnKey) => 
                     visibleColumns.has(columnKey) ? renderCellContent(columnKey, expense) : null
                   )}
-                  <td className="py-2">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setViewAuditTrailExpenseId(expense.id)}
-                        className="text-blue-600 hover:text-blue-700 text-sm"
-                        title={t("expenses.viewAuditTrail")}
-                      >
-                        {t("expenses.auditTrail")}
-                      </button>
-                      <button
-                        onClick={() => startEdit(expense.id)}
-                        className="text-amber-600 hover:text-amber-700 text-sm"
-                      >
-                        {t("common.edit")}
-                      </button>
-                      {hasActionPermission(authUser, "deleteExpense") && (
+                  {!isBatchDeleteMode && (
+                    <td className="py-2">
+                      <div className="flex gap-2">
                         <button
-                          onClick={() => handleDeleteClick(expense.id)}
-                          disabled={isDeleting}
-                          className="text-rose-600 hover:text-rose-700 text-sm disabled:opacity-60"
+                          onClick={() => setViewAuditTrailExpenseId(expense.id)}
+                          className="text-blue-600 hover:text-blue-700 text-sm"
+                          title={t("expenses.viewAuditTrail")}
                         >
-                          {t("common.delete")}
+                          {t("expenses.auditTrail")}
                         </button>
-                      )}
-                    </div>
-                  </td>
+                        <button
+                          onClick={() => startEdit(expense.id)}
+                          className="text-amber-600 hover:text-amber-700 text-sm"
+                        >
+                          {t("common.edit")}
+                        </button>
+                        {hasActionPermission(authUser, "deleteExpense") && (
+                          <button
+                            onClick={() => handleDeleteClick(expense.id)}
+                            disabled={isDeleting}
+                            className="text-rose-600 hover:text-rose-700 text-sm disabled:opacity-60"
+                          >
+                            {t("common.delete")}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {!expenses.length && (
