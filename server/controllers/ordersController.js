@@ -91,19 +91,102 @@ const calculateAmountBuy = (amountSell, rate, fromCurrency, toCurrency) => {
   }
 };
 
-export const listOrders = (_req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT o.*, c.name as customerName, u.name as handlerName,
-       buyAcc.name as buyAccountName, sellAcc.name as sellAccountName
-       FROM orders o
-       LEFT JOIN customers c ON c.id = o.customerId
-       LEFT JOIN users u ON u.id = o.handlerId
-       LEFT JOIN accounts buyAcc ON buyAcc.id = o.buyAccountId
-       LEFT JOIN accounts sellAcc ON sellAcc.id = o.sellAccountId
-       ORDER BY o.createdAt DESC;`,
-    )
-    .all();
+export const listOrders = (req, res) => {
+  // Extract query parameters
+  const {
+    dateFrom,
+    dateTo,
+    handlerId,
+    customerId,
+    fromCurrency,
+    toCurrency,
+    buyAccountId,
+    sellAccountId,
+    status,
+    page = '1',
+    limit = '20',
+  } = req.query;
+
+  // Build WHERE clause conditions
+  const conditions = [];
+  const params = {};
+
+  if (dateFrom) {
+    conditions.push('DATE(o.createdAt) >= DATE(@dateFrom)');
+    params.dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    conditions.push('DATE(o.createdAt) <= DATE(@dateTo)');
+    params.dateTo = dateTo;
+  }
+  if (handlerId) {
+    conditions.push('o.handlerId = @handlerId');
+    params.handlerId = parseInt(handlerId, 10);
+  }
+  if (customerId) {
+    conditions.push('o.customerId = @customerId');
+    params.customerId = parseInt(customerId, 10);
+  }
+  if (fromCurrency) {
+    conditions.push('o.fromCurrency = @fromCurrency');
+    params.fromCurrency = fromCurrency;
+  }
+  if (toCurrency) {
+    conditions.push('o.toCurrency = @toCurrency');
+    params.toCurrency = toCurrency;
+  }
+  if (buyAccountId) {
+    // Check if buyAccountId matches the order's buyAccountId OR exists in order_receipts
+    conditions.push(`(o.buyAccountId = @buyAccountId OR EXISTS (
+      SELECT 1 FROM order_receipts r 
+      WHERE r.orderId = o.id AND r.accountId = @buyAccountId
+    ))`);
+    params.buyAccountId = parseInt(buyAccountId, 10);
+  }
+  if (sellAccountId) {
+    // Check if sellAccountId matches the order's sellAccountId OR exists in order_payments
+    conditions.push(`(o.sellAccountId = @sellAccountId OR EXISTS (
+      SELECT 1 FROM order_payments p 
+      WHERE p.orderId = o.id AND p.accountId = @sellAccountId
+    ))`);
+    params.sellAccountId = parseInt(sellAccountId, 10);
+  }
+  if (status) {
+    conditions.push('o.status = @status');
+    params.status = status;
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Get total count for pagination
+  const countQuery = `SELECT COUNT(*) as total FROM orders o ${whereClause}`;
+  const countResult = db.prepare(countQuery).get(params);
+  const total = countResult?.total || 0;
+
+  // Calculate pagination
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const offset = (pageNum - 1) * limitNum;
+  const totalPages = Math.ceil(total / limitNum);
+
+  // Build main query with pagination
+  const query = `
+    SELECT o.*, c.name as customerName, u.name as handlerName,
+           buyAcc.name as buyAccountName, sellAcc.name as sellAccountName
+    FROM orders o
+    LEFT JOIN customers c ON c.id = o.customerId
+    LEFT JOIN users u ON u.id = o.handlerId
+    LEFT JOIN accounts buyAcc ON buyAcc.id = o.buyAccountId
+    LEFT JOIN accounts sellAcc ON sellAcc.id = o.sellAccountId
+    ${whereClause}
+    ORDER BY o.createdAt DESC
+    LIMIT @limit OFFSET @offset;
+  `;
+
+  params.limit = limitNum;
+  params.offset = offset;
+
+  const rows = db.prepare(query).all(params);
   
   // Parse JSON fields and check for beneficiaries
   const orders = rows.map(order => {
@@ -139,6 +222,157 @@ export const listOrders = (_req, res) => {
         .all(order.id);
 
       // Format the account data
+      const buyAccounts = receipts.map(r => ({
+        accountId: r.accountId,
+        accountName: r.accountName || `Account #${r.accountId}`,
+        amount: r.totalAmount
+      }));
+
+      const sellAccounts = payments.map(p => ({
+        accountId: p.accountId,
+        accountName: p.accountName || `Account #${p.accountId}`,
+        amount: p.totalAmount
+      }));
+
+      return {
+        ...order,
+        walletAddresses: order.walletAddresses ? JSON.parse(order.walletAddresses) : null,
+        bankDetails: order.bankDetails ? JSON.parse(order.bankDetails) : null,
+        hasBeneficiaries,
+        isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
+        buyAccounts: buyAccounts.length > 0 ? buyAccounts : null,
+        sellAccounts: sellAccounts.length > 0 ? sellAccounts : null,
+      };
+    } catch (e) {
+      return {
+        ...order,
+        walletAddresses: null,
+        bankDetails: null,
+        hasBeneficiaries: false,
+        isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
+        buyAccounts: null,
+        sellAccounts: null,
+      };
+    }
+  });
+  
+  res.json({
+    orders,
+    total,
+    page: pageNum,
+    limit: limitNum,
+    totalPages,
+  });
+};
+
+export const exportOrders = (req, res) => {
+  // Extract query parameters (same as listOrders but without pagination)
+  const {
+    dateFrom,
+    dateTo,
+    handlerId,
+    customerId,
+    fromCurrency,
+    toCurrency,
+    buyAccountId,
+    sellAccountId,
+    status,
+  } = req.query;
+
+  // Build WHERE clause conditions (same logic as listOrders)
+  const conditions = [];
+  const params = {};
+
+  if (dateFrom) {
+    conditions.push('DATE(o.createdAt) >= DATE(@dateFrom)');
+    params.dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    conditions.push('DATE(o.createdAt) <= DATE(@dateTo)');
+    params.dateTo = dateTo;
+  }
+  if (handlerId) {
+    conditions.push('o.handlerId = @handlerId');
+    params.handlerId = parseInt(handlerId, 10);
+  }
+  if (customerId) {
+    conditions.push('o.customerId = @customerId');
+    params.customerId = parseInt(customerId, 10);
+  }
+  if (fromCurrency) {
+    conditions.push('o.fromCurrency = @fromCurrency');
+    params.fromCurrency = fromCurrency;
+  }
+  if (toCurrency) {
+    conditions.push('o.toCurrency = @toCurrency');
+    params.toCurrency = toCurrency;
+  }
+  if (buyAccountId) {
+    conditions.push(`(o.buyAccountId = @buyAccountId OR EXISTS (
+      SELECT 1 FROM order_receipts r 
+      WHERE r.orderId = o.id AND r.accountId = @buyAccountId
+    ))`);
+    params.buyAccountId = parseInt(buyAccountId, 10);
+  }
+  if (sellAccountId) {
+    conditions.push(`(o.sellAccountId = @sellAccountId OR EXISTS (
+      SELECT 1 FROM order_payments p 
+      WHERE p.orderId = o.id AND p.accountId = @sellAccountId
+    ))`);
+    params.sellAccountId = parseInt(sellAccountId, 10);
+  }
+  if (status) {
+    conditions.push('o.status = @status');
+    params.status = status;
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Build query without pagination
+  const query = `
+    SELECT o.*, c.name as customerName, u.name as handlerName,
+           buyAcc.name as buyAccountName, sellAcc.name as sellAccountName
+    FROM orders o
+    LEFT JOIN customers c ON c.id = o.customerId
+    LEFT JOIN users u ON u.id = o.handlerId
+    LEFT JOIN accounts buyAcc ON buyAcc.id = o.buyAccountId
+    LEFT JOIN accounts sellAcc ON sellAcc.id = o.sellAccountId
+    ${whereClause}
+    ORDER BY o.createdAt DESC;
+  `;
+
+  const rows = db.prepare(query).all(params);
+  
+  // Parse JSON fields and check for beneficiaries (same logic as listOrders)
+  const orders = rows.map(order => {
+    try {
+      const beneficiaryCount = db
+        .prepare("SELECT COUNT(*) as count FROM order_beneficiaries WHERE orderId = ?;")
+        .get(order.id);
+      const hasBeneficiaries = (beneficiaryCount?.count || 0) > 0;
+
+      const receipts = db
+        .prepare(
+          `SELECT r.accountId, a.name as accountName, SUM(r.amount) as totalAmount, MIN(r.createdAt) as firstCreatedAt
+           FROM order_receipts r
+           LEFT JOIN accounts a ON a.id = r.accountId
+           WHERE r.orderId = ? AND r.accountId IS NOT NULL
+           GROUP BY r.accountId, a.name
+           ORDER BY firstCreatedAt ASC;`
+        )
+        .all(order.id);
+      
+      const payments = db
+        .prepare(
+          `SELECT p.accountId, a.name as accountName, SUM(p.amount) as totalAmount, MIN(p.createdAt) as firstCreatedAt
+           FROM order_payments p
+           LEFT JOIN accounts a ON a.id = p.accountId
+           WHERE p.orderId = ? AND p.accountId IS NOT NULL
+           GROUP BY p.accountId, a.name
+           ORDER BY firstCreatedAt ASC;`
+        )
+        .all(order.id);
+
       const buyAccounts = receipts.map(r => ({
         accountId: r.accountId,
         accountName: r.accountName || `Account #${r.accountId}`,

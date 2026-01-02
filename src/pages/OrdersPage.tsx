@@ -1,4 +1,4 @@
-import { useState, type FormEvent, useEffect, useRef, type ReactNode } from "react";
+import { useState, type FormEvent, useEffect, useRef, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
@@ -124,16 +124,209 @@ import { hasActionPermission } from "../utils/permissions";
 import type { OrderStatus } from "../types";
 import { formatDate } from "../utils/format";
 
+// Date preset helper functions
+const getCurrentWeekRange = () => {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday, go back 6 days; otherwise go to Monday
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + diff);
+  monday.setHours(0, 0, 0, 0);
+  
+  const endDate = new Date(today);
+  endDate.setHours(23, 59, 59, 999);
+  
+  return {
+    from: monday.toISOString().split('T')[0],
+    to: endDate.toISOString().split('T')[0],
+  };
+};
+
+const getLastWeekRange = () => {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const lastMonday = new Date(today);
+  lastMonday.setDate(today.getDate() + diff - 7);
+  lastMonday.setHours(0, 0, 0, 0);
+  
+  const lastSunday = new Date(lastMonday);
+  lastSunday.setDate(lastMonday.getDate() + 6);
+  lastSunday.setHours(23, 59, 59, 999);
+  
+  return {
+    from: lastMonday.toISOString().split('T')[0],
+    to: lastSunday.toISOString().split('T')[0],
+  };
+};
+
+const getCurrentMonthRange = () => {
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  firstDay.setHours(0, 0, 0, 0);
+  
+  const endDate = new Date(today);
+  endDate.setHours(23, 59, 59, 999);
+  
+  return {
+    from: firstDay.toISOString().split('T')[0],
+    to: endDate.toISOString().split('T')[0],
+  };
+};
+
+const getLastMonthRange = () => {
+  const today = new Date();
+  const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  firstDayLastMonth.setHours(0, 0, 0, 0);
+  
+  const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+  lastDayLastMonth.setHours(23, 59, 59, 999);
+  
+  return {
+    from: firstDayLastMonth.toISOString().split('T')[0],
+    to: lastDayLastMonth.toISOString().split('T')[0],
+  };
+};
+
 export default function OrdersPage() {
   const { t } = useTranslation();
   const authUser = useAppSelector((s) => s.auth.user);
   const { data: roles = [] } = useGetRolesQuery();
 
-  const { data: orders = [], isLoading } = useGetOrdersQuery();
+  // Filter state
+  const [filters, setFilters] = useState<{
+    datePreset: 'all' | 'currentWeek' | 'lastWeek' | 'currentMonth' | 'lastMonth' | 'custom';
+    dateFrom: string | null;
+    dateTo: string | null;
+    handlerId: number | null;
+    customerId: number | null;
+    currencyPair: string | null;
+    buyAccountId: number | null;
+    sellAccountId: number | null;
+    status: OrderStatus | null;
+  }>({
+    datePreset: 'all',
+    dateFrom: null,
+    dateTo: null,
+    handlerId: null,
+    customerId: null,
+    currencyPair: null,
+    buyAccountId: null,
+    sellAccountId: null,
+    status: null,
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+
+  // Build query parameters for API
+  const queryParams: {
+    dateFrom?: string;
+    dateTo?: string;
+    handlerId?: number;
+    customerId?: number;
+    fromCurrency?: string;
+    toCurrency?: string;
+    buyAccountId?: number;
+    sellAccountId?: number;
+    status?: OrderStatus;
+    page?: number;
+    limit?: number;
+  } = {};
+
+  if (filters.dateFrom) queryParams.dateFrom = filters.dateFrom;
+  if (filters.dateTo) queryParams.dateTo = filters.dateTo;
+  if (filters.handlerId !== null) queryParams.handlerId = filters.handlerId;
+  if (filters.customerId !== null) queryParams.customerId = filters.customerId;
+  if (filters.currencyPair) {
+    const [from, to] = filters.currencyPair.split('/');
+    queryParams.fromCurrency = from;
+    queryParams.toCurrency = to;
+  }
+  if (filters.buyAccountId !== null) queryParams.buyAccountId = filters.buyAccountId;
+  if (filters.sellAccountId !== null) queryParams.sellAccountId = filters.sellAccountId;
+  if (filters.status) queryParams.status = filters.status;
+  queryParams.page = currentPage;
+  queryParams.limit = 20;
+
+  const { data: ordersData, isLoading } = useGetOrdersQuery(queryParams);
+  const orders = ordersData?.orders || [];
+  const totalOrders = ordersData?.total || 0;
+  const totalPages = ordersData?.totalPages || 1;
+
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: users = [] } = useGetUsersQuery();
   const { data: accounts = [] } = useGetAccountsQuery();
+
+  // Get unique currency pairs from all orders (for dropdown)
+  // Note: This would ideally come from the backend, but for now we'll generate from currencies
+  const currencyPairs = useMemo(() => {
+    const pairs = new Set<string>();
+    // Generate pairs from active currencies
+    currencies
+      .filter((c) => c.active)
+      .forEach((fromCurr) => {
+        currencies
+          .filter((c) => c.active && c.code !== fromCurr.code)
+          .forEach((toCurr) => {
+            pairs.add(`${fromCurr.code}/${toCurr.code}`);
+          });
+      });
+    return Array.from(pairs).sort();
+  }, [currencies]);
+
+  // Handle date preset changes
+  const handleDatePresetChange = (preset: 'all' | 'currentWeek' | 'lastWeek' | 'currentMonth' | 'lastMonth' | 'custom') => {
+    let dateFrom: string | null = null;
+    let dateTo: string | null = null;
+
+    if (preset === 'all') {
+      // Clear date filters
+      dateFrom = null;
+      dateTo = null;
+    } else if (preset === 'currentWeek') {
+      const range = getCurrentWeekRange();
+      dateFrom = range.from;
+      dateTo = range.to;
+    } else if (preset === 'lastWeek') {
+      const range = getLastWeekRange();
+      dateFrom = range.from;
+      dateTo = range.to;
+    } else if (preset === 'currentMonth') {
+      const range = getCurrentMonthRange();
+      dateFrom = range.from;
+      dateTo = range.to;
+    } else if (preset === 'lastMonth') {
+      const range = getLastMonthRange();
+      dateFrom = range.from;
+      dateTo = range.to;
+    }
+    // For 'custom', keep existing dateFrom/dateTo values
+
+    setFilters((prev) => ({
+      ...prev,
+      datePreset: preset,
+      dateFrom,
+      dateTo,
+    }));
+    setCurrentPage(1); // Reset to first page when filter changes
+  };
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setFilters({
+      datePreset: 'all',
+      dateFrom: null,
+      dateTo: null,
+      handlerId: null,
+      customerId: null,
+      currencyPair: null,
+      buyAccountId: null,
+      sellAccountId: null,
+      status: null,
+    });
+    setCurrentPage(1);
+  };
 
   // Helper function to prevent number input from changing value on scroll
   const handleNumberInputWheel = (e: React.WheelEvent<HTMLInputElement>) => {
@@ -309,6 +502,19 @@ export default function OrdersPage() {
   const [viewModalOrderId, setViewModalOrderId] = useState<number | null>(null);
   const [makePaymentModalOrderId, setMakePaymentModalOrderId] = useState<number | null>(null);
   const previousOrderStatusRef = useRef<string | null>(null);
+  
+  // Service charge and profit state
+  const [showProfitSection, setShowProfitSection] = useState(false);
+  const [showServiceChargeSection, setShowServiceChargeSection] = useState(false);
+  // Upload section visibility state
+  const [showReceiptUpload, setShowReceiptUpload] = useState(false);
+  const [showPaymentUpload, setShowPaymentUpload] = useState(false);
+  const [profitAmount, setProfitAmount] = useState<string>("");
+  const [profitCurrency, setProfitCurrency] = useState<string>("");
+  const [profitAccountId, setProfitAccountId] = useState<string>("");
+  const [serviceChargeAmount, setServiceChargeAmount] = useState<string>("");
+  const [serviceChargeCurrency, setServiceChargeCurrency] = useState<string>("");
+  const [serviceChargeAccountId, setServiceChargeAccountId] = useState<string>("");
   
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const menuElementRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
@@ -749,6 +955,18 @@ export default function OrdersPage() {
     setPaymentUploadKey(0);
     setFlexOrderRate(null);
     setExcessPaymentWarning(null);
+    // Reset profit and service charge state
+    setProfitAmount("");
+    setProfitCurrency("");
+    setProfitAccountId("");
+    setServiceChargeAmount("");
+    setServiceChargeCurrency("");
+    setServiceChargeAccountId("");
+    setShowProfitSection(false);
+    setShowServiceChargeSection(false);
+    setShowReceiptUpload(false);
+    setShowPaymentUpload(false);
+    setShowServiceChargeSection(false);
     // Clear refs
     receiptFileInputRefs.current = {};
     paymentFileInputRefs.current = {};
@@ -922,8 +1140,10 @@ export default function OrdersPage() {
       }
     });
 
-    setReceiptUploads([{ image: "", amount: "", accountId: "" }]);
+    // Clear uploads and hide the upload section
+    setReceiptUploads([]);
     setReceiptUploadKey((prev) => prev + 1); // Force React to recreate file inputs
+    setShowReceiptUpload(false); // Hide the upload section after successful upload
     
   };
 
@@ -1078,8 +1298,10 @@ export default function OrdersPage() {
       }
     });
 
-    setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
+    // Clear uploads and hide the upload section
+    setPaymentUploads([]);
     setPaymentUploadKey((prev) => prev + 1); // Force React to recreate file inputs
+    setShowPaymentUpload(false); // Hide the upload section after successful upload
     
   };
 
@@ -1733,7 +1955,7 @@ export default function OrdersPage() {
             {order.isFlexOrder && order.actualAmountBuy ? (
               <span>
                 <span className="text-purple-600 font-semibold">{Math.round(order.actualAmountBuy)}</span>
-                <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountBuy)}</span>
+                {/* <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountBuy)}</span> */}
               </span>
             ) : (
               Math.round(order.amountBuy)
@@ -1746,7 +1968,7 @@ export default function OrdersPage() {
             {order.isFlexOrder && order.actualAmountSell ? (
               <span>
                 -<span className="text-purple-600 font-semibold">{Math.round(order.actualAmountSell)}</span>
-                <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountSell)}</span>
+                {/* <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountSell)}</span> */}
               </span>
             ) : (
               `-${Math.round(order.amountSell)}`
@@ -1759,7 +1981,7 @@ export default function OrdersPage() {
             {order.isFlexOrder && order.actualRate ? (
               <span>
                 <span className="text-purple-600 font-semibold">{order.actualRate}</span>
-                <span className="text-slate-400 text-xs ml-1 line-through">{order.rate}</span>
+                {/* <span className="text-slate-400 text-xs ml-1 line-through">{order.rate}</span> */}
               </span>
             ) : (
               order.rate
@@ -1880,7 +2102,7 @@ export default function OrdersPage() {
         description={t("orders.description")}
         actions={
           <div className="flex items-center gap-4">
-            {isLoading ? t("common.loading") : `${orders.length} ${t("orders.orders")}`}
+            {isLoading ? t("common.loading") : `${totalOrders} ${t("orders.orders")}`}
             <button
               onClick={() => {
                 setIsFlexOrderMode(false);
@@ -2023,6 +2245,231 @@ export default function OrdersPage() {
           </div>
         }
       >
+        {/* Filter Section */}
+        <div className="mb-4 border-b border-slate-200 pb-4">
+          <button
+            onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+            className="flex items-center justify-between w-full text-left text-sm font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <svg
+                className={`w-5 h-5 transition-transform ${isFilterExpanded ? "rotate-90" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              {t("orders.filters") || "Filters"}
+            </span>
+            <span className="text-xs font-normal text-slate-500">
+              {Object.values(filters).filter(v => v !== null && v !== 'all' && v !== 'custom').length > 0 && `(${Object.values(filters).filter(v => v !== null && v !== 'all' && v !== 'custom').length} active)`}
+            </span>
+          </button>
+          
+          {isFilterExpanded && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {/* Date Preset */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.datePreset") || "Date Range"}
+                </label>
+                <select
+                  value={filters.datePreset}
+                  onChange={(e) => handleDatePresetChange(e.target.value as any)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="all">{t("orders.all") || "All"}</option>
+                  <option value="currentWeek">{t("orders.currentWeek") || "Current Week"}</option>
+                  <option value="lastWeek">{t("orders.lastWeek") || "Last Week"}</option>
+                  <option value="currentMonth">{t("orders.currentMonth") || "Current Month"}</option>
+                  <option value="lastMonth">{t("orders.lastMonth") || "Last Month"}</option>
+                  <option value="custom">{t("orders.custom") || "Custom"}</option>
+                </select>
+              </div>
+
+              {/* Date From */}
+              {filters.datePreset === 'custom' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    {t("orders.dateFrom") || "Date From"}
+                  </label>
+                  <input
+                    type="date"
+                    value={filters.dateFrom || ""}
+                    onChange={(e) => {
+                      setFilters((prev) => ({ ...prev, dateFrom: e.target.value || null }));
+                      setCurrentPage(1);
+                    }}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              )}
+
+              {/* Date To */}
+              {filters.datePreset === 'custom' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    {t("orders.dateTo") || "Date To"}
+                  </label>
+                  <input
+                    type="date"
+                    value={filters.dateTo || ""}
+                    onChange={(e) => {
+                      setFilters((prev) => ({ ...prev, dateTo: e.target.value || null }));
+                      setCurrentPage(1);
+                    }}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              )}
+
+              {/* Handler */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.handler") || "Handler"}
+                </label>
+                <select
+                  value={filters.handlerId || ""}
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, handlerId: e.target.value ? parseInt(e.target.value, 10) : null }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{t("orders.all") || "All"}</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Customer */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.customer") || "Customer"}
+                </label>
+                <select
+                  value={filters.customerId || ""}
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, customerId: e.target.value ? parseInt(e.target.value, 10) : null }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{t("orders.all") || "All"}</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Currency Pair */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.currencyPair") || "Currency Pair"}
+                </label>
+                <select
+                  value={filters.currencyPair || ""}
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, currencyPair: e.target.value || null }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{t("orders.all") || "All"}</option>
+                  {currencyPairs.map((pair) => (
+                    <option key={pair} value={pair}>
+                      {pair}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Buy Account */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.buyAccount") || "Buy Account"}
+                </label>
+                <select
+                  value={filters.buyAccountId || ""}
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, buyAccountId: e.target.value ? parseInt(e.target.value, 10) : null }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{t("orders.all") || "All"}</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Sell Account */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.sellAccount") || "Sell Account"}
+                </label>
+                <select
+                  value={filters.sellAccountId || ""}
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, sellAccountId: e.target.value ? parseInt(e.target.value, 10) : null }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{t("orders.all") || "All"}</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.status") || "Status"}
+                </label>
+                <select
+                  value={filters.status || ""}
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, status: (e.target.value || null) as OrderStatus | null }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{t("orders.all") || "All"}</option>
+                  <option value="pending">{t("orders.pending") || "Pending"}</option>
+                  <option value="waiting_for_receipt">{t("orders.waitingForReceipt") || "Waiting for Receipt"}</option>
+                  <option value="waiting_for_payment">{t("orders.waitingForPayment") || "Waiting for Payment"}</option>
+                  <option value="under_process">{t("orders.underProcess") || "Under Process"}</option>
+                  <option value="completed">{t("orders.completed") || "Completed"}</option>
+                  <option value="cancelled">{t("orders.cancelled") || "Cancelled"}</option>
+                </select>
+              </div>
+
+              {/* Clear Filters Button */}
+              <div className="flex items-end">
+                <button
+                  onClick={handleClearFilters}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  {t("orders.clearFilters") || "Clear Filters"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
 {/* REMOVE THE BELOW DIV TO THIS ONE IF DON'T WANT HEIGHT FULL
         <div className="overflow-x-auto">
          */}
@@ -2134,6 +2581,34 @@ export default function OrdersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
+            <div className="text-sm text-slate-600">
+              {t("orders.showing") || "Showing"} {(currentPage - 1) * 20 + 1} {t("orders.to") || "to"} {Math.min(currentPage * 20, totalOrders)} {t("orders.of") || "of"} {totalOrders} {t("orders.orders") || "orders"}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {t("orders.previous") || "Previous"}
+              </button>
+              <span className="text-sm text-slate-600">
+                {t("orders.page") || "Page"} {currentPage} {t("orders.of") || "of"} {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {t("orders.next") || "Next"}
+              </button>
+            </div>
+          </div>
+        )}
       </SectionCard>
 
       {/* Create Order Modal */}
@@ -2877,7 +3352,23 @@ export default function OrdersPage() {
                     ))}
 
                     {orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
-                      <form onSubmit={handleAddReceipt} className="mt-4">
+                      <>
+                        {!showReceiptUpload && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowReceiptUpload(true);
+                              if (receiptUploads.length === 0) {
+                                setReceiptUploads([{ image: "", amount: "", accountId: "" }]);
+                              }
+                            }}
+                            className="mt-4 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                          >
+                            {t("orders.addReceipt") || "ADD RECEIPT"}
+                          </button>
+                        )}
+                        {showReceiptUpload && (
+                          <form onSubmit={handleAddReceipt} className="mt-4">
                       {receiptUploads.map((upload, index) => (
                         <div
                           key={`${receiptUploadKey}-${index}`}
@@ -2908,6 +3399,10 @@ export default function OrdersPage() {
                                 e.stopPropagation();
                                 const newUploads = receiptUploads.filter((_, i) => i !== index);
                                 setReceiptUploads(newUploads);
+                                // If no uploads left, hide the section
+                                if (newUploads.length === 0) {
+                                  setShowReceiptUpload(false);
+                                }
                               }}
                               className="absolute top-2 right-2 w-6 h-6 rounded-full border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-300 flex items-center justify-center text-sm font-bold z-10"
                               title={t("common.delete")}
@@ -3061,27 +3556,17 @@ export default function OrdersPage() {
                               </select>
                             );
                             })()}
+                          <button
+                            type="submit"
+                            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors mt-2"
+                          >
+                            {t("orders.uploadReceipts")}
+                          </button>
                           </div>
                         ))}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReceiptUploads([
-                              ...receiptUploads,
-                              { image: "", amount: "", accountId: "" },
-                            ])
-                          }
-                          className="text-sm text-blue-600 hover:underline mb-2"
-                        >
-                          {t("orders.addAnotherReceipt")}
-                        </button>
-                        <button
-                          type="submit"
-                          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-                        >
-                          {t("orders.uploadReceipts")}
-                        </button>
                       </form>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -3224,7 +3709,23 @@ export default function OrdersPage() {
                     ))}
 
                     {orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
-                      <form onSubmit={handleAddPayment} className="mt-4">
+                      <>
+                        {!showPaymentUpload && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowPaymentUpload(true);
+                              if (paymentUploads.length === 0) {
+                                setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
+                              }
+                            }}
+                            className="mt-4 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                          >
+                            {t("orders.addPayment") || "ADD PAYMENT"}
+                          </button>
+                        )}
+                        {showPaymentUpload && (
+                          <form onSubmit={handleAddPayment} className="mt-4">
                       {paymentUploads.map((upload, index) => (
                         <div
                           key={`${paymentUploadKey}-${index}`}
@@ -3255,6 +3756,10 @@ export default function OrdersPage() {
                                 e.stopPropagation();
                                 const newUploads = paymentUploads.filter((_, i) => i !== index);
                                 setPaymentUploads(newUploads);
+                                // If no uploads left, hide the section
+                                if (newUploads.length === 0) {
+                                  setShowPaymentUpload(false);
+                                }
                               }}
                               className="absolute top-2 right-2 w-6 h-6 rounded-full border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-300 flex items-center justify-center text-sm font-bold z-10"
                               title={t("common.delete")}
@@ -3415,24 +3920,14 @@ export default function OrdersPage() {
                           </div>
                         ))}
                         <button
-                          type="button"
-                          onClick={() =>
-                            setPaymentUploads([
-                              ...paymentUploads,
-                              { image: "", amount: "", accountId: "" },
-                            ])
-                          }
-                          className="text-sm text-blue-600 hover:underline mb-2"
-                        >
-                          {t("orders.addAnotherPayment")}
-                        </button>
-                        <button
                           type="submit"
                           className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
                         >
                           {t("orders.uploadPayments")}
                         </button>
                       </form>
+                        )}
+                      </>
                     )}
                   </div>
                   </div>
@@ -3568,6 +4063,323 @@ export default function OrdersPage() {
                     </div>
                   )}
 
+                  {/* Display existing profit if it exists - For Flex Orders */}
+                  {orderDetails.order.isFlexOrder && orderDetails.order.profitAmount !== null && orderDetails.order.profitAmount !== undefined && (
+                    <div className="lg:col-span-2 border-t pt-4 mt-4">
+                      <div className="p-3 border border-blue-200 rounded-lg bg-blue-50">
+                        <h3 className="font-semibold text-blue-900 mb-2">
+                          {t("orders.profit") || "Profit"}
+                        </h3>
+                        <div className="text-sm text-slate-600 space-y-1">
+                          <div>
+                            {t("orders.profitAmount") || "Profit Amount"}: {orderDetails.order.profitAmount > 0 ? "+" : ""}{orderDetails.order.profitAmount.toFixed(2)} {orderDetails.order.profitCurrency || ""}
+                          </div>
+                          {orderDetails.order.profitAccountId && (
+                            <div className="text-slate-500">
+                              {t("orders.account") || "Account"}: {accounts.find(acc => acc.id === orderDetails.order.profitAccountId)?.name || `Account #${orderDetails.order.profitAccountId}`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Display existing service charges if they exist - For Flex Orders */}
+                  {orderDetails.order.isFlexOrder && orderDetails.order.serviceChargeAmount !== null && orderDetails.order.serviceChargeAmount !== undefined && (
+                    <div className="lg:col-span-2 border-t pt-4 mt-4">
+                      <div className="p-3 border border-green-200 rounded-lg bg-green-50">
+                        <h3 className="font-semibold text-green-900 mb-2">
+                          {t("orders.serviceCharges") || "Service Charges"}
+                        </h3>
+                        <div className="text-sm text-slate-600 space-y-1">
+                          <div>
+                            {t("orders.serviceChargeAmount") || "Service Charge Amount"}: {orderDetails.order.serviceChargeAmount > 0 ? "+" : ""}{orderDetails.order.serviceChargeAmount.toFixed(2)} {orderDetails.order.serviceChargeCurrency || ""}
+                          </div>
+                          {orderDetails.order.serviceChargeAccountId && (
+                            <div className="text-slate-500">
+                              {t("orders.account") || "Account"}: {accounts.find(acc => acc.id === orderDetails.order.serviceChargeAccountId)?.name || `Account #${orderDetails.order.serviceChargeAccountId}`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Profit and Service Charges Section for Flex Orders - Before Complete Button */}
+                  {orderDetails.order.isFlexOrder && orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
+                    <div className="lg:col-span-2 border-t pt-4 mt-4 space-y-4">
+                      <div className="flex gap-2">
+                        {!showProfitSection && (
+                          <button
+                            type="button"
+                            onClick={() => setShowProfitSection(true)}
+                            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                          >
+                            {t("orders.addProfit") || "ADD PROFIT"}
+                          </button>
+                        )}
+                        {!showServiceChargeSection && (
+                          <button
+                            type="button"
+                            onClick={() => setShowServiceChargeSection(true)}
+                            className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                          >
+                            {t("orders.addServiceCharges") || "ADD SERVICE CHARGES"}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Profit Section */}
+                      {showProfitSection && (
+                        <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-semibold text-blue-900">
+                              {t("orders.profit") || "Profit"}
+                            </h3>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowProfitSection(false);
+                                setProfitAmount("");
+                                setProfitCurrency("");
+                                setProfitAccountId("");
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-sm"
+                            >
+                              {t("common.remove") || "Remove"}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-sm font-medium text-blue-900 mb-1">
+                                {t("orders.profitAmount") || "Profit Amount"}
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={profitAmount}
+                                onChange={(e) => setProfitAmount(e.target.value)}
+                                onWheel={handleNumberInputWheel}
+                                className="w-full rounded-lg border border-blue-300 px-3 py-2"
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-blue-900 mb-1">
+                                {t("orders.profitCurrency") || "Profit Currency"}
+                              </label>
+                              <select
+                                value={profitCurrency}
+                                onChange={(e) => {
+                                  setProfitCurrency(e.target.value);
+                                  setProfitAccountId(""); // Reset account when currency changes
+                                }}
+                                className="w-full rounded-lg border border-blue-300 px-3 py-2"
+                              >
+                                <option value="">
+                                  {t("orders.selectCurrency") || "Select Currency"}
+                                </option>
+                                {orderDetails?.order && (
+                                  <>
+                                    <option value={orderDetails.order.fromCurrency}>
+                                      {orderDetails.order.fromCurrency}
+                                    </option>
+                                    <option value={orderDetails.order.toCurrency}>
+                                      {orderDetails.order.toCurrency}
+                                    </option>
+                                  </>
+                                )}
+                              </select>
+                            </div>
+                          </div>
+                          {profitCurrency && (
+                            <div className="mt-3">
+                              <label className="block text-sm font-medium text-blue-900 mb-1">
+                                {t("orders.selectAccount") || "Select Account"} ({profitCurrency})
+                              </label>
+                              <select
+                                value={profitAccountId}
+                                onChange={(e) => setProfitAccountId(e.target.value)}
+                                className="w-full rounded-lg border border-blue-300 px-3 py-2"
+                                required
+                              >
+                                <option value="">
+                                  {t("orders.selectAccount") || "Select Account"}
+                                </option>
+                                {accounts
+                                  .filter((acc) => acc.currencyCode === profitCurrency)
+                                  .map((account) => (
+                                    <option key={account.id} value={account.id}>
+                                      {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!viewModalOrderId || !orderDetails) return;
+                              if (!profitAmount || !profitCurrency || !profitAccountId) {
+                                alert(t("orders.pleaseFillAllFields") || "Please fill all fields");
+                                return;
+                              }
+                              const amount = Number(profitAmount);
+                              if (isNaN(amount) || amount <= 0) {
+                                alert(t("orders.pleaseEnterValidAmount") || "Please enter a valid amount");
+                                return;
+                              }
+                              try {
+                                await updateOrder({
+                                  id: viewModalOrderId,
+                                  data: {
+                                    profitAmount: amount,
+                                    profitCurrency: profitCurrency,
+                                    profitAccountId: Number(profitAccountId),
+                                  },
+                                }).unwrap();
+                                alert(t("orders.profitUpdatedSuccessfully") || "Profit updated successfully");
+                              } catch (error: any) {
+                                console.error("Error updating profit:", error);
+                                const errorMessage = error?.data?.message || error?.message || "Failed to update profit";
+                                alert(errorMessage);
+                              }
+                            }}
+                            className="mt-3 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            {t("common.save") || "Save"}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Service Charge Section */}
+                      {showServiceChargeSection && (
+                        <div className="p-4 border border-green-200 rounded-lg bg-green-50">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-semibold text-green-900">
+                              {t("orders.serviceCharges") || "Service Charges"}
+                            </h3>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowServiceChargeSection(false);
+                                setServiceChargeAmount("");
+                                setServiceChargeCurrency("");
+                                setServiceChargeAccountId("");
+                              }}
+                              className="text-green-600 hover:text-green-800 text-sm"
+                            >
+                              {t("common.remove") || "Remove"}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-sm font-medium text-green-900 mb-1">
+                                {t("orders.serviceChargeAmount") || "Service Charge Amount"}
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={serviceChargeAmount}
+                                onChange={(e) => setServiceChargeAmount(e.target.value)}
+                                onWheel={handleNumberInputWheel}
+                                className="w-full rounded-lg border border-green-300 px-3 py-2"
+                                placeholder="0.00 (negative for paid by us)"
+                              />
+                              <p className="text-xs text-green-700 mt-1">
+                                {t("orders.negativeForPaidByUs") || "Negative values indicate paid by us"}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-green-900 mb-1">
+                                {t("orders.serviceChargeCurrency") || "Service Charge Currency"}
+                              </label>
+                              <select
+                                value={serviceChargeCurrency}
+                                onChange={(e) => {
+                                  setServiceChargeCurrency(e.target.value);
+                                  setServiceChargeAccountId(""); // Reset account when currency changes
+                                }}
+                                className="w-full rounded-lg border border-green-300 px-3 py-2"
+                              >
+                                <option value="">
+                                  {t("orders.selectCurrency") || "Select Currency"}
+                                </option>
+                                {orderDetails?.order && (
+                                  <>
+                                    <option value={orderDetails.order.fromCurrency}>
+                                      {orderDetails.order.fromCurrency}
+                                    </option>
+                                    <option value={orderDetails.order.toCurrency}>
+                                      {orderDetails.order.toCurrency}
+                                    </option>
+                                  </>
+                                )}
+                              </select>
+                            </div>
+                          </div>
+                          {serviceChargeCurrency && (
+                            <div className="mt-3">
+                              <label className="block text-sm font-medium text-green-900 mb-1">
+                                {t("orders.selectAccount") || "Select Account"} ({serviceChargeCurrency})
+                              </label>
+                              <select
+                                value={serviceChargeAccountId}
+                                onChange={(e) => setServiceChargeAccountId(e.target.value)}
+                                className="w-full rounded-lg border border-green-300 px-3 py-2"
+                                required
+                              >
+                                <option value="">
+                                  {t("orders.selectAccount") || "Select Account"}
+                                </option>
+                                {accounts
+                                  .filter((acc) => acc.currencyCode === serviceChargeCurrency)
+                                  .map((account) => (
+                                    <option key={account.id} value={account.id}>
+                                      {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!viewModalOrderId || !orderDetails) return;
+                              if (!serviceChargeAmount || !serviceChargeCurrency || !serviceChargeAccountId) {
+                                alert(t("orders.pleaseFillAllFields") || "Please fill all fields");
+                                return;
+                              }
+                              const amount = Number(serviceChargeAmount);
+                              if (isNaN(amount) || amount === 0) {
+                                alert(t("orders.pleaseEnterValidAmount") || "Please enter a valid amount");
+                                return;
+                              }
+                              try {
+                                await updateOrder({
+                                  id: viewModalOrderId,
+                                  data: {
+                                    serviceChargeAmount: amount,
+                                    serviceChargeCurrency: serviceChargeCurrency,
+                                    serviceChargeAccountId: Number(serviceChargeAccountId),
+                                  },
+                                }).unwrap();
+                                alert(t("orders.serviceChargeUpdatedSuccessfully") || "Service charge updated successfully");
+                              } catch (error: any) {
+                                console.error("Error updating service charge:", error);
+                                const errorMessage = error?.data?.message || error?.message || "Failed to update service charge";
+                                alert(errorMessage);
+                              }
+                            }}
+                            className="mt-3 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            {t("common.save") || "Save"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Complete Order Button for Flex Orders */}
                   {orderDetails.order.isFlexOrder && orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
                     <div className="lg:col-span-2 mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
@@ -3588,6 +4400,18 @@ export default function OrdersPage() {
                             
                             const currentOrderDetails = orderDetails;
                             if (!currentOrderDetails) return;
+                            
+                            // Validate that receipts have been uploaded
+                            if (currentOrderDetails.totalReceiptAmount <= 0) {
+                              alert(t("orders.pleaseUploadReceipts") || "Please upload at least one receipt before completing the order.");
+                              return;
+                            }
+                            
+                            // Validate that payments have been uploaded
+                            if (currentOrderDetails.totalPaymentAmount <= 0) {
+                              alert(t("orders.pleaseUploadPayments") || "Please upload at least one payment before completing the order.");
+                              return;
+                            }
                             
                             // Validate amounts match according to exchange rate
                             // Use the same calculation as the view window (calculateAmountSell helper)
@@ -3853,7 +4677,24 @@ export default function OrdersPage() {
                       </div>
                     ))}
 
-                    <form onSubmit={handleAddReceipt} className="mt-4">
+                    {orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
+                      <>
+                        {!showReceiptUpload && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowReceiptUpload(true);
+                              if (receiptUploads.length === 0) {
+                                setReceiptUploads([{ image: "", amount: "", accountId: "" }]);
+                              }
+                            }}
+                            className="mt-4 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                          >
+                            {t("orders.addReceipt") || "ADD RECEIPT"}
+                          </button>
+                        )}
+                        {showReceiptUpload && (
+                          <form onSubmit={handleAddReceipt} className="mt-4">
                       {receiptUploads.map((upload, index) => (
                         <div
                           key={`${receiptUploadKey}-${index}`}
@@ -3884,6 +4725,10 @@ export default function OrdersPage() {
                                 e.stopPropagation();
                                 const newUploads = receiptUploads.filter((_, i) => i !== index);
                                 setReceiptUploads(newUploads);
+                                // If no uploads left, hide the section
+                                if (newUploads.length === 0) {
+                                  setShowReceiptUpload(false);
+                                }
                               }}
                               className="absolute top-2 right-2 w-6 h-6 rounded-full border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-300 flex items-center justify-center text-sm font-bold z-10"
                               title={t("common.delete")}
@@ -4037,27 +4882,18 @@ export default function OrdersPage() {
                               </select>
                             );
                           })()}
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setReceiptUploads([
-                            ...receiptUploads,
-                            { image: "", amount: "", accountId: "" },
-                          ])
-                        }
-                        className="text-sm text-blue-600 hover:underline mb-2"
-                      >
-                        {t("orders.addAnotherReceipt")}
-                      </button>
-                      <button
-                        type="submit"
-                        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-                      >
-                        {t("orders.uploadReceipts")}
-                      </button>
+                          <button
+                            type="submit"
+                            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors mt-2"
+                          >
+                            {t("orders.uploadReceipts")}
+                          </button>
+                          </div>
+                        ))}
                     </form>
+                        )}
+                      </>
+                    )}
                     {orderDetails.order.isFlexOrder && orderDetails.receiptBalance > 0 && (
                       <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
                         <p className="text-sm text-purple-800 mb-2">
@@ -4327,7 +5163,24 @@ export default function OrdersPage() {
                       </div>
                     ))}
 
-                    <form onSubmit={handleAddPayment} className="mt-4">
+                    {orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
+                      <>
+                        {!showPaymentUpload && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowPaymentUpload(true);
+                              if (paymentUploads.length === 0) {
+                                setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
+                              }
+                            }}
+                            className="mt-4 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                          >
+                            {t("orders.addPayment") || "ADD PAYMENT"}
+                          </button>
+                        )}
+                        {showPaymentUpload && (
+                          <form onSubmit={handleAddPayment} className="mt-4">
                       {paymentUploads.map((upload, index) => (
                         <div
                           key={`${paymentUploadKey}-${index}`}
@@ -4358,6 +5211,10 @@ export default function OrdersPage() {
                                 e.stopPropagation();
                                 const newUploads = paymentUploads.filter((_, i) => i !== index);
                                 setPaymentUploads(newUploads);
+                                // If no uploads left, hide the section
+                                if (newUploads.length === 0) {
+                                  setShowPaymentUpload(false);
+                                }
                               }}
                               className="absolute top-2 right-2 w-6 h-6 rounded-full border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-300 flex items-center justify-center text-sm font-bold z-10"
                               title={t("common.delete")}
@@ -4515,27 +5372,18 @@ export default function OrdersPage() {
                               </select>
                             );
                           })()}
+                          <button
+                            type="submit"
+                            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors mt-2"
+                          >
+                            {t("orders.uploadPayments")}
+                          </button>
                         </div>
                       ))}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPaymentUploads([
-                            ...paymentUploads,
-                            { image: "", amount: "", accountId: "" },
-                          ])
-                        }
-                        className="text-sm text-blue-600 hover:underline mb-2"
-                      >
-                        {t("orders.addAnotherPayment")}
-                      </button>
-                      <button
-                        type="submit"
-                        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-                      >
-                        {t("orders.uploadPayments")}
-                      </button>
                     </form>
+                        )}
+                      </>
+                    )}
                   </div>
                 </>
               )}
@@ -4911,6 +5759,323 @@ export default function OrdersPage() {
                     </div>
                   )}
                 </>
+              )}
+
+              {/* Display existing profit if it exists - For Non-Flex Orders */}
+              {!orderDetails.order.isFlexOrder && orderDetails.order.profitAmount !== null && orderDetails.order.profitAmount !== undefined && (
+                <div className="border-t pt-4 mt-4">
+                  <div className="p-3 border border-blue-200 rounded-lg bg-blue-50">
+                    <h3 className="font-semibold text-blue-900 mb-2">
+                      {t("orders.profit") || "Profit"}
+                    </h3>
+                    <div className="text-sm text-slate-600 space-y-1">
+                      <div>
+                        {t("orders.profitAmount") || "Profit Amount"}: {orderDetails.order.profitAmount > 0 ? "+" : ""}{orderDetails.order.profitAmount.toFixed(2)} {orderDetails.order.profitCurrency || ""}
+                      </div>
+                      {orderDetails.order.profitAccountId && (
+                        <div className="text-slate-500">
+                          {t("orders.account") || "Account"}: {accounts.find(acc => acc.id === orderDetails.order.profitAccountId)?.name || `Account #${orderDetails.order.profitAccountId}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Display existing service charges if they exist - For Non-Flex Orders */}
+              {!orderDetails.order.isFlexOrder && orderDetails.order.serviceChargeAmount !== null && orderDetails.order.serviceChargeAmount !== undefined && (
+                <div className="border-t pt-4 mt-4">
+                  <div className="p-3 border border-green-200 rounded-lg bg-green-50">
+                    <h3 className="font-semibold text-green-900 mb-2">
+                      {t("orders.serviceCharges") || "Service Charges"}
+                    </h3>
+                    <div className="text-sm text-slate-600 space-y-1">
+                      <div>
+                        {t("orders.serviceChargeAmount") || "Service Charge Amount"}: {orderDetails.order.serviceChargeAmount > 0 ? "+" : ""}{orderDetails.order.serviceChargeAmount.toFixed(2)} {orderDetails.order.serviceChargeCurrency || ""}
+                      </div>
+                      {orderDetails.order.serviceChargeAccountId && (
+                        <div className="text-slate-500">
+                          {t("orders.account") || "Account"}: {accounts.find(acc => acc.id === orderDetails.order.serviceChargeAccountId)?.name || `Account #${orderDetails.order.serviceChargeAccountId}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Profit and Service Charges Section - At the bottom */}
+              {orderDetails?.order?.status !== "completed" && (
+              <div className="border-t pt-4 mt-4 space-y-4">
+                <div className="flex gap-2">
+                  {!showProfitSection && (
+                    <button
+                      type="button"
+                      onClick={() => setShowProfitSection(true)}
+                      className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                    >
+                      {t("orders.addProfit") || "ADD PROFIT"}
+                    </button>
+                  )}
+                  {!showServiceChargeSection && (
+                    <button
+                      type="button"
+                      onClick={() => setShowServiceChargeSection(true)}
+                      className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                    >
+                      {t("orders.addServiceCharges") || "ADD SERVICE CHARGES"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Profit Section */}
+                {showProfitSection && (
+                  <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-blue-900">
+                        {t("orders.profit") || "Profit"}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowProfitSection(false);
+                          setProfitAmount("");
+                          setProfitCurrency("");
+                          setProfitAccountId("");
+                        }}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        {t("common.remove") || "Remove"}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-blue-900 mb-1">
+                          {t("orders.profitAmount") || "Profit Amount"}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={profitAmount}
+                          onChange={(e) => setProfitAmount(e.target.value)}
+                          onWheel={handleNumberInputWheel}
+                          className="w-full rounded-lg border border-blue-300 px-3 py-2"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-blue-900 mb-1">
+                          {t("orders.profitCurrency") || "Profit Currency"}
+                        </label>
+                        <select
+                          value={profitCurrency}
+                          onChange={(e) => {
+                            setProfitCurrency(e.target.value);
+                            setProfitAccountId(""); // Reset account when currency changes
+                          }}
+                          className="w-full rounded-lg border border-blue-300 px-3 py-2"
+                        >
+                          <option value="">
+                            {t("orders.selectCurrency") || "Select Currency"}
+                          </option>
+                          {orderDetails?.order && (
+                            <>
+                              <option value={orderDetails.order.fromCurrency}>
+                                {orderDetails.order.fromCurrency}
+                              </option>
+                              <option value={orderDetails.order.toCurrency}>
+                                {orderDetails.order.toCurrency}
+                              </option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                    {profitCurrency && (
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-blue-900 mb-1">
+                          {t("orders.selectAccount") || "Select Account"} ({profitCurrency})
+                        </label>
+                        <select
+                          value={profitAccountId}
+                          onChange={(e) => setProfitAccountId(e.target.value)}
+                          className="w-full rounded-lg border border-blue-300 px-3 py-2"
+                          required
+                        >
+                          <option value="">
+                            {t("orders.selectAccount") || "Select Account"}
+                          </option>
+                          {accounts
+                            .filter((acc) => acc.currencyCode === profitCurrency)
+                            .map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!viewModalOrderId || !orderDetails) return;
+                        if (!profitAmount || !profitCurrency || !profitAccountId) {
+                          alert(t("orders.pleaseFillAllFields") || "Please fill all fields");
+                          return;
+                        }
+                        const amount = Number(profitAmount);
+                        if (isNaN(amount) || amount <= 0) {
+                          alert(t("orders.pleaseEnterValidAmount") || "Please enter a valid amount");
+                          return;
+                        }
+                        try {
+                          await updateOrder({
+                            id: viewModalOrderId,
+                            data: {
+                              profitAmount: amount,
+                              profitCurrency: profitCurrency,
+                              profitAccountId: Number(profitAccountId),
+                            },
+                          }).unwrap();
+                          alert(t("orders.profitUpdatedSuccessfully") || "Profit updated successfully");
+                        } catch (error: any) {
+                          console.error("Error updating profit:", error);
+                          const errorMessage = error?.data?.message || error?.message || "Failed to update profit";
+                          alert(errorMessage);
+                        }
+                      }}
+                      className="mt-3 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      {t("common.save") || "Save"}
+                    </button>
+                  </div>
+                )}
+
+                {/* Service Charge Section */}
+                {showServiceChargeSection && (
+                  <div className="p-4 border border-green-200 rounded-lg bg-green-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-green-900">
+                        {t("orders.serviceCharges") || "Service Charges"}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowServiceChargeSection(false);
+                          setServiceChargeAmount("");
+                          setServiceChargeCurrency("");
+                          setServiceChargeAccountId("");
+                        }}
+                        className="text-green-600 hover:text-green-800 text-sm"
+                      >
+                        {t("common.remove") || "Remove"}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-green-900 mb-1">
+                          {t("orders.serviceChargeAmount") || "Service Charge Amount"}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={serviceChargeAmount}
+                          onChange={(e) => setServiceChargeAmount(e.target.value)}
+                          onWheel={handleNumberInputWheel}
+                          className="w-full rounded-lg border border-green-300 px-3 py-2"
+                          placeholder="0.00 (negative for paid by us)"
+                        />
+                        <p className="text-xs text-green-700 mt-1">
+                          {t("orders.negativeForPaidByUs") || "Negative values indicate paid by us"}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-green-900 mb-1">
+                          {t("orders.serviceChargeCurrency") || "Service Charge Currency"}
+                        </label>
+                        <select
+                          value={serviceChargeCurrency}
+                          onChange={(e) => {
+                            setServiceChargeCurrency(e.target.value);
+                            setServiceChargeAccountId(""); // Reset account when currency changes
+                          }}
+                          className="w-full rounded-lg border border-green-300 px-3 py-2"
+                        >
+                          <option value="">
+                            {t("orders.selectCurrency") || "Select Currency"}
+                          </option>
+                          {orderDetails?.order && (
+                            <>
+                              <option value={orderDetails.order.fromCurrency}>
+                                {orderDetails.order.fromCurrency}
+                              </option>
+                              <option value={orderDetails.order.toCurrency}>
+                                {orderDetails.order.toCurrency}
+                              </option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                    {serviceChargeCurrency && (
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-green-900 mb-1">
+                          {t("orders.selectAccount") || "Select Account"} ({serviceChargeCurrency})
+                        </label>
+                        <select
+                          value={serviceChargeAccountId}
+                          onChange={(e) => setServiceChargeAccountId(e.target.value)}
+                          className="w-full rounded-lg border border-green-300 px-3 py-2"
+                          required
+                        >
+                          <option value="">
+                            {t("orders.selectAccount") || "Select Account"}
+                          </option>
+                          {accounts
+                            .filter((acc) => acc.currencyCode === serviceChargeCurrency)
+                            .map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name} ({account.balance.toFixed(2)} {account.currencyCode})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!viewModalOrderId || !orderDetails) return;
+                        if (!serviceChargeAmount || !serviceChargeCurrency || !serviceChargeAccountId) {
+                          alert(t("orders.pleaseFillAllFields") || "Please fill all fields");
+                          return;
+                        }
+                        const amount = Number(serviceChargeAmount);
+                        if (isNaN(amount) || amount === 0) {
+                          alert(t("orders.pleaseEnterValidAmount") || "Please enter a valid amount");
+                          return;
+                        }
+                        try {
+                          await updateOrder({
+                            id: viewModalOrderId,
+                            data: {
+                              serviceChargeAmount: amount,
+                              serviceChargeCurrency: serviceChargeCurrency,
+                              serviceChargeAccountId: Number(serviceChargeAccountId),
+                            },
+                          }).unwrap();
+                          alert(t("orders.serviceChargeUpdatedSuccessfully") || "Service charge updated successfully");
+                        } catch (error: any) {
+                          console.error("Error updating service charge:", error);
+                          const errorMessage = error?.data?.message || error?.message || "Failed to update service charge";
+                          alert(errorMessage);
+                        }
+                      }}
+                      className="mt-3 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      {t("common.save") || "Save"}
+                    </button>
+                  </div>
+                )}
+              </div>
               )}
                 </>
               )}

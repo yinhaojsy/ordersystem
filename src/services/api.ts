@@ -301,15 +301,80 @@ export const api = createApi({
       }),
       invalidatesTags: [{ type: "Role", id: "LIST" }],
     }),
-    getOrders: builder.query<Order[], void>({
-      query: () => "orders",
+    getOrders: builder.query<
+      {
+        orders: Order[];
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+      },
+      {
+        dateFrom?: string;
+        dateTo?: string;
+        handlerId?: number;
+        customerId?: number;
+        fromCurrency?: string;
+        toCurrency?: string;
+        buyAccountId?: number;
+        sellAccountId?: number;
+        status?: OrderStatus;
+        page?: number;
+        limit?: number;
+      }
+    >({
+      query: (params = {}) => {
+        const queryParams = new URLSearchParams();
+        if (params.dateFrom) queryParams.append("dateFrom", params.dateFrom);
+        if (params.dateTo) queryParams.append("dateTo", params.dateTo);
+        if (params.handlerId !== undefined) queryParams.append("handlerId", params.handlerId.toString());
+        if (params.customerId !== undefined) queryParams.append("customerId", params.customerId.toString());
+        if (params.fromCurrency) queryParams.append("fromCurrency", params.fromCurrency);
+        if (params.toCurrency) queryParams.append("toCurrency", params.toCurrency);
+        if (params.buyAccountId !== undefined) queryParams.append("buyAccountId", params.buyAccountId.toString());
+        if (params.sellAccountId !== undefined) queryParams.append("sellAccountId", params.sellAccountId.toString());
+        if (params.status) queryParams.append("status", params.status);
+        if (params.page !== undefined) queryParams.append("page", params.page.toString());
+        if (params.limit !== undefined) queryParams.append("limit", params.limit.toString());
+        const queryString = queryParams.toString();
+        return `orders${queryString ? `?${queryString}` : ""}`;
+      },
       providesTags: (result) =>
         result
           ? [
-              ...result.map(({ id }) => ({ type: "Order" as const, id })),
+              ...result.orders.map(({ id }) => ({ type: "Order" as const, id })),
               { type: "Order" as const, id: "LIST" },
             ]
           : [{ type: "Order", id: "LIST" }],
+    }),
+    exportOrders: builder.query<
+      Order[],
+      {
+        dateFrom?: string;
+        dateTo?: string;
+        handlerId?: number;
+        customerId?: number;
+        fromCurrency?: string;
+        toCurrency?: string;
+        buyAccountId?: number;
+        sellAccountId?: number;
+        status?: OrderStatus;
+      }
+    >({
+      query: (params = {}) => {
+        const queryParams = new URLSearchParams();
+        if (params.dateFrom) queryParams.append("dateFrom", params.dateFrom);
+        if (params.dateTo) queryParams.append("dateTo", params.dateTo);
+        if (params.handlerId !== undefined) queryParams.append("handlerId", params.handlerId.toString());
+        if (params.customerId !== undefined) queryParams.append("customerId", params.customerId.toString());
+        if (params.fromCurrency) queryParams.append("fromCurrency", params.fromCurrency);
+        if (params.toCurrency) queryParams.append("toCurrency", params.toCurrency);
+        if (params.buyAccountId !== undefined) queryParams.append("buyAccountId", params.buyAccountId.toString());
+        if (params.sellAccountId !== undefined) queryParams.append("sellAccountId", params.sellAccountId.toString());
+        if (params.status) queryParams.append("status", params.status);
+        const queryString = queryParams.toString();
+        return `orders/export${queryString ? `?${queryString}` : ""}`;
+      },
     }),
     addOrder: builder.mutation<Order, OrderInput>({
       query: (body) => ({

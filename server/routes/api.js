@@ -33,6 +33,7 @@ import {
 } from "../controllers/rolesController.js";
 import {
   listOrders,
+  exportOrders,
   createOrder,
   updateOrder,
   updateOrderStatus,
@@ -128,6 +129,7 @@ router.post("/roles/:id/force-logout", forceLogoutUsersByRole);
 router.delete("/roles/:id", deleteRole);
 
 router.get("/orders", listOrders);
+router.get("/orders/export", exportOrders);
 router.post("/orders", createOrder);
 // More specific routes must come before less specific ones
 router.get("/orders/:id/details", getOrderDetails);
