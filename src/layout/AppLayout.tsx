@@ -15,6 +15,9 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const user = useAppSelector((s) => s.auth.user);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 5;
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Subscribe to role updates via Server-Sent Events (SSE)
   useEffect(() => {
@@ -24,38 +27,94 @@ export default function AppLayout() {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      reconnectAttemptsRef.current = 0;
       return;
     }
 
-    // Subscribe to role updates via SSE
-    const eventSource = new EventSource(
-      `/api/roles/subscribe?roleName=${encodeURIComponent(user.role)}`
-    );
+    // Reset reconnect attempts when user changes
+    reconnectAttemptsRef.current = 0;
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'forceLogout') {
-          // Force logout immediately when server sends logout signal
-          dispatch(setUser(null));
-          navigate("/login", { replace: true });
-        }
-      } catch (error) {
-        console.error("Error parsing SSE message:", error);
+    const connectSSE = () => {
+      // Don't reconnect if we've exceeded max attempts
+      if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+        console.warn('SSE: Max reconnection attempts reached. Stopping reconnection attempts.');
+        return;
       }
+
+      // Close existing connection if any
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+
+      // Subscribe to role updates via SSE
+      const eventSource = new EventSource(
+        `/api/roles/subscribe?roleName=${encodeURIComponent(user.role)}`
+      );
+
+      eventSource.onopen = () => {
+        console.log('SSE: Connection opened');
+        reconnectAttemptsRef.current = 0; // Reset on successful connection
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'forceLogout') {
+            // Force logout immediately when server sends logout signal
+            dispatch(setUser(null));
+            navigate("/login", { replace: true });
+          }
+        } catch (error) {
+          console.error("Error parsing SSE message:", error);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error("SSE connection error:", error);
+        
+        // Close the connection
+        eventSource.close();
+        eventSourceRef.current = null;
+
+        // Increment reconnect attempts
+        reconnectAttemptsRef.current += 1;
+
+        // Only reconnect if we haven't exceeded max attempts
+        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+          // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current - 1), 30000);
+          console.log(`SSE: Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connectSSE();
+          }, delay);
+        } else {
+          console.warn('SSE: Max reconnection attempts reached. SSE disabled for this session.');
+        }
+      };
+
+      eventSourceRef.current = eventSource;
     };
 
-    eventSource.onerror = (error) => {
-      console.error("SSE connection error:", error);
-      // Connection will automatically try to reconnect
-    };
-
-    eventSourceRef.current = eventSource;
+    // Initial connection
+    connectSSE();
 
     // Cleanup on unmount or role change
     return () => {
-      eventSource.close();
-      eventSourceRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      reconnectAttemptsRef.current = 0;
     };
   }, [user?.role, dispatch, navigate]);
 

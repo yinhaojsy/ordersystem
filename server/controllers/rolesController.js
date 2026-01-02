@@ -42,14 +42,42 @@ export const subscribeToRoleUpdates = (req, res, next) => {
     // Send initial connection confirmation
     res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
+    // Send periodic heartbeat to keep connection alive (every 30 seconds)
+    const heartbeatInterval = setInterval(() => {
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'heartbeat', timestamp: Date.now() })}\n\n`);
+      } catch (error) {
+        // Connection closed, stop heartbeat
+        clearInterval(heartbeatInterval);
+      }
+    }, 30000);
+
     // Handle client disconnect
     req.on('close', () => {
+      clearInterval(heartbeatInterval);
       const connections = sseConnections.get(roleName);
       if (connections) {
         connections.delete(res);
         if (connections.size === 0) {
           sseConnections.delete(roleName);
         }
+      }
+    });
+
+    // Handle request timeout (5 minutes)
+    req.setTimeout(300000, () => {
+      clearInterval(heartbeatInterval);
+      const connections = sseConnections.get(roleName);
+      if (connections) {
+        connections.delete(res);
+        if (connections.size === 0) {
+          sseConnections.delete(roleName);
+        }
+      }
+      try {
+        res.end();
+      } catch (error) {
+        // Connection already closed
       }
     });
   } catch (error) {
