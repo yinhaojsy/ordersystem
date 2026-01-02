@@ -1,5 +1,6 @@
 import { useState, type FormEvent, useEffect, useRef, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import * as XLSX from "xlsx";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
@@ -91,6 +92,195 @@ function AccountTooltip({
   );
 }
 
+// Searchable Select Component
+function SearchableSelect<T extends { id: number; name: string }>({
+  value,
+  onChange,
+  options,
+  placeholder,
+  label,
+  allOptionLabel,
+}: {
+  value: number | null;
+  onChange: (value: number | null) => void;
+  options: T[];
+  placeholder: string;
+  label: string;
+  allOptionLabel: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Filter options based on search term
+  const filteredOptions = useMemo(() => {
+    if (!searchTerm.trim()) return options;
+    const term = searchTerm.toLowerCase();
+    return options.filter((option) => option.name.toLowerCase().includes(term));
+  }, [options, searchTerm]);
+
+  // Get all options including "All" option
+  const allOptions = useMemo(() => {
+    return [{ id: null, name: allOptionLabel } as unknown as T & { id: number | null }, ...filteredOptions];
+  }, [filteredOptions, allOptionLabel]);
+
+  // Get selected option name
+  const selectedOption = options.find((opt) => opt.id === value);
+  const displayValue = selectedOption ? selectedOption.name : "";
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+        setSearchTerm("");
+        setHighlightedIndex(-1);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Reset search and highlight when dropdown closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm("");
+      setHighlightedIndex(-1);
+    }
+  }, [isOpen]);
+
+  // Focus input when dropdown opens
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isOpen]);
+
+  // Reset highlighted index when search term changes
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [searchTerm]);
+
+  // Scroll highlighted option into view
+  useEffect(() => {
+    if (isOpen && highlightedIndex >= 0 && dropdownRef.current) {
+      const optionElement = dropdownRef.current.children[highlightedIndex] as HTMLElement;
+      if (optionElement) {
+        optionElement.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }
+  }, [highlightedIndex, isOpen]);
+
+  const handleSelect = (optionId: number | null) => {
+    onChange(optionId);
+    setIsOpen(false);
+    setSearchTerm("");
+    setHighlightedIndex(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isOpen && (e.key === "ArrowDown" || e.key === "Enter")) {
+      setIsOpen(true);
+      return;
+    }
+
+    if (!isOpen) return;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setHighlightedIndex((prev) => {
+          const next = prev < allOptions.length - 1 ? prev + 1 : 0;
+          return next;
+        });
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setHighlightedIndex((prev) => {
+          const next = prev > 0 ? prev - 1 : allOptions.length - 1;
+          return next;
+        });
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < allOptions.length) {
+          handleSelect(allOptions[highlightedIndex].id);
+        }
+        break;
+      case "Escape":
+        e.preventDefault();
+        setIsOpen(false);
+        setSearchTerm("");
+        setHighlightedIndex(-1);
+        break;
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="block text-xs font-semibold text-slate-700 mb-1">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={isOpen ? searchTerm : displayValue}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            if (!isOpen) setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+        >
+          <svg
+            className={`w-5 h-5 transition-transform ${isOpen ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+      {isOpen && (
+        <div ref={dropdownRef} className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+          {allOptions.map((option, index) => (
+            <div
+              key={option.id ?? "all"}
+              onClick={() => handleSelect(option.id)}
+              onMouseEnter={() => setHighlightedIndex(index)}
+              className={`px-3 py-2 text-sm cursor-pointer ${
+                index === highlightedIndex
+                  ? "bg-blue-100 text-blue-900 font-medium"
+                  : value === option.id
+                  ? "bg-blue-50 text-blue-700 font-medium"
+                  : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {option.name}
+            </div>
+          ))}
+          {filteredOptions.length === 0 && searchTerm.trim() && (
+            <div className="px-3 py-2 text-sm text-slate-500">No results found</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 import {
   useAddOrderMutation,
   useGetCurrenciesQuery,
@@ -121,7 +311,7 @@ import {
 import { useGetRolesQuery } from "../services/api";
 import { useAppSelector } from "../app/hooks";
 import { hasActionPermission } from "../utils/permissions";
-import type { OrderStatus } from "../types";
+import type { OrderStatus, Order } from "../types";
 import { formatDate } from "../utils/format";
 
 // Date preset helper functions
@@ -217,6 +407,8 @@ export default function OrdersPage() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Build query parameters for API
   const queryParams: {
@@ -326,6 +518,282 @@ export default function OrdersPage() {
       status: null,
     });
     setCurrentPage(1);
+  };
+
+  // Build export query parameters (same as queryParams but without pagination)
+  const exportQueryParams: {
+    dateFrom?: string;
+    dateTo?: string;
+    handlerId?: number;
+    customerId?: number;
+    fromCurrency?: string;
+    toCurrency?: string;
+    buyAccountId?: number;
+    sellAccountId?: number;
+    status?: OrderStatus;
+  } = {};
+
+  if (filters.dateFrom) exportQueryParams.dateFrom = filters.dateFrom;
+  if (filters.dateTo) exportQueryParams.dateTo = filters.dateTo;
+  if (filters.handlerId !== null) exportQueryParams.handlerId = filters.handlerId;
+  if (filters.customerId !== null) exportQueryParams.customerId = filters.customerId;
+  if (filters.currencyPair) {
+    const [from, to] = filters.currencyPair.split('/');
+    exportQueryParams.fromCurrency = from;
+    exportQueryParams.toCurrency = to;
+  }
+  if (filters.buyAccountId !== null) exportQueryParams.buyAccountId = filters.buyAccountId;
+  if (filters.sellAccountId !== null) exportQueryParams.sellAccountId = filters.sellAccountId;
+  if (filters.status) exportQueryParams.status = filters.status;
+
+  // Export orders function
+  const [isExporting, setIsExporting] = useState(false);
+  const handleExportOrders = async () => {
+    try {
+      setIsExporting(true);
+      
+      // Fetch all filtered orders using the export endpoint
+      const queryString = new URLSearchParams();
+      if (exportQueryParams.dateFrom) queryString.append("dateFrom", exportQueryParams.dateFrom);
+      if (exportQueryParams.dateTo) queryString.append("dateTo", exportQueryParams.dateTo);
+      if (exportQueryParams.handlerId !== undefined) queryString.append("handlerId", exportQueryParams.handlerId.toString());
+      if (exportQueryParams.customerId !== undefined) queryString.append("customerId", exportQueryParams.customerId.toString());
+      if (exportQueryParams.fromCurrency) queryString.append("fromCurrency", exportQueryParams.fromCurrency);
+      if (exportQueryParams.toCurrency) queryString.append("toCurrency", exportQueryParams.toCurrency);
+      if (exportQueryParams.buyAccountId !== undefined) queryString.append("buyAccountId", exportQueryParams.buyAccountId.toString());
+      if (exportQueryParams.sellAccountId !== undefined) queryString.append("sellAccountId", exportQueryParams.sellAccountId.toString());
+      if (exportQueryParams.status) queryString.append("status", exportQueryParams.status);
+
+      const response = await fetch(`/api/orders/export${queryString.toString() ? `?${queryString.toString()}` : ""}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch orders for export");
+      }
+      const ordersToExport: Order[] = await response.json();
+
+      // Prepare data for Excel
+      const ordersData = ordersToExport.map((order) => ({
+        "Order ID": order.id,
+        "Date": formatDate(order.createdAt),
+        "Handler": order.handlerName || "-",
+        "Customer": order.customerName || "-",
+        "Currency Pair": `${order.fromCurrency}/${order.toCurrency}`,
+        "Amount Buy": order.amountBuy,
+        "From Currency": order.fromCurrency,
+        "Amount Sell": order.amountSell,
+        "To Currency": order.toCurrency,
+        "Rate": order.rate,
+        "Status": order.status,
+        "Buy Account": order.buyAccountName || "-",
+        "Sell Account": order.sellAccountName || "-",
+        "Profit Amount": order.profitAmount || 0,
+        "Profit Currency": order.profitCurrency || "-",
+        "Service Charge Amount": order.serviceChargeAmount || 0,
+        "Service Charge Currency": order.serviceChargeCurrency || "-",
+      }));
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      const ordersSheet = XLSX.utils.json_to_sheet(ordersData);
+      XLSX.utils.book_append_sheet(wb, ordersSheet, "Orders");
+
+      // Write file
+      const fileName = `orders_export_${new Date().toISOString().split("T")[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      setAlertModal({
+        isOpen: true,
+        message: (t("orders.exportSuccess") || "Successfully exported {{count}} orders to {{fileName}}")
+          .replace("{{count}}", ordersToExport.length.toString())
+          .replace("{{fileName}}", fileName),
+        type: "success",
+      });
+    } catch (error) {
+      setAlertModal({
+        isOpen: true,
+        message: t("orders.exportError") || "Failed to export orders. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Download import template
+  const handleDownloadTemplate = () => {
+    // Create template data with example rows
+    const templateData = [
+      {
+        "Customer": "Example Customer",
+        "Handler": "John Doe",
+        "Currency Pair": "USD/HKD",
+        "Amount Buy": 1000,
+        "Amount Sell": 7800,
+        "Rate": 7.8,
+        "Status": "pending"
+      },
+      {
+        "Customer": "Another Customer",
+        "Handler": "",
+        "Currency Pair": "USDT/USD",
+        "Amount Buy": 500,
+        "Amount Sell": 500,
+        "Rate": 1.0,
+        "Status": "completed"
+      }
+    ];
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    const templateSheet = XLSX.utils.json_to_sheet(templateData);
+    XLSX.utils.book_append_sheet(wb, templateSheet, "Orders");
+
+    // Write file
+    XLSX.writeFile(wb, "orders_import_template.xlsx");
+  };
+
+  // Import orders function
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsImporting(true);
+
+      // Read Excel file
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+
+      // Read Orders sheet
+      const ordersSheet = workbook.Sheets["Orders"];
+      if (!ordersSheet) {
+        setAlertModal({
+          isOpen: true,
+          message: t("orders.ordersSheetNotFound") || "Orders sheet not found in the file",
+          type: "error",
+        });
+        setIsImporting(false);
+        return;
+      }
+
+      const ordersData = XLSX.utils.sheet_to_json(ordersSheet) as any[];
+
+      if (ordersData.length === 0) {
+        setAlertModal({
+          isOpen: true,
+          message: t("orders.noOrdersInFile") || "No orders found in the file",
+          type: "error",
+        });
+        setIsImporting(false);
+        return;
+      }
+
+      // Get customers and users for mapping
+      const customerMap = new Map(customers.map((c) => [c.name.toLowerCase(), c.id]));
+      const userMap = new Map(users.map((u) => [u.name.toLowerCase(), u.id]));
+
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+
+      // Process each order
+      for (let i = 0; i < ordersData.length; i++) {
+        const row = ordersData[i];
+        try {
+          // Find customer by name
+          const customerName = String(row["Customer"] || "").trim();
+          const customerId = customerMap.get(customerName.toLowerCase());
+          if (!customerId) {
+            errors.push(`Row ${i + 2}: Customer "${customerName}" not found`);
+            errorCount++;
+            continue;
+          }
+
+          // Find handler by name (optional)
+          const handlerName = String(row["Handler"] || "").trim();
+          const handlerId = handlerName ? userMap.get(handlerName.toLowerCase()) : null;
+
+          // Parse currency pair
+          const currencyPair = String(row["Currency Pair"] || "").trim();
+          const [fromCurrency, toCurrency] = currencyPair.split("/").map((c) => c.trim());
+          if (!fromCurrency || !toCurrency) {
+            errors.push(`Row ${i + 2}: Invalid currency pair "${currencyPair}"`);
+            errorCount++;
+            continue;
+          }
+
+          // Parse amounts and rate
+          const amountBuy = parseFloat(row["Amount Buy"] || row["amountBuy"] || "0");
+          const amountSell = parseFloat(row["Amount Sell"] || row["amountSell"] || "0");
+          const rate = parseFloat(row["Rate"] || row["rate"] || "0");
+
+          if (!amountBuy || !amountSell || !rate) {
+            errors.push(`Row ${i + 2}: Missing required fields (Amount Buy, Amount Sell, or Rate)`);
+            errorCount++;
+            continue;
+          }
+
+          // Parse status
+          const statusStr = String(row["Status"] || row["status"] || "pending").trim().toLowerCase();
+          const statusMap: Record<string, OrderStatus> = {
+            "pending": "pending",
+            "waiting_for_receipt": "waiting_for_receipt",
+            "waiting_for_payment": "waiting_for_payment",
+            "under_process": "under_process",
+            "completed": "completed",
+            "cancelled": "cancelled",
+          };
+          const status = statusMap[statusStr] || "pending";
+
+          // Create order
+          const orderData = {
+            customerId,
+            handlerId: handlerId || undefined,
+            fromCurrency,
+            toCurrency,
+            amountBuy,
+            amountSell,
+            rate,
+            status: status as OrderStatus,
+          };
+
+          await addOrder(orderData);
+          successCount++;
+        } catch (error: any) {
+          errors.push(`Row ${i + 2}: ${error.message || "Unknown error"}`);
+          errorCount++;
+        }
+      }
+
+      // Show results
+      let message = (t("orders.importSuccess") || "Successfully imported {{count}} orders").replace("{{count}}", successCount.toString());
+      if (errorCount > 0) {
+        message += `. ${errorCount} orders failed to import.`;
+        if (errors.length > 0) {
+          message += `\n\nErrors:\n${errors.slice(0, 10).join("\n")}`;
+          if (errors.length > 10) {
+            message += `\n... and ${errors.length - 10} more errors`;
+          }
+        }
+      }
+
+      setAlertModal({
+        isOpen: true,
+        message,
+        type: errorCount > 0 ? "warning" : "success",
+      });
+
+      setImportModalOpen(false);
+      // Reset file input
+      e.target.value = "";
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: t("orders.importError") || `Failed to import orders: ${error.message || "Unknown error"}`,
+        type: "error",
+      });
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   // Helper function to prevent number input from changing value on scroll
@@ -2130,8 +2598,13 @@ export default function OrdersPage() {
                     // Enable batch delete mode
                     setIsBatchDeleteMode(true);
                   } else {
+                    // If no orders selected, exit batch delete mode
+                    if (!selectedOrderIds.length) {
+                      setIsBatchDeleteMode(false);
+                      setSelectedOrderIds([]);
+                      return;
+                    }
                     // Delete selected orders
-                    if (!selectedOrderIds.length) return;
                     setConfirmModal({
                       isOpen: true,
                       message: t("orders.confirmDeleteOrder") || "Are you sure you want to delete the selected orders?",
@@ -2140,16 +2613,35 @@ export default function OrdersPage() {
                     });
                   }
                 }}
-                disabled={isDeleting || (isBatchDeleteMode && !selectedOrderIds.length)}
+                disabled={isDeleting}
                 className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
               >
                 {isDeleting 
                   ? t("common.deleting") 
                   : isBatchDeleteMode 
-                    ? t("orders.deleteSelected") 
+                    ? (selectedOrderIds.length > 0 ? t("orders.deleteSelected") : t("common.cancel"))
                     : t("orders.batchDelete")}
               </button>
             )}
+            <button
+              onClick={() => setImportModalOpen(true)}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+              {t("orders.import") || "Import Orders"}
+            </button>
             <div className="relative" ref={columnDropdownRef}>
               <button
                 onClick={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
@@ -2325,48 +2817,30 @@ export default function OrdersPage() {
               )}
 
               {/* Handler */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.handler") || "Handler"}
-                </label>
-                <select
-                  value={filters.handlerId || ""}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, handlerId: e.target.value ? parseInt(e.target.value, 10) : null }));
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">{t("orders.all") || "All"}</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                value={filters.handlerId}
+                onChange={(value) => {
+                  setFilters((prev) => ({ ...prev, handlerId: value }));
+                  setCurrentPage(1);
+                }}
+                options={users}
+                placeholder={t("orders.selectHandler") || "Type to search handlers..."}
+                label={t("orders.handler") || "Handler"}
+                allOptionLabel={t("orders.all") || "All"}
+              />
 
               {/* Customer */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.customer") || "Customer"}
-                </label>
-                <select
-                  value={filters.customerId || ""}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, customerId: e.target.value ? parseInt(e.target.value, 10) : null }));
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">{t("orders.all") || "All"}</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                value={filters.customerId}
+                onChange={(value) => {
+                  setFilters((prev) => ({ ...prev, customerId: value }));
+                  setCurrentPage(1);
+                }}
+                options={customers}
+                placeholder={t("orders.selectCustomer") || "Type to search customers..."}
+                label={t("orders.customer") || "Customer"}
+                allOptionLabel={t("orders.all") || "All"}
+              />
 
               {/* Currency Pair */}
               <div>
@@ -2391,48 +2865,30 @@ export default function OrdersPage() {
               </div>
 
               {/* Buy Account */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.buyAccount") || "Buy Account"}
-                </label>
-                <select
-                  value={filters.buyAccountId || ""}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, buyAccountId: e.target.value ? parseInt(e.target.value, 10) : null }));
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">{t("orders.all") || "All"}</option>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                value={filters.buyAccountId}
+                onChange={(value) => {
+                  setFilters((prev) => ({ ...prev, buyAccountId: value }));
+                  setCurrentPage(1);
+                }}
+                options={accounts}
+                placeholder={t("orders.selectBuyAccount") || "Type to search buy accounts..."}
+                label={t("orders.buyAccount") || "Buy Account"}
+                allOptionLabel={t("orders.all") || "All"}
+              />
 
               {/* Sell Account */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.sellAccount") || "Sell Account"}
-                </label>
-                <select
-                  value={filters.sellAccountId || ""}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, sellAccountId: e.target.value ? parseInt(e.target.value, 10) : null }));
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">{t("orders.all") || "All"}</option>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                value={filters.sellAccountId}
+                onChange={(value) => {
+                  setFilters((prev) => ({ ...prev, sellAccountId: value }));
+                  setCurrentPage(1);
+                }}
+                options={accounts}
+                placeholder={t("orders.selectSellAccount") || "Type to search sell accounts..."}
+                label={t("orders.sellAccount") || "Sell Account"}
+                allOptionLabel={t("orders.all") || "All"}
+              />
 
               {/* Status */}
               <div>
@@ -2464,6 +2920,32 @@ export default function OrdersPage() {
                   className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   {t("orders.clearFilters") || "Clear Filters"}
+                </button>
+              </div>
+
+              {/* Export Button */}
+              <div className="flex items-end">
+                <button
+                  onClick={handleExportOrders}
+                  disabled={isExporting}
+                  className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  {isExporting ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {t("orders.exporting") || "Exporting..."}
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      {t("orders.export") || "Export to Excel"}
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -6867,6 +7349,100 @@ export default function OrdersPage() {
         cancelText={t("common.cancel")}
         type="warning"
       />
+
+      {/* Import Orders Modal */}
+      {importModalOpen && (
+        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">
+                {t("orders.importOrders") || "Import Orders"}
+              </h2>
+              <button
+                onClick={() => {
+                  setImportModalOpen(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label={t("common.close")}
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-slate-600 mb-4">
+                {t("orders.importDescription") || "Select an Excel file (.xlsx) to import orders. The file should contain an 'Orders' sheet with columns: Customer, Handler (optional), Currency Pair, Amount Buy, Amount Sell, Rate, Status."}
+              </p>
+              <div className="flex items-center gap-3">
+                <label className="flex-1">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleImportFile}
+                    disabled={isImporting}
+                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 whitespace-nowrap"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  {t("orders.downloadTemplate") || "Download Template"}
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setImportModalOpen(false);
+                }}
+                disabled={isImporting}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
+            {isImporting && (
+              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-600">
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {t("orders.importing") || "Importing..."}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
