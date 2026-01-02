@@ -20,34 +20,35 @@ export default function DashboardPage() {
   const { data: orders = [], isLoading } = useGetOrdersQuery();
 
   const stats = useMemo(() => {
+    // Ensure orders is an array
+    const ordersArray = Array.isArray(orders) ? orders : [];
+    
     const pendingStatuses: OrderStatus[] = [
       "pending",
-      "waiting_for_payment",
-      "waiting_for_receipt",
+      "under_process",
     ];
 
-    const pending = orders.filter((o) => pendingStatuses.includes(o.status)).length;
-    const completed = orders.filter((o) => o.status === "completed").length;
-    const cancelled = orders.filter((o) => o.status === "cancelled").length;
+    const pending = ordersArray.filter((o) => pendingStatuses.includes(o.status)).length;
+    const completed = ordersArray.filter((o) => o.status === "completed").length;
+    const cancelled = ordersArray.filter((o) => o.status === "cancelled").length;
 
     return {
       currencies: currencies.length,
       customers: customers.length,
       users: users.length,
-      orders: orders.length,
+      orders: ordersArray.length,
       pending,
       completed,
       cancelled,
     };
   }, [orders, currencies.length, customers.length, users.length]);
 
-  const recentOrders = orders.slice(0, 5);
+  const recentOrders = Array.isArray(orders) ? orders.slice(0, 5) : [];
 
   const getStatusTone = (status: OrderStatus) => {
     switch (status) {
       case "pending":
-      case "waiting_for_payment":
-      case "waiting_for_receipt":
+      case "under_process":
         return "amber";
       case "completed":
         return "emerald";
