@@ -17,12 +17,13 @@ export default function DashboardPage() {
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: users = [] } = useGetUsersQuery();
-  const { data: orders = [], isLoading } = useGetOrdersQuery();
+  const { data: ordersData, isLoading } = useGetOrdersQuery({});
+  const orders = ordersData?.orders ?? [];
 
   const stats = useMemo(() => {
     // Ensure orders is an array
     const ordersArray = Array.isArray(orders) ? orders : [];
-    
+
     const pendingStatuses: OrderStatus[] = [
       "pending",
       "under_process",
