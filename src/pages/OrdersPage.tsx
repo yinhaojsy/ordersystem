@@ -949,9 +949,7 @@ export default function OrdersPage() {
     if (selectedTagNames.length === 0) {
       return t("orders.selectTag") || "Select tags";
     }
-    const maxNames = 3;
-    const shown = selectedTagNames.slice(0, maxNames).join(", ");
-    return selectedTagNames.length > maxNames ? `${shown}, …` : shown;
+    return selectedTagNames.join(", ");
   }, [selectedTagNames, t]);
   const tagFilterListRef = useRef<HTMLDivElement | null>(null);
 
@@ -3706,9 +3704,14 @@ export default function OrdersPage() {
                   onKeyDown={handleTagFilterKeyDown}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm flex items-center justify-between hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <span className="truncate">{tagFilterLabel}</span>
+                  <span
+                    className="truncate flex-1 min-w-0 text-left"
+                    title={selectedTagNames.length ? selectedTagNames.join(", ") : undefined}
+                  >
+                    {tagFilterLabel}
+                  </span>
                   {filters.tagIds.length > 0 && (
-                    <span className="ml-2 text-[11px] text-slate-500 shrink-0">
+                    <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] text-slate-700 font-medium shrink-0">
                       {filters.tagIds.length}
                     </span>
                   )}
