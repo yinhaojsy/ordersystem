@@ -49,6 +49,18 @@ export interface Role {
 export type OrderStatus = "pending" | "under_process" | "completed" | "cancelled";
 export type PaymentFlow = "receive_first" | "pay_first";
 
+export interface Tag {
+  id: number;
+  name: string;
+  color: string;
+  createdAt?: string;
+}
+
+export interface TagInput {
+  name: string;
+  color: string;
+}
+
 export interface Order {
   id: number;
   customerId: number;
@@ -91,6 +103,7 @@ export interface Order {
   profitCurrency?: string;
   profitAccountId?: number;
   orderType?: "online" | "otc";
+  tags?: Tag[];
   createdAt: string;
 }
 
@@ -166,6 +179,7 @@ export interface OrderInput {
   profitAccountId?: number;
   orderType?: "online" | "otc";
   handlerId?: number;
+  tagIds?: number[];
 }
 
 export interface Account {
@@ -209,6 +223,7 @@ export interface Transfer {
   updatedBy?: number;
   updatedByName?: string;
   updatedAt?: string;
+  tags?: Tag[];
 }
 
 export interface TransferChange {
@@ -233,6 +248,7 @@ export interface TransferInput {
   description?: string;
   transactionFee?: number;
   createdBy?: number;
+  tagIds?: number[];
 }
 
 export interface Expense {
@@ -252,6 +268,7 @@ export interface Expense {
   deletedBy?: number;
   deletedByName?: string;
   deletedAt?: string;
+  tags?: Tag[];
 }
 
 export interface ExpenseInput {
@@ -260,6 +277,7 @@ export interface ExpenseInput {
   description?: string;
   imagePath?: string;
   createdBy?: number;
+  tagIds?: number[];
 }
 
 export interface ExpenseChange {

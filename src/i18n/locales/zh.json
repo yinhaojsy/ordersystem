@@ -197,6 +197,7 @@
     "rate": "汇率",
     "date": "日期",
     "status": "状态",
+    "orderType": "订单类型",
     "orderId": "订单ID",
     "buyAccount": "买入账户",
     "sellAccount": "卖出账户",

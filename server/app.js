@@ -66,6 +66,12 @@ app.use((err, req, res, _next) => {
   
   // Handle foreign key constraint errors
   if (err && err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+    // Check if it's a tag assignment error
+    if (req.path && req.path.includes('/tags/batch-assign')) {
+      return res.status(400).json({ 
+        message: err.message || "Invalid order, transfer, expense, or tag ID. Please ensure all IDs exist." 
+      });
+    }
     // Check if it's a customer deletion error
     if (req.path && req.path.includes('/customers/')) {
       return res.status(400).json({ 

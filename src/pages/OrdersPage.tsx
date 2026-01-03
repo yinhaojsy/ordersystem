@@ -346,6 +346,9 @@ import {
   useAddCustomerMutation,
   useProceedWithPartialReceiptsMutation,
   useAdjustFlexOrderRateMutation,
+  useGetTagsQuery,
+  useBatchAssignTagsMutation,
+  useBatchUnassignTagsMutation,
 } from "../services/api";
 import { useGetRolesQuery } from "../services/api";
 import { useAppSelector } from "../app/hooks";
@@ -433,6 +436,8 @@ export default function OrdersPage() {
     buyAccountId: number | null;
     sellAccountId: number | null;
     status: OrderStatus | null;
+    orderType: "online" | "otc" | null;
+    tagIds: number[];
   }>({
     datePreset: 'all',
     dateFrom: null,
@@ -443,11 +448,15 @@ export default function OrdersPage() {
     buyAccountId: null,
     sellAccountId: null,
     status: null,
+    orderType: null,
+    tagIds: [],
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
+  const [tagFilterHighlight, setTagFilterHighlight] = useState<number>(-1);
 
   // Helper function to build query parameters from filters
   const buildQueryParams = useCallback((
@@ -461,6 +470,8 @@ export default function OrdersPage() {
       buyAccountId: number | null;
       sellAccountId: number | null;
       status: OrderStatus | null;
+      orderType: "online" | "otc" | null;
+      tagIds: number[];
     },
     includePagination = false,
     page?: number
@@ -475,6 +486,8 @@ export default function OrdersPage() {
       buyAccountId?: number;
       sellAccountId?: number;
       status?: OrderStatus;
+      orderType?: "online" | "otc";
+      tagIds?: string;
       page?: number;
       limit?: number;
     } = {};
@@ -491,6 +504,8 @@ export default function OrdersPage() {
     if (filterState.buyAccountId !== null) params.buyAccountId = filterState.buyAccountId;
     if (filterState.sellAccountId !== null) params.sellAccountId = filterState.sellAccountId;
     if (filterState.status) params.status = filterState.status;
+    if (filterState.orderType) params.orderType = filterState.orderType;
+    if (filterState.tagIds.length > 0) params.tagIds = filterState.tagIds.join(',');
     
     if (includePagination) {
       params.page = page ?? currentPage;
@@ -503,7 +518,7 @@ export default function OrdersPage() {
   // Build query parameters for API
   const queryParams = useMemo(() => buildQueryParams(filters, true, currentPage), [filters, currentPage, buildQueryParams]);
 
-  const { data: ordersData, isLoading } = useGetOrdersQuery(queryParams);
+  const { data: ordersData, isLoading, refetch: refetchOrders } = useGetOrdersQuery(queryParams);
   const orders = ordersData?.orders || [];
   const totalOrders = ordersData?.total || 0;
   const totalPages = ordersData?.totalPages || 1;
@@ -579,6 +594,8 @@ export default function OrdersPage() {
       buyAccountId: null,
       sellAccountId: null,
       status: null,
+      orderType: null,
+      tagIds: [],
     });
     setCurrentPage(1);
   }, []);
@@ -603,6 +620,7 @@ export default function OrdersPage() {
       if (exportQueryParams.buyAccountId !== undefined) queryString.append("buyAccountId", exportQueryParams.buyAccountId.toString());
       if (exportQueryParams.sellAccountId !== undefined) queryString.append("sellAccountId", exportQueryParams.sellAccountId.toString());
       if (exportQueryParams.status) queryString.append("status", exportQueryParams.status);
+      if (exportQueryParams.tagIds) queryString.append("tagIds", exportQueryParams.tagIds);
 
       const response = await fetch(`/api/orders/export${queryString.toString() ? `?${queryString.toString()}` : ""}`);
       if (!response.ok) {
@@ -895,6 +913,9 @@ export default function OrdersPage() {
   const [updateOrder] = useUpdateOrderMutation();
   const [updateOrderStatus] = useUpdateOrderStatusMutation();
   const [deleteOrder, { isLoading: isDeleting }] = useDeleteOrderMutation();
+  const { data: tags = [] } = useGetTagsQuery();
+  const [batchAssignTags, { isLoading: isTagging }] = useBatchAssignTagsMutation();
+  const [batchUnassignTags, { isLoading: isUntagging }] = useBatchUnassignTagsMutation();
   const [addCustomer, { isLoading: isCreatingCustomer }] = useAddCustomerMutation();
   const [processOrder] = useProcessOrderMutation();
   const [addReceipt] = useAddReceiptMutation();
@@ -914,13 +935,91 @@ export default function OrdersPage() {
   const [menuPositionAbove, setMenuPositionAbove] = useState<{ [key: number]: boolean }>({});
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [isBatchDeleteMode, setIsBatchDeleteMode] = useState(false);
+  const [isBatchTagMode, setIsBatchTagMode] = useState(false);
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const selectedTagNames = useMemo(
+    () =>
+      filters.tagIds
+        .map((id) => tags.find((t) => t.id === id)?.name)
+        .filter((name): name is string => Boolean(name)),
+    [filters.tagIds, tags],
+  );
+  const tagFilterLabel = useMemo(() => {
+    if (selectedTagNames.length === 0) {
+      return t("orders.selectTag") || "Select tags";
+    }
+    const maxNames = 3;
+    const shown = selectedTagNames.slice(0, maxNames).join(", ");
+    return selectedTagNames.length > maxNames ? `${shown}, …` : shown;
+  }, [selectedTagNames, t]);
+  const tagFilterListRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (isTagFilterOpen && tags.length > 0) {
+      setTagFilterHighlight(0);
+      // Move focus to the list for keyboard navigation
+      setTimeout(() => tagFilterListRef.current?.focus(), 0);
+    } else if (!isTagFilterOpen) {
+      setTagFilterHighlight(-1);
+    }
+  }, [isTagFilterOpen, tags.length]);
+
+  const handleTagFilterKeyDown = (e: React.KeyboardEvent) => {
+    if (!isTagFilterOpen) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === " ") {
+        e.preventDefault();
+        setIsTagFilterOpen(true);
+      }
+      return;
+    }
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setIsTagFilterOpen(false);
+      return;
+    }
+
+    if (tags.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setTagFilterHighlight((prev) => {
+        const next = prev < tags.length - 1 ? prev + 1 : 0;
+        return next;
+      });
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setTagFilterHighlight((prev) => {
+        if (prev <= 0) return tags.length - 1;
+        return prev - 1;
+      });
+      return;
+    }
+
+    if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      if (tagFilterHighlight >= 0 && tagFilterHighlight < tags.length) {
+        const tag = tags[tagFilterHighlight];
+        setFilters((prev) => {
+          const exists = prev.tagIds.includes(tag.id);
+          const next = exists ? prev.tagIds.filter((id) => id !== tag.id) : [...prev.tagIds, tag.id];
+          return { ...prev, tagIds: next };
+        });
+        setCurrentPage(1);
+      }
+    }
+  };
   
   // Column visibility state
   const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
   const columnDropdownRef = useRef<HTMLDivElement | null>(null);
   
   // Define all available column keys (used for initialization)
-  const columnKeys = ["id", "date", "handler", "customer", "pair", "buy", "sell", "rate", "status", "buyAccount", "sellAccount", "profit", "serviceCharges"];
+  const columnKeys = ["id", "date", "handler", "customer", "pair", "buy", "sell", "rate", "status", "orderType", "buyAccount", "sellAccount", "profit", "serviceCharges", "tags"];
   
   // Define all available columns (with translated labels) - this is the master list
   const getAvailableColumns = () => [
@@ -933,10 +1032,12 @@ export default function OrdersPage() {
     { key: "sell", label: t("orders.sell") },
     { key: "rate", label: t("orders.rate") },
     { key: "status", label: t("orders.status") },
+    { key: "orderType", label: t("orders.orderType") || "Order Type" },
     { key: "buyAccount", label: t("orders.buyAccount") },
     { key: "sellAccount", label: t("orders.sellAccount") },
     { key: "profit", label: t("orders.profit") },
     { key: "serviceCharges", label: t("orders.serviceCharges") },
+    { key: "tags", label: t("orders.tags") || "Tags" },
   ];
   
   // Initialize column order from localStorage or default order
@@ -974,14 +1075,26 @@ export default function OrdersPage() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return new Set(parsed);
+        if (!Array.isArray(parsed)) {
+          return new Set<string>(columnKeys);
+        }
+        const savedSet = new Set<string>(parsed.filter((item): item is string => typeof item === "string"));
+        // Merge with current columnKeys to ensure new columns (like tags) are included
+        // Start with saved columns, then add any new columns that aren't in saved
+        const merged = new Set<string>(savedSet);
+        columnKeys.forEach(key => {
+          if (!savedSet.has(key)) {
+            merged.add(key); // Add new columns like "tags" to visible columns
+          }
+        });
+        return merged;
       } catch {
         // If parsing fails, return all columns visible
-        return new Set(columnKeys);
+        return new Set<string>(columnKeys);
       }
     }
     // Default: all columns visible
-    return new Set(columnKeys);
+    return new Set<string>(columnKeys);
   });
   
   // Drag and drop state
@@ -2952,6 +3065,14 @@ export default function OrdersPage() {
             </Badge>
           </td>
         );
+      case "orderType":
+        return (
+          <td key={columnKey} className="py-2">
+            <Badge tone={order.orderType === "otc" ? "amber" : "blue"}>
+              {order.orderType === "otc" ? "OTC" : "Online"}
+            </Badge>
+          </td>
+        );
       case "buyAccount": {
         const buyAccounts = order.buyAccounts || [];
         const firstAccount = buyAccounts.length > 0 ? buyAccounts[0] : null;
@@ -3125,6 +3246,22 @@ export default function OrdersPage() {
             )}
           </td>
         );
+      case "tags":
+        return (
+          <td key={columnKey} className="py-2">
+            <div className="flex flex-wrap gap-1">
+              {order.tags && Array.isArray(order.tags) && order.tags.length > 0 ? (
+                order.tags.map((tag: { id: number; name: string; color: string }) => (
+                  <Badge key={tag.id} tone="slate" backgroundColor={tag.color}>
+                    {tag.name}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-slate-400 text-xs">-</span>
+              )}
+            </div>
+          </td>
+        );
       default:
         return null;
     }
@@ -3190,12 +3327,41 @@ export default function OrdersPage() {
             >
               OTC Order
             </button>
+            <button
+              onClick={async () => {
+                if (!isBatchTagMode) {
+                  // Enable batch tag mode
+                  setIsBatchTagMode(true);
+                  setIsBatchDeleteMode(false); // Exit batch delete mode if active
+                  setSelectedOrderIds([]);
+                } else {
+                  // If no orders selected, exit batch tag mode
+                  if (!selectedOrderIds.length) {
+                    setIsBatchTagMode(false);
+                    setSelectedOrderIds([]);
+                    return;
+                  }
+                  // Open tag selection modal
+                  setIsTagModalOpen(true);
+                }
+              }}
+              disabled={isTagging}
+              className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+            >
+              {isTagging 
+                ? t("orders.tagging") || "Tagging..." 
+                : isBatchTagMode 
+                  ? (selectedOrderIds.length > 0 ? t("orders.addTags") || "Add Tags" : t("common.cancel"))
+                  : t("orders.addTag") || "Add Tag"}
+            </button>
             {canDeleteManyOrders && (
               <button
                 onClick={async () => {
                   if (!isBatchDeleteMode) {
                     // Enable batch delete mode
                     setIsBatchDeleteMode(true);
+                    setIsBatchTagMode(false); // Exit batch tag mode if active
+                    setSelectedOrderIds([]);
                   } else {
                     // If no orders selected, exit batch delete mode
                     if (!selectedOrderIds.length) {
@@ -3510,6 +3676,112 @@ export default function OrdersPage() {
                 </select>
               </div>
 
+              {/* Order Type */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.orderType") || "Order Type"}
+                </label>
+                <select
+                  value={filters.orderType || ""}
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, orderType: (e.target.value || null) as "online" | "otc" | null }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{t("orders.all") || "All"}</option>
+                  <option value="online">Online</option>
+                  <option value="otc">OTC</option>
+                </select>
+              </div>
+
+              {/* Tag Filter */}
+              <div className="relative">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {t("orders.tag") || "Tag"}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsTagFilterOpen((prev) => !prev)}
+                  onKeyDown={handleTagFilterKeyDown}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm flex items-center justify-between hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <span className="truncate">{tagFilterLabel}</span>
+                  {filters.tagIds.length > 0 && (
+                    <span className="ml-2 text-[11px] text-slate-500 shrink-0">
+                      {filters.tagIds.length}
+                    </span>
+                  )}
+                  <svg className="w-4 h-4 text-slate-500" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 8l4 4 4-4" />
+                  </svg>
+                </button>
+                {isTagFilterOpen && (
+                  <div
+                    ref={tagFilterListRef}
+                    tabIndex={0}
+                    onKeyDown={handleTagFilterKeyDown}
+                    className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto p-2 focus:outline-none"
+                  >
+                    {tags.length === 0 && (
+                      <div className="text-sm text-slate-500 px-2 py-1">
+                        {t("orders.noTagsAvailable") || "No tags available"}
+                      </div>
+                    )}
+                    {tags.map((tag: { id: number; name: string; color: string }, idx: number) => {
+                      const isHighlighted = tagFilterHighlight === idx;
+                      return (
+                        <label
+                          key={tag.id}
+                          onMouseEnter={() => setTagFilterHighlight(idx)}
+                          className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer ${
+                            isHighlighted ? "bg-blue-50" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={filters.tagIds.includes(tag.id)}
+                            onChange={(e) => {
+                              setFilters((prev) => {
+                                const exists = prev.tagIds.includes(tag.id);
+                                const next = e.target.checked
+                                  ? [...prev.tagIds, tag.id]
+                                  : prev.tagIds.filter((id) => id !== tag.id);
+                                return { ...prev, tagIds: next };
+                              });
+                              setCurrentPage(1);
+                            }}
+                          />
+                          <Badge tone="slate" backgroundColor={tag.color}>
+                            {tag.name}
+                          </Badge>
+                        </label>
+                      );
+                    })}
+                    {tags.length > 0 && (
+                      <div className="flex justify-between items-center pt-2 mt-2 border-t border-slate-200">
+                        <button
+                          className="text-xs text-slate-600 hover:text-slate-900"
+                          onClick={() => {
+                            setFilters((prev) => ({ ...prev, tagIds: [] }));
+                            setCurrentPage(1);
+                          }}
+                        >
+                          {t("common.clear") || "Clear"}
+                        </button>
+                        <button
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                          onClick={() => setIsTagFilterOpen(false)}
+                        >
+                          {t("common.done") || "Done"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Clear Filters Button */}
               <div className="flex items-end">
                 <button
@@ -3556,7 +3828,7 @@ export default function OrdersPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                {canDeleteManyOrders && isBatchDeleteMode && (
+                {(isBatchTagMode || (canDeleteManyOrders && isBatchDeleteMode)) && (
                   <th className="py-2 w-8">
                     <input
                       type="checkbox"
@@ -3584,7 +3856,7 @@ export default function OrdersPage() {
             <tbody>
               {orders.map((order) => (
                 <tr key={order.id} className="border-b border-slate-100">
-                  {canDeleteManyOrders && isBatchDeleteMode && (
+                  {(isBatchTagMode || (canDeleteManyOrders && isBatchDeleteMode)) && (
                     <td className="py-2">
                       <input
                         type="checkbox"
@@ -7754,6 +8026,163 @@ export default function OrdersPage() {
         type={alertModal.type || "error"}
         onClose={() => setAlertModal({ isOpen: false, message: "", type: "error" })}
       />
+
+      {/* Tag Selection Modal */}
+      {isTagModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold mb-4">
+              {t("orders.selectTags") || "Select Tags"}
+            </h2>
+            <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
+              {tags.length === 0 ? (
+                <p className="text-slate-500 text-sm">
+                  {t("orders.noTagsAvailable") || "No tags available. Create tags in the Tags page."}
+                </p>
+              ) : (
+                tags.map((tag: { id: number; name: string; color: string }) => (
+                  <label
+                    key={tag.id}
+                    className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedTagIds.includes(tag.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTagIds((prev) => [...prev, tag.id]);
+                        } else {
+                          setSelectedTagIds((prev) => prev.filter((id) => id !== tag.id));
+                        }
+                      }}
+                      className="h-4 w-4"
+                    />
+                    <Badge tone="slate" backgroundColor={tag.color}>
+                      {tag.name}
+                    </Badge>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setIsTagModalOpen(false);
+                  setSelectedTagIds([]);
+                }}
+                className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+              >
+                {t("common.cancel") || "Cancel"}
+              </button>
+              <button
+                onClick={async () => {
+                  if (selectedTagIds.length === 0) {
+                    setAlertModal({
+                      isOpen: true,
+                      message: t("orders.selectAtLeastOneTag") || "Please select at least one tag",
+                      type: "error",
+                    });
+                    return;
+                  }
+                  try {
+                    await batchUnassignTags({
+                      entityType: "order",
+                      entityIds: selectedOrderIds,
+                      tagIds: selectedTagIds,
+                    }).unwrap();
+
+                    setIsTagModalOpen(false);
+                    setSelectedTagIds([]);
+                    setSelectedOrderIds([]);
+                    setIsBatchTagMode(false);
+
+                    setAlertModal({
+                      isOpen: true,
+                      message: t("orders.tagsRemovedSuccess") || "Tags removed successfully",
+                      type: "success",
+                    });
+
+                    setTimeout(async () => {
+                      try {
+                        await refetchOrders();
+                      } catch (err) {
+                        console.error("Error refetching orders:", err);
+                      }
+                    }, 100);
+                  } catch (error: any) {
+                    setAlertModal({
+                      isOpen: true,
+                      message:
+                        error?.data?.message ||
+                        error?.message ||
+                        t("orders.failedToRemoveTags") ||
+                        "Failed to remove tags",
+                      type: "error",
+                    });
+                  }
+                }}
+                disabled={isUntagging || selectedTagIds.length === 0}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {isUntagging ? t("common.saving") || "Saving..." : t("orders.remove") || "Remove"}
+              </button>
+              <button
+                onClick={async () => {
+                  if (selectedTagIds.length === 0) {
+                    setAlertModal({
+                      isOpen: true,
+                      message: t("orders.selectAtLeastOneTag") || "Please select at least one tag",
+                      type: "error",
+                    });
+                    return;
+                  }
+                  try {
+                    await batchAssignTags({
+                      entityType: "order",
+                      entityIds: selectedOrderIds,
+                      tagIds: selectedTagIds,
+                    }).unwrap();
+                    
+                    // Close modal and reset state
+                    setIsTagModalOpen(false);
+                    setSelectedTagIds([]);
+                    setSelectedOrderIds([]);
+                    setIsBatchTagMode(false);
+                    
+                    // Show success message
+                    setAlertModal({
+                      isOpen: true,
+                      message: t("orders.tagsApplied") || "Tags applied successfully",
+                      type: "success",
+                    });
+                    
+                    // Force refetch - RTK Query should auto-refetch on cache invalidation,
+                    // but we explicitly refetch to ensure tags appear immediately
+                    // Use a small delay to ensure backend transaction completes
+                    setTimeout(async () => {
+                      try {
+                        await refetchOrders();
+                      } catch (err) {
+                        console.error("Error refetching orders:", err);
+                      }
+                    }, 100);
+                  } catch (error: any) {
+                    setAlertModal({
+                      isOpen: true,
+                      message: error?.data?.message || t("orders.tagError") || "Failed to apply tags",
+                      type: "error",
+                    });
+                  }
+                }}
+                disabled={isTagging || selectedTagIds.length === 0}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isTagging ? t("orders.applying") || "Applying..." : t("orders.apply") || "Apply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         isOpen={confirmModal.isOpen}

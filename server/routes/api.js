@@ -94,6 +94,14 @@ import {
   unsetDefaultCalculation,
 } from "../controllers/profitController.js";
 import { getSetting, setSetting } from "../controllers/settingsController.js";
+import {
+  listTags,
+  createTag,
+  updateTag,
+  deleteTag,
+  batchAssignTags,
+  batchUnassignTags,
+} from "../controllers/tagsController.js";
 
 const router = Router();
 
@@ -188,6 +196,13 @@ router.put("/profit-calculations/:id/unset-default", unsetDefaultCalculation);
 
 router.get("/settings/:key", getSetting);
 router.put("/settings", setSetting);
+
+router.get("/tags", listTags);
+router.post("/tags", createTag);
+router.put("/tags/:id", updateTag);
+router.delete("/tags/:id", deleteTag);
+router.post("/tags/batch-assign", batchAssignTags);
+router.post("/tags/batch-unassign", batchUnassignTags);
 
 export default router;
 

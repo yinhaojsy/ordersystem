@@ -7,10 +7,10 @@ import {
   getFileUrl,
 } from "../utils/fileStorage.js";
 
-export const listExpenses = (_req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT 
+export const listExpenses = (req, res) => {
+  const { tagId } = req.query;
+  
+  let query = `SELECT 
         e.*,
         acc.name as accountName,
         creator.name as createdByName,
@@ -19,18 +19,39 @@ export const listExpenses = (_req, res) => {
        LEFT JOIN accounts acc ON acc.id = e.accountId
        LEFT JOIN users creator ON creator.id = e.createdBy
        LEFT JOIN users updater ON updater.id = e.updatedBy
-       WHERE e.deletedAt IS NULL
-       ORDER BY e.createdAt DESC;`,
-    )
-    .all();
+       WHERE e.deletedAt IS NULL`;
   
-  // Convert file paths to URLs for response (if not base64)
-  const expensesWithUrls = rows.map(expense => ({
-    ...expense,
-    imagePath: expense.imagePath && !expense.imagePath.startsWith('data:') 
-      ? getFileUrl(expense.imagePath) 
-      : expense.imagePath,
-  }));
+  if (tagId) {
+    query += ` AND EXISTS (
+      SELECT 1 FROM expense_tag_assignments eta 
+      WHERE eta.expenseId = e.id AND eta.tagId = ${parseInt(tagId, 10)}
+    )`;
+  }
+  
+  query += ` ORDER BY e.createdAt DESC;`;
+  
+  const rows = db.prepare(query).all();
+  
+  // Convert file paths to URLs for response (if not base64) and add tags
+  const expensesWithUrls = rows.map(expense => {
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN expense_tag_assignments eta ON eta.tagId = t.id
+         WHERE eta.expenseId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(expense.id);
+    
+    return {
+      ...expense,
+      imagePath: expense.imagePath && !expense.imagePath.startsWith('data:') 
+        ? getFileUrl(expense.imagePath) 
+        : expense.imagePath,
+      tags: tags.length > 0 ? tags : [],
+    };
+  });
   
   res.json(expensesWithUrls);
 };
@@ -43,6 +64,7 @@ export const createExpense = (req, res, next) => {
     const amount = req.body?.amount;
     const description = req.body?.description;
     const createdBy = req.body?.createdBy;
+    const tagIds = req.body?.tagIds ? (Array.isArray(req.body.tagIds) ? req.body.tagIds : JSON.parse(req.body.tagIds)) : undefined;
     const file = req.file; // Multer file object
 
     // Validate accountId - handle both string and number inputs (FormData sends strings)
@@ -168,6 +190,25 @@ export const createExpense = (req, res, next) => {
 
     transaction();
 
+    // Handle tag assignments if provided
+    if (tagIds && Array.isArray(tagIds) && tagIds.length > 0) {
+      const tagAssignmentStmt = db.prepare(
+        `INSERT INTO expense_tag_assignments (expenseId, tagId) VALUES (?, ?);`
+      );
+      const insertTagAssignments = db.transaction((tags) => {
+        for (const tagId of tags) {
+          if (typeof tagId === 'number' && tagId > 0) {
+            try {
+              tagAssignmentStmt.run(expenseId, tagId);
+            } catch (err) {
+              // Ignore duplicate or invalid tag assignments
+            }
+          }
+        }
+      });
+      insertTagAssignments(tagIds);
+    }
+
     // Get the created expense with joined data
     const expense = db
       .prepare(
@@ -182,12 +223,24 @@ export const createExpense = (req, res, next) => {
       )
       .get(expenseId);
     
+    // Get tags for the expense
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN expense_tag_assignments eta ON eta.tagId = t.id
+         WHERE eta.expenseId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(expenseId);
+    
     // Convert file path to URL for response (if not base64)
     const expenseWithUrl = {
       ...expense,
       imagePath: expense.imagePath && !expense.imagePath.startsWith('data:') 
         ? getFileUrl(expense.imagePath) 
         : expense.imagePath,
+      tags: tags.length > 0 ? tags : [],
     };
 
     res.status(201).json(expenseWithUrl);
@@ -199,7 +252,8 @@ export const createExpense = (req, res, next) => {
 export const updateExpense = (req, res, next) => {
   try {
     const { id } = req.params;
-    const { accountId, amount, description, updatedBy } = req.body || {};
+    const { accountId, amount, description, updatedBy, tagIds } = req.body || {};
+    const tagIdsArray = tagIds ? (Array.isArray(tagIds) ? tagIds : JSON.parse(tagIds)) : undefined;
     const file = req.file; // Multer file object
 
     // Get existing expense
@@ -392,6 +446,31 @@ export const updateExpense = (req, res, next) => {
 
     transaction();
 
+    // Handle tag assignments if provided
+    if (tagIdsArray !== undefined) {
+      // Remove all existing tag assignments
+      db.prepare("DELETE FROM expense_tag_assignments WHERE expenseId = ?;").run(id);
+      
+      // Add new tag assignments if provided
+      if (Array.isArray(tagIdsArray) && tagIdsArray.length > 0) {
+        const tagAssignmentStmt = db.prepare(
+          `INSERT INTO expense_tag_assignments (expenseId, tagId) VALUES (?, ?);`
+        );
+        const insertTagAssignments = db.transaction((tags) => {
+          for (const tagId of tags) {
+            if (typeof tagId === 'number' && tagId > 0) {
+              try {
+                tagAssignmentStmt.run(id, tagId);
+              } catch (err) {
+                // Ignore duplicate or invalid tag assignments
+              }
+            }
+          }
+        });
+        insertTagAssignments(tagIdsArray);
+      }
+    }
+
     // Get the updated expense with joined data
     const expense = db
       .prepare(
@@ -408,12 +487,24 @@ export const updateExpense = (req, res, next) => {
       )
       .get(id);
     
+    // Get tags for the expense
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN expense_tag_assignments eta ON eta.tagId = t.id
+         WHERE eta.expenseId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(id);
+    
     // Convert file path to URL for response (if not base64)
     const expenseWithUrl = {
       ...expense,
       imagePath: expense.imagePath && !expense.imagePath.startsWith('data:') 
         ? getFileUrl(expense.imagePath) 
         : expense.imagePath,
+      tags: tags.length > 0 ? tags : [],
     };
 
     res.json(expenseWithUrl);

@@ -103,6 +103,9 @@ export const listOrders = (req, res) => {
     buyAccountId,
     sellAccountId,
     status,
+    orderType,
+    tagId,
+    tagIds,
     page = '1',
     limit = '20',
   } = req.query;
@@ -154,6 +157,28 @@ export const listOrders = (req, res) => {
   if (status) {
     conditions.push('o.status = @status');
     params.status = status;
+  }
+  if (orderType) {
+    conditions.push('o.orderType = @orderType');
+    params.orderType = orderType;
+  }
+  const parsedTagIds = [];
+  if (tagIds) {
+    const parts = String(tagIds).split(',').map((v) => parseInt(v, 10)).filter((v) => !isNaN(v));
+    parsedTagIds.push(...parts);
+  } else if (tagId) {
+    const single = parseInt(tagId, 10);
+    if (!isNaN(single)) parsedTagIds.push(single);
+  }
+  if (parsedTagIds.length > 0) {
+    const placeholders = parsedTagIds.map((_, i) => `@tagId${i}`).join(',');
+    conditions.push(`EXISTS (
+      SELECT 1 FROM order_tag_assignments ota 
+      WHERE ota.orderId = o.id AND ota.tagId IN (${placeholders})
+    )`);
+    parsedTagIds.forEach((id, i) => {
+      params[`tagId${i}`] = id;
+    });
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -234,6 +259,17 @@ export const listOrders = (req, res) => {
         amount: p.totalAmount
       }));
 
+      // Get tags for this order
+      const tags = db
+        .prepare(
+          `SELECT t.id, t.name, t.color 
+           FROM tags t
+           INNER JOIN order_tag_assignments ota ON ota.tagId = t.id
+           WHERE ota.orderId = ?
+           ORDER BY t.name ASC;`
+        )
+        .all(order.id);
+
       return {
         ...order,
         walletAddresses: order.walletAddresses ? JSON.parse(order.walletAddresses) : null,
@@ -242,8 +278,20 @@ export const listOrders = (req, res) => {
         isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
         buyAccounts: buyAccounts.length > 0 ? buyAccounts : null,
         sellAccounts: sellAccounts.length > 0 ? sellAccounts : null,
+        tags: tags.length > 0 ? tags : [],
       };
     } catch (e) {
+      // Get tags for this order even in error case
+      const tags = db
+        .prepare(
+          `SELECT t.id, t.name, t.color 
+           FROM tags t
+           INNER JOIN order_tag_assignments ota ON ota.tagId = t.id
+           WHERE ota.orderId = ?
+           ORDER BY t.name ASC;`
+        )
+        .all(order.id);
+
       return {
         ...order,
         walletAddresses: null,
@@ -252,6 +300,7 @@ export const listOrders = (req, res) => {
         isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
         buyAccounts: null,
         sellAccounts: null,
+        tags: tags.length > 0 ? tags : [],
       };
     }
   });
@@ -277,6 +326,9 @@ export const exportOrders = (req, res) => {
     buyAccountId,
     sellAccountId,
     status,
+    orderType,
+    tagId,
+    tagIds,
   } = req.query;
 
   // Build WHERE clause conditions (same logic as listOrders)
@@ -324,6 +376,28 @@ export const exportOrders = (req, res) => {
   if (status) {
     conditions.push('o.status = @status');
     params.status = status;
+  }
+  if (orderType) {
+    conditions.push('o.orderType = @orderType');
+    params.orderType = orderType;
+  }
+  const parsedTagIds = [];
+  if (tagIds) {
+    const parts = String(tagIds).split(',').map((v) => parseInt(v, 10)).filter((v) => !isNaN(v));
+    parsedTagIds.push(...parts);
+  } else if (tagId) {
+    const single = parseInt(tagId, 10);
+    if (!isNaN(single)) parsedTagIds.push(single);
+  }
+  if (parsedTagIds.length > 0) {
+    const placeholders = parsedTagIds.map((_, i) => `@tagId${i}`).join(',');
+    conditions.push(`EXISTS (
+      SELECT 1 FROM order_tag_assignments ota 
+      WHERE ota.orderId = o.id AND ota.tagId IN (${placeholders})
+    )`);
+    parsedTagIds.forEach((id, i) => {
+      params[`tagId${i}`] = id;
+    });
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -385,6 +459,17 @@ export const exportOrders = (req, res) => {
         amount: p.totalAmount
       }));
 
+      // Get tags for this order
+      const tags = db
+        .prepare(
+          `SELECT t.id, t.name, t.color 
+           FROM tags t
+           INNER JOIN order_tag_assignments ota ON ota.tagId = t.id
+           WHERE ota.orderId = ?
+           ORDER BY t.name ASC;`
+        )
+        .all(order.id);
+
       return {
         ...order,
         walletAddresses: order.walletAddresses ? JSON.parse(order.walletAddresses) : null,
@@ -393,8 +478,20 @@ export const exportOrders = (req, res) => {
         isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
         buyAccounts: buyAccounts.length > 0 ? buyAccounts : null,
         sellAccounts: sellAccounts.length > 0 ? sellAccounts : null,
+        tags: tags.length > 0 ? tags : [],
       };
     } catch (e) {
+      // Get tags for this order even in error case
+      const tags = db
+        .prepare(
+          `SELECT t.id, t.name, t.color 
+           FROM tags t
+           INNER JOIN order_tag_assignments ota ON ota.tagId = t.id
+           WHERE ota.orderId = ?
+           ORDER BY t.name ASC;`
+        )
+        .all(order.id);
+
       return {
         ...order,
         walletAddresses: null,
@@ -403,6 +500,7 @@ export const exportOrders = (req, res) => {
         isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
         buyAccounts: null,
         sellAccounts: null,
+        tags: tags.length > 0 ? tags : [],
       };
     }
   });
@@ -413,27 +511,66 @@ export const exportOrders = (req, res) => {
 export const createOrder = (req, res, next) => {
   try {
     const payload = req.body || {};
+    const { tagIds, ...orderData } = payload;
+    
     const stmt = db.prepare(
       `INSERT INTO orders (customerId, fromCurrency, toCurrency, amountBuy, amountSell, rate, status, buyAccountId, sellAccountId, isFlexOrder, orderType, createdAt)
        VALUES (@customerId, @fromCurrency, @toCurrency, @amountBuy, @amountSell, @rate, @status, @buyAccountId, @sellAccountId, @isFlexOrder, @orderType, @createdAt);`,
     );
     const result = stmt.run({
-      ...payload,
-      status: payload.status || "pending",
-      buyAccountId: payload.buyAccountId || null,
-      sellAccountId: payload.sellAccountId || null,
-      isFlexOrder: payload.isFlexOrder ? 1 : 0,
-      orderType: payload.orderType || "online",
+      ...orderData,
+      status: orderData.status || "pending",
+      buyAccountId: orderData.buyAccountId || null,
+      sellAccountId: orderData.sellAccountId || null,
+      isFlexOrder: orderData.isFlexOrder ? 1 : 0,
+      orderType: orderData.orderType || "online",
       createdAt: new Date().toISOString(),
     });
+    
+    const orderId = result.lastInsertRowid;
+    
+    // Handle tag assignments if provided
+    if (Array.isArray(tagIds) && tagIds.length > 0) {
+      const tagAssignmentStmt = db.prepare(
+        `INSERT INTO order_tag_assignments (orderId, tagId) VALUES (?, ?);`
+      );
+      const insertTagAssignments = db.transaction((tags) => {
+        for (const tagId of tags) {
+          if (typeof tagId === 'number' && tagId > 0) {
+            try {
+              tagAssignmentStmt.run(orderId, tagId);
+            } catch (err) {
+              // Ignore duplicate or invalid tag assignments
+            }
+          }
+        }
+      });
+      insertTagAssignments(tagIds);
+    }
+    
     const row = db
       .prepare(
         `SELECT o.*, c.name as customerName FROM orders o
          LEFT JOIN customers c ON c.id = o.customerId
          WHERE o.id = ?;`,
       )
-      .get(result.lastInsertRowid);
-    res.status(201).json(row);
+      .get(orderId);
+    
+    // Get tags for the order
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN order_tag_assignments ota ON ota.tagId = t.id
+         WHERE ota.orderId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(orderId);
+    
+    res.status(201).json({
+      ...row,
+      tags: tags.length > 0 ? tags : [],
+    });
   } catch (error) {
     next(error);
   }
@@ -443,6 +580,7 @@ export const updateOrder = (req, res, next) => {
   try {
     const { id } = req.params;
     const updates = req.body || {};
+    const { tagIds, ...orderUpdates } = updates;
     
     // Check if order exists and get existing profit/service charge data
     const existingOrder = db.prepare("SELECT id, status, fromCurrency, toCurrency, profitAmount, profitAccountId, profitCurrency, serviceChargeAmount, serviceChargeAccountId, serviceChargeCurrency FROM orders WHERE id = ?").get(id);
@@ -459,11 +597,11 @@ export const updateOrder = (req, res, next) => {
     const pendingOnlyUpdates = {};
     const alwaysUpdatableUpdates = {};
     
-    Object.keys(updates).forEach(key => {
+    Object.keys(orderUpdates).forEach(key => {
       if (pendingOnlyFields.includes(key)) {
-        pendingOnlyUpdates[key] = updates[key];
+        pendingOnlyUpdates[key] = orderUpdates[key];
       } else if (alwaysUpdatableFields.includes(key)) {
-        alwaysUpdatableUpdates[key] = updates[key];
+        alwaysUpdatableUpdates[key] = orderUpdates[key];
       }
     });
 
@@ -610,7 +748,8 @@ export const updateOrder = (req, res, next) => {
     const allUpdates = { ...pendingOnlyUpdates, ...alwaysUpdatableUpdates };
     const fieldsToUpdate = Object.keys(allUpdates);
     
-    if (fieldsToUpdate.length === 0) {
+    // Allow updating tags even if no other fields are being updated
+    if (fieldsToUpdate.length === 0 && tagIds === undefined) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
 
@@ -630,7 +769,34 @@ export const updateOrder = (req, res, next) => {
     updateValues.id = Number(id);
 
     const assignments = fieldsToUpdate.map((field) => `${field} = @${field}`).join(", ");
-    db.prepare(`UPDATE orders SET ${assignments} WHERE id = @id;`).run(updateValues);
+    if (assignments) {
+      db.prepare(`UPDATE orders SET ${assignments} WHERE id = @id;`).run(updateValues);
+    }
+
+    // Handle tag assignments if provided (tags can be updated even if no other fields are updated)
+    if (tagIds !== undefined) {
+      // Remove all existing tag assignments
+      db.prepare("DELETE FROM order_tag_assignments WHERE orderId = ?;").run(id);
+      
+      // Add new tag assignments if provided
+      if (Array.isArray(tagIds) && tagIds.length > 0) {
+        const tagAssignmentStmt = db.prepare(
+          `INSERT INTO order_tag_assignments (orderId, tagId) VALUES (?, ?);`
+        );
+        const insertTagAssignments = db.transaction((tags) => {
+          for (const tagId of tags) {
+            if (typeof tagId === 'number' && tagId > 0) {
+              try {
+                tagAssignmentStmt.run(id, tagId);
+              } catch (err) {
+                // Ignore duplicate or invalid tag assignments
+              }
+            }
+          }
+        });
+        insertTagAssignments(tagIds);
+      }
+    }
 
     const row = db
       .prepare(
@@ -639,7 +805,22 @@ export const updateOrder = (req, res, next) => {
          WHERE o.id = ?;`,
       )
       .get(id);
-    res.json(row);
+    
+    // Get tags for the order
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN order_tag_assignments ota ON ota.tagId = t.id
+         WHERE ota.orderId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(id);
+    
+    res.json({
+      ...row,
+      tags: tags.length > 0 ? tags : [],
+    });
   } catch (error) {
     next(error);
   }
@@ -902,12 +1083,24 @@ export const getOrderDetails = (req, res, next) => {
       imagePath: p.imagePath.startsWith('data:') ? p.imagePath : getFileUrl(p.imagePath),
     }));
 
+    // Get tags for the order
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN order_tag_assignments ota ON ota.tagId = t.id
+         WHERE ota.orderId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(id);
+
     res.json({
       order: {
         ...order,
         walletAddresses: order.walletAddresses ? JSON.parse(order.walletAddresses) : null,
         bankDetails: order.bankDetails ? JSON.parse(order.bankDetails) : null,
         isFlexOrder: order.isFlexOrder === 1 || order.isFlexOrder === true,
+        tags: tags.length > 0 ? tags : [],
       },
       receipts: receiptsWithUrls,
       beneficiaries: beneficiaries.map(b => ({

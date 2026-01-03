@@ -194,6 +194,7 @@
     "rate": "Rate",
     "date": "Date",
     "status": "Status",
+    "orderType": "Order Type",
     "orderId": "Order ID",
     "buyAccount": "Buy Account",
     "sellAccount": "Sell Account",

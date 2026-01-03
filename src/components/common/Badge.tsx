@@ -11,10 +11,14 @@ const tones: Record<Tone, string> = {
   purple: "bg-purple-50 text-purple-700 ring-purple-100",
 };
 
-export default function Badge({ children, tone = "slate" }: { children: ReactNode; tone?: Tone }) {
+export default function Badge({ children, tone = "slate", backgroundColor }: { children: ReactNode; tone?: Tone; backgroundColor?: string }) {
+  const style = backgroundColor ? { backgroundColor, color: 'white' } : {};
+  const ringColor = backgroundColor ? `ring-1 ring-inset ring-white/20` : tones[tone];
+
   return (
     <span
-      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ${tones[tone]}`}
+      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${ringColor}`}
+      style={style}
     >
       {children}
     </span>

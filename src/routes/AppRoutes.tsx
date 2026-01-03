@@ -9,6 +9,7 @@ import ExpensesPage from "../pages/ExpensesPage";
 import CustomersPage from "../pages/CustomersPage";
 import UsersPage from "../pages/UsersPage";
 import RolesPage from "../pages/RolesPage";
+import TagsPage from "../pages/TagsPage";
 import OrdersPage from "../pages/OrdersPage";
 import LoginPage from "../pages/LoginPage";
 import ProfitCalculationPage from "../pages/ProfitCalculationPage";
@@ -39,6 +40,7 @@ export default function AppRoutes() {
           <Route path="customers" element={<RequireAuth section="customers"><CustomersPage /></RequireAuth>} />
           <Route path="users" element={<RequireAuth section="users"><UsersPage /></RequireAuth>} />
           <Route path="roles" element={<RequireAuth section="roles"><RolesPage /></RequireAuth>} />
+          <Route path="tags" element={<RequireAuth section="orders"><TagsPage /></RequireAuth>} />
           <Route path="orders" element={<RequireAuth section="orders"><OrdersPage /></RequireAuth>} />
           <Route path="profit" element={<RequireAuth section="profit"><ProfitCalculationPage /></RequireAuth>} />
         </Route>

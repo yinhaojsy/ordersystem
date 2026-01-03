@@ -306,6 +306,92 @@ const ensureSchema = () => {
       updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );`,
   ).run();
+
+  // Tags table - shared across orders, transfers, and expenses
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      color TEXT NOT NULL,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );`,
+  ).run();
+
+  // Tag assignments for orders
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS order_tag_assignments (
+      orderId INTEGER NOT NULL,
+      tagId INTEGER NOT NULL,
+      PRIMARY KEY (orderId, tagId),
+      FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE,
+      FOREIGN KEY(tagId) REFERENCES tags(id) ON DELETE CASCADE
+    );`,
+  ).run();
+
+  // Migration: legacy databases pointed order_tag_assignments.tagId to order_tags
+  const orderTagFkInfo = db.prepare("PRAGMA foreign_key_list(order_tag_assignments);").all();
+  const usesLegacyOrderTags = orderTagFkInfo.some((fk) => fk.table === "order_tags");
+  if (usesLegacyOrderTags) {
+    // Move any legacy tags into the shared tags table and rebuild the FK
+    db.exec("PRAGMA foreign_keys=OFF;");
+    try {
+      const legacyTagsTable = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='order_tags';",
+      ).get();
+      const legacyTags = legacyTagsTable
+        ? db.prepare("SELECT id, name, color, createdAt FROM order_tags;").all()
+        : [];
+
+      if (legacyTags.length > 0) {
+        const insertLegacyTag = db.prepare(
+          "INSERT OR IGNORE INTO tags (id, name, color, createdAt) VALUES (@id, @name, @color, COALESCE(@createdAt, CURRENT_TIMESTAMP));",
+        );
+        const upsertLegacyTags = db.transaction((rows) => rows.forEach((row) => insertLegacyTag.run(row)));
+        upsertLegacyTags(legacyTags);
+      }
+
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS order_tag_assignments_new (
+          orderId INTEGER NOT NULL,
+          tagId INTEGER NOT NULL,
+          PRIMARY KEY (orderId, tagId),
+          FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE,
+          FOREIGN KEY(tagId) REFERENCES tags(id) ON DELETE CASCADE
+        );`,
+      );
+
+      db.exec(
+        "INSERT OR IGNORE INTO order_tag_assignments_new (orderId, tagId) SELECT orderId, tagId FROM order_tag_assignments;",
+      );
+      db.exec("DROP TABLE order_tag_assignments;");
+      db.exec("ALTER TABLE order_tag_assignments_new RENAME TO order_tag_assignments;");
+      db.exec("DROP TABLE IF EXISTS order_tags;");
+    } finally {
+      db.exec("PRAGMA foreign_keys=ON;");
+    }
+  }
+
+  // Tag assignments for transfers
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS transfer_tag_assignments (
+      transferId INTEGER NOT NULL,
+      tagId INTEGER NOT NULL,
+      PRIMARY KEY (transferId, tagId),
+      FOREIGN KEY(transferId) REFERENCES internal_transfers(id) ON DELETE CASCADE,
+      FOREIGN KEY(tagId) REFERENCES tags(id) ON DELETE CASCADE
+    );`,
+  ).run();
+
+  // Tag assignments for expenses
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS expense_tag_assignments (
+      expenseId INTEGER NOT NULL,
+      tagId INTEGER NOT NULL,
+      PRIMARY KEY (expenseId, tagId),
+      FOREIGN KEY(expenseId) REFERENCES expenses(id) ON DELETE CASCADE,
+      FOREIGN KEY(tagId) REFERENCES tags(id) ON DELETE CASCADE
+    );`,
+  ).run();
 };
 
 const seedData = () => {

@@ -1,9 +1,9 @@
 import { db } from "../db.js";
 
-export const listTransfers = (_req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT 
+export const listTransfers = (req, res) => {
+  const { tagId } = req.query;
+  
+  let query = `SELECT 
         t.id,
         t.fromAccountId,
         t.toAccountId,
@@ -23,16 +23,43 @@ export const listTransfers = (_req, res) => {
        LEFT JOIN accounts fromAcc ON fromAcc.id = t.fromAccountId
        LEFT JOIN accounts toAcc ON toAcc.id = t.toAccountId
        LEFT JOIN users creator ON creator.id = t.createdBy
-       LEFT JOIN users updater ON updater.id = t.updatedBy
-       ORDER BY t.createdAt DESC;`,
-    )
-    .all();
-  res.json(rows);
+       LEFT JOIN users updater ON updater.id = t.updatedBy`;
+  
+  if (tagId) {
+    query += ` WHERE EXISTS (
+      SELECT 1 FROM transfer_tag_assignments tta 
+      WHERE tta.transferId = t.id AND tta.tagId = ${parseInt(tagId, 10)}
+    )`;
+  }
+  
+  query += ` ORDER BY t.createdAt DESC;`;
+  
+  const rows = db.prepare(query).all();
+  
+  // Add tags to each transfer
+  const transfers = rows.map(transfer => {
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN transfer_tag_assignments tta ON tta.tagId = t.id
+         WHERE tta.transferId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(transfer.id);
+    
+    return {
+      ...transfer,
+      tags: tags.length > 0 ? tags : [],
+    };
+  });
+  
+  res.json(transfers);
 };
 
 export const createTransfer = (req, res, next) => {
   try {
-    const { fromAccountId, toAccountId, amount, description, transactionFee, createdBy } = req.body || {};
+    const { fromAccountId, toAccountId, amount, description, transactionFee, createdBy, tagIds } = req.body || {};
 
     if (!fromAccountId || !toAccountId || !amount) {
       return res.status(400).json({ message: "From account, to account, and amount are required" });
@@ -175,6 +202,25 @@ export const createTransfer = (req, res, next) => {
 
     const transferId = transaction();
 
+    // Handle tag assignments if provided
+    if (Array.isArray(tagIds) && tagIds.length > 0) {
+      const tagAssignmentStmt = db.prepare(
+        `INSERT INTO transfer_tag_assignments (transferId, tagId) VALUES (?, ?);`
+      );
+      const insertTagAssignments = db.transaction((tags) => {
+        for (const tagId of tags) {
+          if (typeof tagId === 'number' && tagId > 0) {
+            try {
+              tagAssignmentStmt.run(transferId, tagId);
+            } catch (err) {
+              // Ignore duplicate or invalid tag assignments
+            }
+          }
+        }
+      });
+      insertTagAssignments(tagIds);
+    }
+
     // Get the created transfer with joined data
     const transfer = db
       .prepare(
@@ -201,7 +247,21 @@ export const createTransfer = (req, res, next) => {
       )
       .get(transferId);
 
-    res.status(201).json(transfer);
+    // Get tags for the transfer
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN transfer_tag_assignments tta ON tta.tagId = t.id
+         WHERE tta.transferId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(transferId);
+
+    res.status(201).json({
+      ...transfer,
+      tags: tags.length > 0 ? tags : [],
+    });
   } catch (error) {
     next(error);
   }
@@ -210,7 +270,7 @@ export const createTransfer = (req, res, next) => {
 export const updateTransfer = (req, res, next) => {
   try {
     const { id } = req.params;
-    const { fromAccountId, toAccountId, amount, description, transactionFee, updatedBy } = req.body || {};
+    const { fromAccountId, toAccountId, amount, description, transactionFee, updatedBy, tagIds } = req.body || {};
 
     // Get existing transfer
     const existingTransfer = db.prepare("SELECT * FROM internal_transfers WHERE id = ?;").get(id);
@@ -430,6 +490,31 @@ export const updateTransfer = (req, res, next) => {
 
     transaction();
 
+    // Handle tag assignments if provided
+    if (tagIds !== undefined) {
+      // Remove all existing tag assignments
+      db.prepare("DELETE FROM transfer_tag_assignments WHERE transferId = ?;").run(id);
+      
+      // Add new tag assignments if provided
+      if (Array.isArray(tagIds) && tagIds.length > 0) {
+        const tagAssignmentStmt = db.prepare(
+          `INSERT INTO transfer_tag_assignments (transferId, tagId) VALUES (?, ?);`
+        );
+        const insertTagAssignments = db.transaction((tags) => {
+          for (const tagId of tags) {
+            if (typeof tagId === 'number' && tagId > 0) {
+              try {
+                tagAssignmentStmt.run(id, tagId);
+              } catch (err) {
+                // Ignore duplicate or invalid tag assignments
+              }
+            }
+          }
+        });
+        insertTagAssignments(tagIds);
+      }
+    }
+
     // Get the updated transfer with joined data
     const transfer = db
       .prepare(
@@ -458,7 +543,21 @@ export const updateTransfer = (req, res, next) => {
       )
       .get(id);
 
-    res.json(transfer);
+    // Get tags for the transfer
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN transfer_tag_assignments tta ON tta.tagId = t.id
+         WHERE tta.transferId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(id);
+
+    res.json({
+      ...transfer,
+      tags: tags.length > 0 ? tags : [],
+    });
   } catch (error) {
     next(error);
   }

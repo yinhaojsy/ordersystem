@@ -25,6 +25,8 @@ import type {
   ProfitCalculationDetails,
   ProfitAccountMultiplier,
   ProfitExchangeRate,
+  Tag,
+  TagInput,
 } from "../types";
 
 const baseQuery = fetchBaseQuery({
@@ -39,7 +41,7 @@ const baseQuery = fetchBaseQuery({
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting"],
+  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting", "Tag"],
   refetchOnReconnect: true,
   endpoints: (builder) => ({
     getCurrencies: builder.query<Currency[], void>({
@@ -319,6 +321,7 @@ export const api = createApi({
         buyAccountId?: number;
         sellAccountId?: number;
         status?: OrderStatus;
+        tagIds?: string;
         page?: number;
         limit?: number;
       }
@@ -334,6 +337,7 @@ export const api = createApi({
         if (params.buyAccountId !== undefined) queryParams.append("buyAccountId", params.buyAccountId.toString());
         if (params.sellAccountId !== undefined) queryParams.append("sellAccountId", params.sellAccountId.toString());
         if (params.status) queryParams.append("status", params.status);
+        if (params.tagIds) queryParams.append("tagIds", params.tagIds);
         if (params.page !== undefined) queryParams.append("page", params.page.toString());
         if (params.limit !== undefined) queryParams.append("limit", params.limit.toString());
         const queryString = queryParams.toString();
@@ -359,6 +363,7 @@ export const api = createApi({
         buyAccountId?: number;
         sellAccountId?: number;
         status?: OrderStatus;
+        tagIds?: string;
       }
     >({
       query: (params = {}) => {
@@ -372,6 +377,7 @@ export const api = createApi({
         if (params.buyAccountId !== undefined) queryParams.append("buyAccountId", params.buyAccountId.toString());
         if (params.sellAccountId !== undefined) queryParams.append("sellAccountId", params.sellAccountId.toString());
         if (params.status) queryParams.append("status", params.status);
+        if (params.tagIds) queryParams.append("tagIds", params.tagIds);
         const queryString = queryParams.toString();
         return `orders/export${queryString ? `?${queryString}` : ""}`;
       },
@@ -1157,6 +1163,86 @@ export const api = createApi({
         { type: "Setting", id: key },
       ],
     }),
+    getTags: builder.query<Tag[], void>({
+      query: () => "tags",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Tag" as const, id })),
+              { type: "Tag" as const, id: "LIST" },
+            ]
+          : [{ type: "Tag" as const, id: "LIST" }],
+    }),
+    createTag: builder.mutation<Tag, TagInput>({
+      query: (body) => ({
+        url: "tags",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Tag", id: "LIST" }],
+    }),
+    updateTag: builder.mutation<Tag, { id: number; data: Partial<TagInput> }>({
+      query: ({ id, data }) => ({
+        url: `tags/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Tag", id },
+        { type: "Tag", id: "LIST" },
+        { type: "Order", id: "LIST" },
+        { type: "Transfer", id: "LIST" },
+        { type: "Expense", id: "LIST" },
+      ],
+    }),
+    deleteTag: builder.mutation<{ success: boolean; message?: string }, number>({
+      query: (id) => ({
+        url: `tags/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Tag", id },
+        { type: "Tag", id: "LIST" },
+        { type: "Order", id: "LIST" },
+        { type: "Transfer", id: "LIST" },
+        { type: "Expense", id: "LIST" },
+      ],
+    }),
+    batchAssignTags: builder.mutation<
+      { success: boolean; message: string },
+      { entityType: "order" | "transfer" | "expense"; entityIds: number[]; tagIds: number[] }
+    >({
+      query: (body) => ({
+        url: "tags/batch-assign",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { entityType, entityIds }) => {
+        const type: "Order" | "Transfer" | "Expense" = entityType === "order" ? "Order" : entityType === "transfer" ? "Transfer" : "Expense";
+        return [
+          { type, id: "LIST" as const },
+          ...(entityIds || []).map((id: number) => ({ type, id })),
+        ];
+      },
+    }),
+    batchUnassignTags: builder.mutation<
+      { success: boolean; message: string },
+      { entityType: "order" | "transfer" | "expense"; entityIds: number[]; tagIds: number[] }
+    >({
+      query: (body) => ({
+        url: "tags/batch-unassign",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { entityType, entityIds }) => {
+        const type: "Order" | "Transfer" | "Expense" =
+          entityType === "order" ? "Order" : entityType === "transfer" ? "Transfer" : "Expense";
+        return [
+          { type, id: "LIST" as const },
+          ...(entityIds || []).map((id: number) => ({ type, id })),
+        ];
+      },
+    }),
   }),
 });
 
@@ -1231,8 +1317,14 @@ export const {
   useRenameGroupMutation,
   useSetDefaultProfitCalculationMutation,
   useUnsetDefaultProfitCalculationMutation,
-  useGetSettingQuery,
-  useSetSettingMutation,
+    useGetSettingQuery,
+    useSetSettingMutation,
+    useGetTagsQuery,
+    useCreateTagMutation,
+    useUpdateTagMutation,
+    useDeleteTagMutation,
+    useBatchAssignTagsMutation,
+    useBatchUnassignTagsMutation,
 } = api;
 
 
