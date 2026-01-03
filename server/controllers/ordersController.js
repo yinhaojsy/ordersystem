@@ -414,8 +414,8 @@ export const createOrder = (req, res, next) => {
   try {
     const payload = req.body || {};
     const stmt = db.prepare(
-      `INSERT INTO orders (customerId, fromCurrency, toCurrency, amountBuy, amountSell, rate, status, buyAccountId, sellAccountId, isFlexOrder, createdAt)
-       VALUES (@customerId, @fromCurrency, @toCurrency, @amountBuy, @amountSell, @rate, @status, @buyAccountId, @sellAccountId, @isFlexOrder, @createdAt);`,
+      `INSERT INTO orders (customerId, fromCurrency, toCurrency, amountBuy, amountSell, rate, status, buyAccountId, sellAccountId, isFlexOrder, orderType, createdAt)
+       VALUES (@customerId, @fromCurrency, @toCurrency, @amountBuy, @amountSell, @rate, @status, @buyAccountId, @sellAccountId, @isFlexOrder, @orderType, @createdAt);`,
     );
     const result = stmt.run({
       ...payload,
@@ -423,6 +423,7 @@ export const createOrder = (req, res, next) => {
       buyAccountId: payload.buyAccountId || null,
       sellAccountId: payload.sellAccountId || null,
       isFlexOrder: payload.isFlexOrder ? 1 : 0,
+      orderType: payload.orderType || "online",
       createdAt: new Date().toISOString(),
     });
     const row = db
@@ -452,7 +453,7 @@ export const updateOrder = (req, res, next) => {
     // Fields that can only be updated when order is pending
     const pendingOnlyFields = ["customerId", "fromCurrency", "toCurrency", "amountBuy", "amountSell", "rate"];
     // Fields that can be updated at any time (service charges and profit)
-    const alwaysUpdatableFields = ["serviceChargeAmount", "serviceChargeCurrency", "serviceChargeAccountId", "profitAmount", "profitCurrency", "profitAccountId"];
+    const alwaysUpdatableFields = ["serviceChargeAmount", "serviceChargeCurrency", "serviceChargeAccountId", "profitAmount", "profitCurrency", "profitAccountId", "handlerId"];
     
     // Separate updates into pending-only and always-updatable
     const pendingOnlyUpdates = {};
@@ -1037,18 +1038,29 @@ export const addReceipt = (req, res, next) => {
       }
     }
 
-    if (!imagePath || amount === undefined) {
-      return res.status(400).json({ message: "File/image and amount are required" });
-    }
-
     // Check if order exists first and get paymentFlow and status
-    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, amountSell, paymentFlow, buyAccountId, isFlexOrder, status FROM orders WHERE id = ?;").get(id);
+    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, amountSell, paymentFlow, buyAccountId, isFlexOrder, status, orderType FROM orders WHERE id = ?;").get(id);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
     const paymentFlow = order.paymentFlow || "receive_first";
     const isFlexOrder = order.isFlexOrder === 1;
+    const isOtcOrder = order.orderType === "otc";
+    
+    // For OTC orders, imagePath is not required. Use placeholder if missing.
+    // For regular orders, imagePath is required.
+    if (!isOtcOrder && !imagePath) {
+      return res.status(400).json({ message: "File/image is required for non-OTC orders" });
+    }
+    if (amount === undefined) {
+      return res.status(400).json({ message: "Amount is required" });
+    }
+    
+    // Use placeholder for OTC orders if no image
+    if (isOtcOrder && !imagePath) {
+      imagePath = "OTC_NO_IMAGE";
+    }
     
     // Account ID is required
     if (!accountId) {
@@ -1347,18 +1359,29 @@ export const addPayment = (req, res, next) => {
       }
     }
 
-    if (!imagePath || amount === undefined) {
-      return res.status(400).json({ message: "File/image and amount are required" });
-    }
-
     // Check if order exists first and get paymentFlow
-    const order = db.prepare("SELECT id, toCurrency, amountSell, paymentFlow, sellAccountId, isFlexOrder, actualAmountBuy, actualAmountSell, actualRate, rate FROM orders WHERE id = ?;").get(id);
+    const order = db.prepare("SELECT id, toCurrency, amountSell, paymentFlow, sellAccountId, isFlexOrder, actualAmountBuy, actualAmountSell, actualRate, rate, orderType FROM orders WHERE id = ?;").get(id);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
     const paymentFlow = order.paymentFlow || "receive_first";
     const isFlexOrder = order.isFlexOrder === 1;
+    const isOtcOrder = order.orderType === "otc";
+    
+    // For OTC orders, imagePath is not required. Use placeholder if missing.
+    // For regular orders, imagePath is required.
+    if (!isOtcOrder && !imagePath) {
+      return res.status(400).json({ message: "File/image is required for non-OTC orders" });
+    }
+    if (amount === undefined) {
+      return res.status(400).json({ message: "Amount is required" });
+    }
+    
+    // Use placeholder for OTC orders if no image
+    if (isOtcOrder && !imagePath) {
+      imagePath = "OTC_NO_IMAGE";
+    }
     
     // Account ID is required
     if (!accountId) {

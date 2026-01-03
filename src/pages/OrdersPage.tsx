@@ -1007,6 +1007,8 @@ export default function OrdersPage() {
   const [processModalOrderId, setProcessModalOrderId] = useState<number | null>(null);
   const [viewModalOrderId, setViewModalOrderId] = useState<number | null>(null);
   const [makePaymentModalOrderId, setMakePaymentModalOrderId] = useState<number | null>(null);
+  const [isOtcOrderModalOpen, setIsOtcOrderModalOpen] = useState(false);
+  const [otcEditingOrderId, setOtcEditingOrderId] = useState<number | null>(null);
   const previousOrderStatusRef = useRef<string | null>(null);
   
   // Service charge and profit state
@@ -1168,6 +1170,28 @@ export default function OrdersPage() {
 
   const [receiptUploads, setReceiptUploads] = useState<Array<{ image: string; file?: File; amount: string; accountId: string }>>([{ image: "", amount: "", accountId: "" }]);
   const [paymentUploads, setPaymentUploads] = useState<Array<{ image: string; file?: File; amount: string; accountId: string }>>([{ image: "", amount: "", accountId: "" }]);
+  
+  // OTC Order state
+  const [otcForm, setOtcForm] = useState({
+    customerId: "",
+    fromCurrency: "",
+    toCurrency: "",
+    amountBuy: "",
+    amountSell: "",
+    rate: "",
+    handlerId: "",
+  });
+  const [otcReceipts, setOtcReceipts] = useState<Array<{ amount: string; accountId: string }>>([]);
+  const [otcPayments, setOtcPayments] = useState<Array<{ amount: string; accountId: string }>>([]);
+  const [otcProfitAmount, setOtcProfitAmount] = useState<string>("");
+  const [otcProfitCurrency, setOtcProfitCurrency] = useState<string>("");
+  const [otcProfitAccountId, setOtcProfitAccountId] = useState<string>("");
+  const [otcServiceChargeAmount, setOtcServiceChargeAmount] = useState<string>("");
+  const [otcServiceChargeCurrency, setOtcServiceChargeCurrency] = useState<string>("");
+  const [otcServiceChargeAccountId, setOtcServiceChargeAccountId] = useState<string>("");
+  const [showOtcProfitSection, setShowOtcProfitSection] = useState(false);
+  const [showOtcServiceChargeSection, setShowOtcServiceChargeSection] = useState(false);
+  const [otcCalculatedField, setOtcCalculatedField] = useState<"buy" | "sell" | null>(null);
   const [receiptDragOver, setReceiptDragOver] = useState(false);
   const [paymentDragOver, setPaymentDragOver] = useState(false);
   const [activeUploadType, setActiveUploadType] = useState<"receipt" | "payment" | null>(null);
@@ -1175,6 +1199,42 @@ export default function OrdersPage() {
   const { data: orderDetails } = useGetOrderDetailsQuery(viewModalOrderId || 0, {
     skip: !viewModalOrderId,
   });
+
+  const { data: otcOrderDetails } = useGetOrderDetailsQuery(otcEditingOrderId || 0, {
+    skip: !otcEditingOrderId,
+  });
+
+  // Helper function to determine which currency is the base (stronger) currency
+  // Returns true if fromCurrency is base, false if toCurrency is base, null if can't determine
+  const getBaseCurrency = useCallback((fromCurrency: string, toCurrency: string): boolean | null => {
+    const getCurrencyRate = (code: string) => {
+      const currency = currencies.find((c) => c.code === code);
+      const candidate =
+        currency?.conversionRateBuy ??
+        currency?.baseRateBuy ??
+        currency?.baseRateSell ??
+        currency?.conversionRateSell;
+      return typeof candidate === "number" ? candidate : null;
+    };
+
+    const fromRate = getCurrencyRate(fromCurrency);
+    const toRate = getCurrencyRate(toCurrency);
+
+    const inferredFromIsUSDT = fromRate !== null ? fromRate <= 1 : fromCurrency === "USDT";
+    const inferredToIsUSDT = toRate !== null ? toRate <= 1 : toCurrency === "USDT";
+
+    // If both sides look like USDT (rate <= 1), return null
+    if (inferredFromIsUSDT && inferredToIsUSDT) return null;
+
+    if (inferredFromIsUSDT !== inferredToIsUSDT) {
+      // One side is USDT (or behaves like it)
+      return inferredFromIsUSDT;
+    } else if (!inferredFromIsUSDT && !inferredToIsUSDT && fromRate !== null && toRate !== null) {
+      // Neither is USDT: pick the currency with the smaller rate as the stronger/base currency
+      return fromRate < toRate;
+    }
+    return null;
+  }, [currencies]);
 
   // Initialize flex order rate when modal opens
   useEffect(() => {
@@ -1231,6 +1291,54 @@ export default function OrdersPage() {
     }
   }, [orderDetails?.order?.status, excessPaymentWarning, viewModalOrderId]);
 
+  // Determine if OTC order is completed/cancelled for view mode
+  const isOtcCompleted = useMemo(() => {
+    return otcEditingOrderId && otcOrderDetails?.order && (otcOrderDetails.order.status === "completed" || otcOrderDetails.order.status === "cancelled");
+  }, [otcEditingOrderId, otcOrderDetails]);
+
+  // Load OTC order details when editing
+  useEffect(() => {
+    if (otcEditingOrderId && otcOrderDetails && otcOrderDetails.order) {
+      const order = otcOrderDetails.order;
+      setOtcForm({
+        customerId: String(order.customerId),
+        fromCurrency: order.fromCurrency,
+        toCurrency: order.toCurrency,
+        amountBuy: String(order.amountBuy),
+        amountSell: String(order.amountSell),
+        rate: String(order.rate),
+        handlerId: order.handlerId ? String(order.handlerId) : "",
+      });
+      // Load receipts and payments - ensure we have valid arrays
+      const receipts = Array.isArray(otcOrderDetails.receipts) ? otcOrderDetails.receipts : [];
+      const payments = Array.isArray(otcOrderDetails.payments) ? otcOrderDetails.payments : [];
+      
+      setOtcReceipts(receipts.map(r => ({
+        amount: String(r.amount || ""),
+        accountId: r.accountId ? String(r.accountId) : "",
+      })));
+      
+      setOtcPayments(payments.map(p => ({
+        amount: String(p.amount || ""),
+        accountId: p.accountId ? String(p.accountId) : "",
+      })));
+      
+      // Load profit and service charges
+      if (order.profitAmount !== null && order.profitAmount !== undefined) {
+        setOtcProfitAmount(String(order.profitAmount));
+        setOtcProfitCurrency(order.profitCurrency || "");
+        setOtcProfitAccountId(order.profitAccountId ? String(order.profitAccountId) : "");
+        setShowOtcProfitSection(true);
+      }
+      if (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined) {
+        setOtcServiceChargeAmount(String(order.serviceChargeAmount));
+        setOtcServiceChargeCurrency(order.serviceChargeCurrency || "");
+        setOtcServiceChargeAccountId(order.serviceChargeAccountId ? String(order.serviceChargeAccountId) : "");
+        setShowOtcServiceChargeSection(true);
+      }
+    }
+  }, [otcEditingOrderId, otcOrderDetails]);
+
   const resetForm = () => {
     setForm({
       customerId: "",
@@ -1277,6 +1385,35 @@ export default function OrdersPage() {
     });
     setSaveBeneficiaryToCustomer(false);
     setSelectedCustomerBeneficiaryId("");
+  };
+
+  const resetOtcForm = () => {
+    setOtcForm({
+      customerId: "",
+      fromCurrency: "",
+      toCurrency: "",
+      amountBuy: "",
+      amountSell: "",
+      rate: "",
+      handlerId: "",
+    });
+    setOtcReceipts([]);
+    setOtcPayments([]);
+    setOtcProfitAmount("");
+    setOtcProfitCurrency("");
+    setOtcProfitAccountId("");
+    setOtcServiceChargeAmount("");
+    setOtcServiceChargeCurrency("");
+    setOtcServiceChargeAccountId("");
+    setShowOtcProfitSection(false);
+    setShowOtcServiceChargeSection(false);
+    setOtcCalculatedField(null);
+  };
+
+  const closeOtcModal = () => {
+    resetOtcForm();
+    setIsOtcOrderModalOpen(false);
+    setOtcEditingOrderId(null);
   };
  /*  // When fromCurrency or toCurrency changes, fetch the buy and sell rates for the selected non-USDT currency (rates are against USDT)
   useEffect(() => {
@@ -1432,7 +1569,29 @@ export default function OrdersPage() {
 
   const startEdit = useCallback((orderId: number) => {
     const order = orders.find((o) => o.id === orderId);
-    if (!order || order.status !== "pending") return;
+    if (!order) return;
+    
+    // Check if it's an OTC order
+    if (order.orderType === "otc") {
+      // Open OTC modal for editing/viewing (OTC orders can be viewed/edited in OTC modal regardless of status)
+      setOtcEditingOrderId(orderId);
+      setOtcForm({
+        customerId: String(order.customerId),
+        fromCurrency: order.fromCurrency,
+        toCurrency: order.toCurrency,
+        amountBuy: String(order.amountBuy),
+        amountSell: String(order.amountSell),
+        rate: String(order.rate),
+        handlerId: order.handlerId ? String(order.handlerId) : "",
+      });
+      setIsOtcOrderModalOpen(true);
+      setOpenMenuId(null);
+      // Load receipts, payments, profit, service charges via orderDetails query
+      return;
+    }
+    
+    // For non-OTC orders, only allow editing if status is pending
+    if (order.status !== "pending") return;
     
     setEditingOrderId(orderId);
     setForm({
@@ -1483,6 +1642,301 @@ export default function OrdersPage() {
     setMakePaymentModalOrderId(null);
     setSaveBeneficiaryToCustomer(false);
     setSelectedCustomerBeneficiaryId("");
+  };
+
+  // OTC Order handlers
+  const handleOtcOrderSave = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!otcForm.customerId || !otcForm.fromCurrency || !otcForm.toCurrency) return;
+
+    try {
+      let orderId: number;
+      
+      if (otcEditingOrderId) {
+        // Update existing order
+        await updateOrder({
+          id: otcEditingOrderId,
+          data: {
+            customerId: Number(otcForm.customerId),
+            fromCurrency: otcForm.fromCurrency,
+            toCurrency: otcForm.toCurrency,
+            amountBuy: Number(otcForm.amountBuy || 0),
+            amountSell: Number(otcForm.amountSell || 0),
+            rate: Number(otcForm.rate || 1),
+          },
+        }).unwrap();
+        orderId = otcEditingOrderId;
+      } else {
+        // Create new OTC order
+        const newOrder = await addOrder({
+          customerId: Number(otcForm.customerId),
+          fromCurrency: otcForm.fromCurrency,
+          toCurrency: otcForm.toCurrency,
+          amountBuy: Number(otcForm.amountBuy || 0),
+          amountSell: Number(otcForm.amountSell || 0),
+          rate: Number(otcForm.rate || 1),
+          status: "pending",
+          orderType: "otc",
+        }).unwrap();
+        orderId = newOrder.id;
+      }
+
+      // Assign handler if selected (use updateOrder to keep status as pending)
+      if (otcForm.handlerId) {
+        await updateOrder({
+          id: orderId,
+          data: {
+            handlerId: Number(otcForm.handlerId),
+          },
+        }).unwrap();
+      }
+
+      // Delete existing receipts and payments when editing, then recreate from form
+      if (otcEditingOrderId && otcOrderDetails) {
+        // Delete existing receipts
+        for (const receipt of otcOrderDetails.receipts || []) {
+          try {
+            await deleteReceipt(receipt.id).unwrap();
+          } catch (error) {
+            console.error("Error deleting receipt:", error);
+          }
+        }
+        // Delete existing payments
+        for (const payment of otcOrderDetails.payments || []) {
+          try {
+            await deletePayment(payment.id).unwrap();
+          } catch (error) {
+            console.error("Error deleting payment:", error);
+          }
+        }
+      }
+
+      // Create receipts (without image for OTC orders)
+      for (const receipt of otcReceipts) {
+        const receiptAmount = Number(receipt.amount) || 0;
+        if (receiptAmount !== 0 && receipt.accountId) {
+          await addReceipt({
+            id: orderId,
+            amount: receiptAmount,
+            accountId: Number(receipt.accountId),
+            imagePath: "", // Empty for OTC orders - backend will use placeholder
+          } as any).unwrap();
+        }
+      }
+
+      // Create payments (without image for OTC orders)
+      for (const payment of otcPayments) {
+        const paymentAmount = Number(payment.amount) || 0;
+        if (paymentAmount !== 0 && payment.accountId) {
+          await addPayment({
+            id: orderId,
+            amount: paymentAmount,
+            accountId: Number(payment.accountId),
+            imagePath: "", // Empty for OTC orders - backend will use placeholder
+          } as any).unwrap();
+        }
+      }
+
+      // Add profit if provided
+      if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
+        await updateOrder({
+          id: orderId,
+          data: {
+            profitAmount: Number(otcProfitAmount),
+            profitCurrency: otcProfitCurrency,
+            profitAccountId: Number(otcProfitAccountId),
+          },
+        }).unwrap();
+      }
+
+      // Add service charges if provided
+      if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
+        await updateOrder({
+          id: orderId,
+          data: {
+            serviceChargeAmount: Number(otcServiceChargeAmount),
+            serviceChargeCurrency: otcServiceChargeCurrency,
+            serviceChargeAccountId: Number(otcServiceChargeAccountId),
+          },
+        }).unwrap();
+      }
+
+      closeOtcModal();
+    } catch (error: any) {
+      console.error("Error saving OTC order:", error);
+      const errorMessage = error?.data?.message || error?.message || "Failed to save OTC order";
+      alert(errorMessage);
+    }
+  };
+
+  const handleOtcOrderComplete = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!otcForm.customerId || !otcForm.fromCurrency || !otcForm.toCurrency) return;
+
+    // Validate handler is assigned
+    if (!otcForm.handlerId) {
+      alert("Handler must be assigned before completing the order");
+      return;
+    }
+
+    // Validate that all receipts with amounts have accounts selected
+    const receiptsWithoutAccounts = otcReceipts.filter(
+      (r) => (Number(r.amount) || 0) > 0 && !r.accountId
+    );
+    if (receiptsWithoutAccounts.length > 0) {
+      alert("All receipts with amounts must have an account selected. Please select accounts for all receipts with amounts.");
+      return;
+    }
+
+    // Validate that all payments with amounts have accounts selected
+    const paymentsWithoutAccounts = otcPayments.filter(
+      (p) => (Number(p.amount) || 0) > 0 && !p.accountId
+    );
+    if (paymentsWithoutAccounts.length > 0) {
+      alert("All payments with amounts must have an account selected. Please select accounts for all payments with amounts.");
+      return;
+    }
+
+    // Validate receipt total equals amountBuy
+    const receiptTotal = otcReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    const amountBuy = Number(otcForm.amountBuy || 0);
+    if (Math.abs(receiptTotal - amountBuy) > 0.01) {
+      alert(`Receipt total (${receiptTotal.toFixed(2)}) must equal Amount Buy (${amountBuy.toFixed(2)})`);
+      return;
+    }
+
+    // Validate payment total equals amountSell
+    const paymentTotal = otcPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const amountSell = Number(otcForm.amountSell || 0);
+    if (Math.abs(paymentTotal - amountSell) > 0.01) {
+      alert(`Payment total (${paymentTotal.toFixed(2)}) must equal Amount Sell (${amountSell.toFixed(2)})`);
+      return;
+    }
+
+    try {
+      let orderId: number;
+      
+      if (otcEditingOrderId) {
+        // Update existing order
+        await updateOrder({
+          id: otcEditingOrderId,
+          data: {
+            customerId: Number(otcForm.customerId),
+            fromCurrency: otcForm.fromCurrency,
+            toCurrency: otcForm.toCurrency,
+            amountBuy: Number(otcForm.amountBuy || 0),
+            amountSell: Number(otcForm.amountSell || 0),
+            rate: Number(otcForm.rate || 1),
+          },
+        }).unwrap();
+        orderId = otcEditingOrderId;
+      } else {
+        // Create new OTC order
+        const newOrder = await addOrder({
+          customerId: Number(otcForm.customerId),
+          fromCurrency: otcForm.fromCurrency,
+          toCurrency: otcForm.toCurrency,
+          amountBuy: Number(otcForm.amountBuy || 0),
+          amountSell: Number(otcForm.amountSell || 0),
+          rate: Number(otcForm.rate || 1),
+          status: "pending",
+          orderType: "otc",
+        }).unwrap();
+        orderId = newOrder.id;
+      }
+
+      // Assign handler
+      await processOrder({
+        id: orderId,
+        handlerId: Number(otcForm.handlerId),
+      }).unwrap();
+
+      // Delete existing receipts and payments when editing, then recreate from form
+      if (otcEditingOrderId && otcOrderDetails) {
+        // Delete existing receipts
+        for (const receipt of otcOrderDetails.receipts || []) {
+          try {
+            await deleteReceipt(receipt.id).unwrap();
+          } catch (error) {
+            console.error("Error deleting receipt:", error);
+          }
+        }
+        // Delete existing payments
+        for (const payment of otcOrderDetails.payments || []) {
+          try {
+            await deletePayment(payment.id).unwrap();
+          } catch (error) {
+            console.error("Error deleting payment:", error);
+          }
+        }
+      }
+
+      // Create and confirm receipts
+      for (const receipt of otcReceipts) {
+        const receiptAmount = Number(receipt.amount) || 0;
+        if (receiptAmount !== 0 && receipt.accountId) {
+          const receiptResult = await addReceipt({
+            id: orderId,
+            amount: receiptAmount,
+            accountId: Number(receipt.accountId),
+            imagePath: "",
+          } as any).unwrap();
+          // Confirm receipt immediately for OTC orders
+          await confirmReceipt((receiptResult as any).id).unwrap();
+        }
+      }
+
+      // Create and confirm payments
+      for (const payment of otcPayments) {
+        const paymentAmount = Number(payment.amount) || 0;
+        if (paymentAmount !== 0 && payment.accountId) {
+          const paymentResult = await addPayment({
+            id: orderId,
+            amount: paymentAmount,
+            accountId: Number(payment.accountId),
+            imagePath: "",
+          } as any).unwrap();
+          // Confirm payment immediately for OTC orders
+          await confirmPayment((paymentResult as any).id).unwrap();
+        }
+      }
+
+      // Add profit if provided
+      if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
+        await updateOrder({
+          id: orderId,
+          data: {
+            profitAmount: Number(otcProfitAmount),
+            profitCurrency: otcProfitCurrency,
+            profitAccountId: Number(otcProfitAccountId),
+          },
+        }).unwrap();
+      }
+
+      // Add service charges if provided
+      if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
+        await updateOrder({
+          id: orderId,
+          data: {
+            serviceChargeAmount: Number(otcServiceChargeAmount),
+            serviceChargeCurrency: otcServiceChargeCurrency,
+            serviceChargeAccountId: Number(otcServiceChargeAccountId),
+          },
+        }).unwrap();
+      }
+
+      // Complete the order
+      await updateOrderStatus({
+        id: orderId,
+        status: "completed",
+      }).unwrap();
+
+      closeOtcModal();
+    } catch (error: any) {
+      console.error("Error completing OTC order:", error);
+      const errorMessage = error?.data?.message || error?.message || "Failed to complete OTC order";
+      alert(errorMessage);
+    }
   };
 
   const submit = async (event: FormEvent) => {
@@ -2111,34 +2565,60 @@ export default function OrdersPage() {
 
 
     if (order.status === "under_process") {
-      // Show View button for flex orders under process
-      buttons.push(
-        <button
-          key="view"
-          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
-          onClick={() => {
-            setViewModalOrderId(order.id);
-            setOpenMenuId(null);
-          }}
-        >
-          {t("orders.view")}
-        </button>
-      );
+      // For OTC orders, show Edit button to open OTC modal
+      if (order.orderType === "otc") {
+        buttons.push(
+          <button
+            key="edit"
+            className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-slate-50 first:rounded-t-lg"
+            onClick={() => startEdit(order.id)}
+          >
+            {t("common.edit")}
+          </button>
+        );
+      } else {
+        // Show View button for regular orders under process
+        buttons.push(
+          <button
+            key="view"
+            className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
+            onClick={() => {
+              setViewModalOrderId(order.id);
+              setOpenMenuId(null);
+            }}
+          >
+            {t("orders.view")}
+          </button>
+        );
+      }
     }
 
     if (order.status === "completed" || order.status === "cancelled") {
-      buttons.push(
-        <button
-          key="view"
-          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
-          onClick={() => {
-            setViewModalOrderId(order.id);
-            setOpenMenuId(null);
-          }}
-        >
-          {t("orders.view")}
-        </button>
-      );
+      // For OTC orders, show Edit button to open OTC modal (even for completed/cancelled, but it should be view-only in modal)
+      if (order.orderType === "otc") {
+        buttons.push(
+          <button
+            key="edit"
+            className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
+            onClick={() => startEdit(order.id)}
+          >
+            {t("orders.view")}
+          </button>
+        );
+      } else {
+        buttons.push(
+          <button
+            key="view"
+            className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
+            onClick={() => {
+              setViewModalOrderId(order.id);
+              setOpenMenuId(null);
+            }}
+          >
+            {t("orders.view")}
+          </button>
+        );
+      }
     }
 
     // Don't show Cancel button for completed or cancelled orders or when role lacks permission
@@ -2702,6 +3182,14 @@ export default function OrdersPage() {
                 {t("orders.createFlexOrder")}
               </button>
             )}
+            <button
+              onClick={() => {
+                setIsOtcOrderModalOpen(true);
+              }}
+              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-green-700 transition-colors"
+            >
+              OTC Order
+            </button>
             {canDeleteManyOrders && (
               <button
                 onClick={async () => {
@@ -7372,6 +7860,584 @@ export default function OrdersPage() {
                 </svg>
                 {t("orders.importing") || "Importing..."}
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* OTC Order Modal */}
+      {isOtcOrderModalOpen && (
+        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
+          <div
+            className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">
+                {isOtcCompleted ? "View OTC Order" : otcEditingOrderId ? "Edit OTC Order" : "Create OTC Order"}
+              </h2>
+              <button
+                onClick={closeOtcModal}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label={t("common.close")}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {isOtcCompleted && otcOrderDetails?.order ? (() => {
+              const order = otcOrderDetails.order;
+              const customerName = customers.find(c => c.id === order.customerId)?.name || "";
+              const handlerName = users.find(u => u.id === order.handlerId)?.name || "";
+              return (
+              /* View Mode - Completed/Cancelled Order */
+              <div className="space-y-6">
+                {/* Order Details */}
+                <div className="space-y-3 border-b border-slate-200 pb-4">
+                  <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Customer</label>
+                      <p className="mt-1 text-sm text-slate-900">{customerName}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Handler</label>
+                      <p className="mt-1 text-sm text-slate-900">{handlerName || "-"}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Currency Pair</label>
+                      <p className="mt-1 text-sm text-slate-900">{order.fromCurrency} / {order.toCurrency}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Rate</label>
+                      <p className="mt-1 text-sm text-slate-900">{order.rate}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Amount Buy</label>
+                      <p className="mt-1 text-sm text-slate-900">{order.amountBuy.toFixed(2)} {order.fromCurrency}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Amount Sell</label>
+                      <p className="mt-1 text-sm text-slate-900">{order.amountSell.toFixed(2)} {order.toCurrency}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Status</label>
+                      <p className="mt-1">
+                        <Badge tone={order.status === "completed" ? "emerald" : "rose"}>{order.status}</Badge>
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Date</label>
+                      <p className="mt-1 text-sm text-slate-900">{formatDate(order.createdAt)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Receipts */}
+                {otcOrderDetails.receipts && otcOrderDetails.receipts.length > 0 && (
+                  <div className="space-y-3 border-b border-slate-200 pb-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Receipts ({order.fromCurrency})</h3>
+                    <div className="space-y-2">
+                      {otcOrderDetails.receipts.map((receipt, index) => (
+                        <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                          <span className="text-sm text-slate-900">{receipt.accountName || "-"}</span>
+                          <span className="text-sm font-medium text-slate-900">{receipt.amount.toFixed(2)} {order.fromCurrency}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                        <span className="text-sm font-semibold text-slate-900">Total</span>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {otcOrderDetails.receipts.reduce((sum, r) => sum + r.amount, 0).toFixed(2)} {order.fromCurrency}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payments */}
+                {otcOrderDetails.payments && otcOrderDetails.payments.length > 0 && (
+                  <div className="space-y-3 border-b border-slate-200 pb-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Payments ({order.toCurrency})</h3>
+                    <div className="space-y-2">
+                      {otcOrderDetails.payments.map((payment, index) => (
+                        <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                          <span className="text-sm text-slate-900">{payment.accountName || "-"}</span>
+                          <span className="text-sm font-medium text-slate-900">{payment.amount.toFixed(2)} {order.toCurrency}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                        <span className="text-sm font-semibold text-slate-900">Total</span>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {otcOrderDetails.payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)} {order.toCurrency}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Profit */}
+                {order.profitAmount !== null && order.profitAmount !== undefined && order.profitAccountId && (
+                  <div className="space-y-3 border-b border-slate-200 pb-4">
+                    <h3 className="text-lg font-semibold text-blue-900">Profit</h3>
+                    <div className="p-3 bg-blue-50 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-blue-900">
+                          {accounts.find(a => a.id === order.profitAccountId)?.name || "-"} ({order.profitCurrency})
+                        </span>
+                        <span className="text-sm font-semibold text-blue-900">
+                          {order.profitAmount > 0 ? "+" : ""}{order.profitAmount.toFixed(2)} {order.profitCurrency}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Service Charges */}
+                {order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined && order.serviceChargeAccountId && (
+                  <div className="space-y-3 border-b border-slate-200 pb-4">
+                    <h3 className="text-lg font-semibold text-green-900">Service Charges</h3>
+                    <div className="p-3 bg-green-50 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-green-900">
+                          {accounts.find(a => a.id === order.serviceChargeAccountId)?.name || "-"} ({order.serviceChargeCurrency})
+                        </span>
+                        <span className={`text-sm font-semibold ${order.serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"}`}>
+                          {order.serviceChargeAmount > 0 ? "+" : ""}{order.serviceChargeAmount.toFixed(2)} {order.serviceChargeCurrency}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Close Button */}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={closeOtcModal}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              );
+            })() : (
+              /* Edit Mode - Form */
+              <form className="space-y-6" onSubmit={handleOtcOrderSave}>
+              {/* Order Creation Form Section */}
+              <div className="space-y-3 border-b border-slate-200 pb-4">
+                <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
+                    value={otcForm.customerId}
+                    onChange={(e) => setOtcForm((p) => ({ ...p, customerId: e.target.value }))}
+                    required
+                  >
+                    <option value="">{t("orders.selectCustomer")}</option>
+                    {customers.map((customer) => (
+                      <option value={customer.id} key={customer.id}>{customer.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateCustomerModalOpen(true)}
+                    className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors whitespace-nowrap"
+                  >
+                    {t("orders.createNewCustomer")}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <select
+                    className="rounded-lg border border-slate-200 px-3 py-2"
+                    value={otcForm.fromCurrency}
+                    onChange={(e) => setOtcForm((p) => ({ ...p, fromCurrency: e.target.value }))}
+                    required
+                  >
+                    <option value="">{t("orders.from")}</option>
+                    {currencies.filter((c) => Boolean(c.active) && c.code !== otcForm.toCurrency).map((c) => (
+                      <option key={c.id} value={c.code}>{c.code}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-lg border border-slate-200 px-3 py-2"
+                    value={otcForm.toCurrency}
+                    onChange={(e) => setOtcForm((p) => ({ ...p, toCurrency: e.target.value }))}
+                    required
+                  >
+                    <option value="">{t("orders.to")}</option>
+                    {currencies.filter((c) => Boolean(c.active) && c.code !== otcForm.fromCurrency).map((c) => (
+                      <option key={c.id} value={c.code}>{c.code}</option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder={t("orders.exchangeRate")}
+                  value={otcForm.rate}
+                  onChange={(e) => setOtcForm((p) => ({ ...p, rate: e.target.value }))}
+                  required
+                  type="number"
+                  step="0.0001"
+                  onWheel={handleNumberInputWheel}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    className="rounded-lg border border-slate-200 px-3 py-2"
+                    placeholder={t("orders.amountBuy")}
+                    value={otcForm.amountBuy}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setOtcForm((p) => ({ ...p, amountBuy: value }));
+                      if (value && otcForm.rate && otcForm.fromCurrency && otcForm.toCurrency) {
+                        const rate = Number(otcForm.rate);
+                        if (!isNaN(rate) && rate > 0) {
+                          const baseIsFrom = getBaseCurrency(otcForm.fromCurrency, otcForm.toCurrency);
+                          let sellAmount: string;
+                          if (baseIsFrom === true) {
+                            // Stronger/base currency (fromCurrency) → weaker (toCurrency): multiply by rate
+                            sellAmount = (Number(value) * rate).toFixed(4);
+                          } else if (baseIsFrom === false) {
+                            // Weaker (fromCurrency) → stronger/base (toCurrency): divide by rate
+                            sellAmount = (Number(value) / rate).toFixed(4);
+                          } else {
+                            // Fallback: if we can't determine, use simple multiplication
+                            sellAmount = (Number(value) * rate).toFixed(4);
+                          }
+                          setOtcForm((p) => ({ ...p, amountSell: sellAmount }));
+                        }
+                      }
+                    }}
+                    required
+                    type="number"
+                    onWheel={handleNumberInputWheel}
+                  />
+                  <input
+                    className="rounded-lg border border-slate-200 px-3 py-2"
+                    placeholder={t("orders.amountSell")}
+                    value={otcForm.amountSell}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setOtcForm((p) => ({ ...p, amountSell: value }));
+                      if (value && otcForm.rate && otcForm.fromCurrency && otcForm.toCurrency) {
+                        const rate = Number(otcForm.rate);
+                        if (!isNaN(rate) && rate > 0) {
+                          const baseIsFrom = getBaseCurrency(otcForm.fromCurrency, otcForm.toCurrency);
+                          let buyAmount: string;
+                          if (baseIsFrom === true) {
+                            // Stronger/base currency (fromCurrency) → weaker (toCurrency): divide to get base amount
+                            buyAmount = (Number(value) / rate).toFixed(4);
+                          } else if (baseIsFrom === false) {
+                            // Weaker (fromCurrency) → stronger/base (toCurrency): multiply to get base amount
+                            buyAmount = (Number(value) * rate).toFixed(4);
+                          } else {
+                            // Fallback: if we can't determine, use simple division
+                            buyAmount = (Number(value) / rate).toFixed(4);
+                          }
+                          setOtcForm((p) => ({ ...p, amountBuy: buyAmount }));
+                        }
+                      }
+                    }}
+                    required
+                    type="number"
+                    onWheel={handleNumberInputWheel}
+                  />
+                </div>
+              </div>
+
+              {/* Handler Assignment Section */}
+              <div className="space-y-3 border-b border-slate-200 pb-4">
+                <h3 className="text-lg font-semibold text-slate-900">Handler Assignment</h3>
+                <select
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                  value={otcForm.handlerId}
+                  onChange={(e) => setOtcForm((p) => ({ ...p, handlerId: e.target.value }))}
+                  required
+                >
+                  <option value="">{t("orders.selectHandler")}</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>{user.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Receipts Section */}
+              <div className="space-y-3 border-b border-slate-200 pb-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900">Receipts ({otcForm.fromCurrency})</h3>
+                  <button
+                    type="button"
+                    onClick={() => setOtcReceipts([...otcReceipts, { amount: "", accountId: "" }])}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                  >
+                    Add Receipt
+                  </button>
+                </div>
+                {otcReceipts.map((receipt, index) => (
+                  <div key={index} className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg">
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Amount"
+                      value={receipt.amount}
+                      onChange={(e) => {
+                        const newReceipts = [...otcReceipts];
+                        newReceipts[index] = { ...newReceipts[index], amount: e.target.value };
+                        setOtcReceipts(newReceipts);
+                      }}
+                      className="rounded-lg border border-slate-200 px-3 py-2"
+                      required
+                      onWheel={handleNumberInputWheel}
+                    />
+                    <div className="flex gap-2">
+                      <select
+                        className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
+                        value={receipt.accountId}
+                        onChange={(e) => {
+                          const newReceipts = [...otcReceipts];
+                          newReceipts[index] = { ...newReceipts[index], accountId: e.target.value };
+                          setOtcReceipts(newReceipts);
+                        }}
+                        required
+                      >
+                        <option value="">Select Account ({otcForm.fromCurrency})</option>
+                        {accounts.filter((a) => a.currencyCode === otcForm.fromCurrency).map((acc) => (
+                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance.toFixed(2)} {acc.currencyCode})</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setOtcReceipts(otcReceipts.filter((_, i) => i !== index))}
+                        className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-sm text-slate-600">
+                  Total: {otcReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0).toFixed(2)} {otcForm.fromCurrency}
+                </div>
+              </div>
+
+              {/* Payments Section */}
+              <div className="space-y-3 border-b border-slate-200 pb-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900">Payments ({otcForm.toCurrency})</h3>
+                  <button
+                    type="button"
+                    onClick={() => setOtcPayments([...otcPayments, { amount: "", accountId: "" }])}
+                    className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
+                  >
+                    Add Payment
+                  </button>
+                </div>
+                {otcPayments.map((payment, index) => (
+                  <div key={index} className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg">
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Amount"
+                      value={payment.amount}
+                      onChange={(e) => {
+                        const newPayments = [...otcPayments];
+                        newPayments[index] = { ...newPayments[index], amount: e.target.value };
+                        setOtcPayments(newPayments);
+                      }}
+                      className="rounded-lg border border-slate-200 px-3 py-2"
+                      required
+                      onWheel={handleNumberInputWheel}
+                    />
+                    <div className="flex gap-2">
+                      <select
+                        className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
+                        value={payment.accountId}
+                        onChange={(e) => {
+                          const newPayments = [...otcPayments];
+                          newPayments[index] = { ...newPayments[index], accountId: e.target.value };
+                          setOtcPayments(newPayments);
+                        }}
+                        required
+                      >
+                        <option value="">Select Account ({otcForm.toCurrency})</option>
+                        {accounts.filter((a) => a.currencyCode === otcForm.toCurrency).map((acc) => (
+                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance.toFixed(2)} {acc.currencyCode})</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setOtcPayments(otcPayments.filter((_, i) => i !== index))}
+                        className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-sm text-slate-600">
+                  Total: {otcPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0).toFixed(2)} {otcForm.toCurrency}
+                </div>
+              </div>
+
+              {/* Profit Section */}
+              <div className="space-y-3 border-b border-slate-200 pb-4">
+                {!showOtcProfitSection ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowOtcProfitSection(true)}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                  >
+                    Add Profit
+                  </button>
+                ) : (
+                  <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-blue-900">Profit</h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowOtcProfitSection(false);
+                          setOtcProfitAmount("");
+                          setOtcProfitCurrency("");
+                          setOtcProfitAccountId("");
+                        }}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Amount"
+                        value={otcProfitAmount}
+                        onChange={(e) => setOtcProfitAmount(e.target.value)}
+                        className="rounded-lg border border-blue-300 px-3 py-2"
+                        onWheel={handleNumberInputWheel}
+                      />
+                      <select
+                        value={otcProfitCurrency}
+                        onChange={(e) => {
+                          setOtcProfitCurrency(e.target.value);
+                          setOtcProfitAccountId("");
+                        }}
+                        className="rounded-lg border border-blue-300 px-3 py-2"
+                      >
+                        <option value="">Select Currency</option>
+                        {otcForm.fromCurrency && <option value={otcForm.fromCurrency}>{otcForm.fromCurrency}</option>}
+                        {otcForm.toCurrency && <option value={otcForm.toCurrency}>{otcForm.toCurrency}</option>}
+                      </select>
+                    </div>
+                    {otcProfitCurrency && (
+                      <select
+                        className="w-full mt-3 rounded-lg border border-blue-300 px-3 py-2"
+                        value={otcProfitAccountId}
+                        onChange={(e) => setOtcProfitAccountId(e.target.value)}
+                      >
+                        <option value="">Select Account ({otcProfitCurrency})</option>
+                        {accounts.filter((a) => a.currencyCode === otcProfitCurrency).map((acc) => (
+                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance.toFixed(2)} {acc.currencyCode})</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Service Charges Section */}
+              <div className="space-y-3 border-b border-slate-200 pb-4">
+                {!showOtcServiceChargeSection ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowOtcServiceChargeSection(true)}
+                    className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
+                  >
+                    Add Service Charges
+                  </button>
+                ) : (
+                  <div className="p-4 border border-green-200 rounded-lg bg-green-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-green-900">Service Charges</h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowOtcServiceChargeSection(false);
+                          setOtcServiceChargeAmount("");
+                          setOtcServiceChargeCurrency("");
+                          setOtcServiceChargeAccountId("");
+                        }}
+                        className="text-green-600 hover:text-green-800 text-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Amount (negative if paid by us)"
+                        value={otcServiceChargeAmount}
+                        onChange={(e) => setOtcServiceChargeAmount(e.target.value)}
+                        className="rounded-lg border border-green-300 px-3 py-2"
+                        onWheel={handleNumberInputWheel}
+                      />
+                      <select
+                        value={otcServiceChargeCurrency}
+                        onChange={(e) => {
+                          setOtcServiceChargeCurrency(e.target.value);
+                          setOtcServiceChargeAccountId("");
+                        }}
+                        className="rounded-lg border border-green-300 px-3 py-2"
+                      >
+                        <option value="">Select Currency</option>
+                        {otcForm.fromCurrency && <option value={otcForm.fromCurrency}>{otcForm.fromCurrency}</option>}
+                        {otcForm.toCurrency && <option value={otcForm.toCurrency}>{otcForm.toCurrency}</option>}
+                      </select>
+                    </div>
+                    {otcServiceChargeCurrency && (
+                      <select
+                        className="w-full mt-3 rounded-lg border border-green-300 px-3 py-2"
+                        value={otcServiceChargeAccountId}
+                        onChange={(e) => setOtcServiceChargeAccountId(e.target.value)}
+                      >
+                        <option value="">Select Account ({otcServiceChargeCurrency})</option>
+                        {accounts.filter((a) => a.currencyCode === otcServiceChargeCurrency).map((acc) => (
+                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance.toFixed(2)} {acc.currencyCode})</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={closeOtcModal}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                >
+                  {isSaving ? t("common.saving") : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOtcOrderComplete}
+                  disabled={isSaving}
+                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-green-700 disabled:opacity-60 transition-colors"
+                >
+                  Complete
+                </button>
+              </div>
+            </form>
             )}
           </div>
         </div>

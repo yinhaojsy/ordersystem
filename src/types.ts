@@ -90,6 +90,7 @@ export interface Order {
   profitAmount?: number;
   profitCurrency?: string;
   profitAccountId?: number;
+  orderType?: "online" | "otc";
   createdAt: string;
 }
 
@@ -163,6 +164,8 @@ export interface OrderInput {
   profitAmount?: number;
   profitCurrency?: string;
   profitAccountId?: number;
+  orderType?: "online" | "otc";
+  handlerId?: number;
 }
 
 export interface Account {

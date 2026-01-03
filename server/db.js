@@ -103,11 +103,19 @@ const ensureSchema = () => {
       networkChain TEXT,
       walletAddresses TEXT,
       bankDetails TEXT,
+      orderType TEXT DEFAULT 'online',
       createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(customerId) REFERENCES customers(id),
       FOREIGN KEY(handlerId) REFERENCES users(id)
     );`,
   ).run();
+
+  // Migration: Add orderType column if it doesn't exist
+  const orderColumns = db.prepare("PRAGMA table_info(orders);").all();
+  const hasOrderType = orderColumns.some((col) => col.name === "orderType");
+  if (!hasOrderType) {
+    db.prepare("ALTER TABLE orders ADD COLUMN orderType TEXT DEFAULT 'online';").run();
+  }
 
   db.prepare(
     `CREATE TABLE IF NOT EXISTS order_receipts (
