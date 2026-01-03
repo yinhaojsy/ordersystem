@@ -527,6 +527,8 @@ export default function OrdersPage() {
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: users = [] } = useGetUsersQuery();
   const { data: accounts = [] } = useGetAccountsQuery();
+  const { data: tags = [] } = useGetTagsQuery();
+  const [addOrder, { isLoading: isSaving }] = useAddOrderMutation();
 
   // Get unique currency pairs from all orders (for dropdown)
   // Note: This would ideally come from the backend, but for now we'll generate from currencies
@@ -620,6 +622,7 @@ export default function OrdersPage() {
       if (exportQueryParams.buyAccountId !== undefined) queryString.append("buyAccountId", exportQueryParams.buyAccountId.toString());
       if (exportQueryParams.sellAccountId !== undefined) queryString.append("sellAccountId", exportQueryParams.sellAccountId.toString());
       if (exportQueryParams.status) queryString.append("status", exportQueryParams.status);
+      if (exportQueryParams.orderType) queryString.append("orderType", exportQueryParams.orderType);
       if (exportQueryParams.tagIds) queryString.append("tagIds", exportQueryParams.tagIds);
 
       const response = await fetch(`/api/orders/export${queryString.toString() ? `?${queryString.toString()}` : ""}`);
@@ -635,18 +638,20 @@ export default function OrdersPage() {
         "Handler": order.handlerName || "-",
         "Customer": order.customerName || "-",
         "Currency Pair": `${order.fromCurrency}/${order.toCurrency}`,
+        "Rate": order.rate,
         "Amount Buy": order.amountBuy,
         "From Currency": order.fromCurrency,
+        "Buy Account": order.buyAccountName || "-",
         "Amount Sell": order.amountSell,
         "To Currency": order.toCurrency,
-        "Rate": order.rate,
-        "Status": order.status,
-        "Buy Account": order.buyAccountName || "-",
         "Sell Account": order.sellAccountName || "-",
+        "Status": order.status,
+        "Order Type": order.orderType || "-",
         "Profit Amount": order.profitAmount || 0,
         "Profit Currency": order.profitCurrency || "-",
         "Service Charge Amount": order.serviceChargeAmount || 0,
         "Service Charge Currency": order.serviceChargeCurrency || "-",
+        "Tags": order.tags && order.tags.length > 0 ? order.tags.map((tag) => tag.name).join(", ") : "-",
       }));
 
       // Create workbook
@@ -681,22 +686,32 @@ export default function OrdersPage() {
     // Create template data with example rows
     const templateData = [
       {
+        "Order ID": "EXT-1001",
         "Customer": "Example Customer",
         "Handler": "John Doe",
         "Currency Pair": "USD/HKD",
         "Amount Buy": 1000,
+        "Buy Account": "Main USD",
         "Amount Sell": 7800,
+        "Sell Account": "Main HKD",
         "Rate": 7.8,
-        "Status": "pending"
+        "Status": "completed",
+        "Order Type": "online",
+        "Tags": "Priority, VIP"
       },
       {
+        "Order ID": "EXT-1002",
         "Customer": "Another Customer",
-        "Handler": "",
+        "Handler": "Jane Smith",
         "Currency Pair": "USDT/USD",
         "Amount Buy": 500,
+        "Buy Account": "USDT Wallet",
         "Amount Sell": 500,
+        "Sell Account": "USD Wallet",
         "Rate": 1.0,
-        "Status": "completed"
+        "Status": "completed",
+        "Order Type": "otc",
+        "Tags": ""
       }
     ];
 
@@ -745,9 +760,22 @@ export default function OrdersPage() {
         return;
       }
 
-      // Get customers and users for mapping
+      // Get customers, users, currencies, accounts, and tags for mapping/validation
       const customerMap = new Map(customers.map((c) => [c.name.toLowerCase(), c.id]));
       const userMap = new Map(users.map((u) => [u.name.toLowerCase(), u.id]));
+      const activeCurrencyCodes = new Set(currencies.filter((c) => c.active).map((c) => c.code.toUpperCase()));
+      const currencyPairSet = new Set(currencyPairs.map((p) => p.toUpperCase()));
+      const tagNameToId = new Map(tags.map((t) => [t.name.toLowerCase(), t.id]));
+      const accountNameToAccount = new Map(accounts.map((a) => [a.name.toLowerCase(), a]));
+
+      // Fetch existing orders to prevent importing duplicates by Order ID
+      const existingOrdersResponse = await fetch("/api/orders/export");
+      if (!existingOrdersResponse.ok) {
+        throw new Error("Could not load existing orders to validate Order IDs");
+      }
+      const existingOrders: Order[] = await existingOrdersResponse.json();
+      const existingOrderIds = new Set(existingOrders.map((o) => String(o.id).toLowerCase()));
+      const seenOrderIds = new Set<string>();
 
       let successCount = 0;
       let errorCount = 0;
@@ -756,25 +784,68 @@ export default function OrdersPage() {
       // Process each order
       for (let i = 0; i < ordersData.length; i++) {
         const row = ordersData[i];
+        const rowNumber = i + 2;
         try {
-          // Find customer by name
-          const customerName = String(row["Customer"] || "").trim();
-          const customerId = customerMap.get(customerName.toLowerCase());
-          if (!customerId) {
-            errors.push(`Row ${i + 2}: Customer "${customerName}" not found`);
+          // Validate Order ID uniqueness
+          const orderIdRaw = String(row["Order ID"] || row["Order Id"] || row["orderId"] || "").trim();
+          if (!orderIdRaw) {
+            errors.push(`Row ${rowNumber}: Order ID is required`);
+            errorCount++;
+            continue;
+          }
+          const normalizedOrderId = orderIdRaw.toLowerCase();
+          if (existingOrderIds.has(normalizedOrderId)) {
+            errors.push(`Row ${rowNumber}: Order ID "${orderIdRaw}" already exists`);
+            errorCount++;
+            continue;
+          }
+          if (seenOrderIds.has(normalizedOrderId)) {
+            errors.push(`Row ${rowNumber}: Order ID "${orderIdRaw}" is duplicated in the file`);
             errorCount++;
             continue;
           }
 
-          // Find handler by name (optional)
-          const handlerName = String(row["Handler"] || "").trim();
-          const handlerId = handlerName ? userMap.get(handlerName.toLowerCase()) : null;
+          // Find customer by name
+          const customerName = String(row["Customer"] || row["customer"] || "").trim();
+          const customerId = customerMap.get(customerName.toLowerCase());
+          if (!customerId) {
+            errors.push(`Row ${rowNumber}: Customer "${customerName || "?"}" not found`);
+            errorCount++;
+            continue;
+          }
+
+          // Find handler by name (required)
+          const handlerName = String(row["Handler"] || row["handler"] || "").trim();
+          if (!handlerName) {
+            errors.push(`Row ${rowNumber}: Handler is required`);
+            errorCount++;
+            continue;
+          }
+          const handlerId = userMap.get(handlerName.toLowerCase());
+          if (!handlerId) {
+            errors.push(`Row ${rowNumber}: Handler "${handlerName}" not found`);
+            errorCount++;
+            continue;
+          }
 
           // Parse currency pair
-          const currencyPair = String(row["Currency Pair"] || "").trim();
-          const [fromCurrency, toCurrency] = currencyPair.split("/").map((c) => c.trim());
+          const currencyPair = String(row["Currency Pair"] || row["currencyPair"] || "").trim();
+          const [fromCurrencyRaw, toCurrencyRaw] = currencyPair.split("/").map((c) => c.trim());
+          const fromCurrency = fromCurrencyRaw?.toUpperCase() || "";
+          const toCurrency = toCurrencyRaw?.toUpperCase() || "";
           if (!fromCurrency || !toCurrency) {
-            errors.push(`Row ${i + 2}: Invalid currency pair "${currencyPair}"`);
+            errors.push(`Row ${rowNumber}: Invalid currency pair "${currencyPair}"`);
+            errorCount++;
+            continue;
+          }
+          if (!activeCurrencyCodes.has(fromCurrency) || !activeCurrencyCodes.has(toCurrency)) {
+            errors.push(`Row ${rowNumber}: Currency pair uses unknown currencies (${fromCurrency}/${toCurrency})`);
+            errorCount++;
+            continue;
+          }
+          const normalizedPair = `${fromCurrency}/${toCurrency}`;
+          if (!currencyPairSet.has(normalizedPair)) {
+            errors.push(`Row ${rowNumber}: Currency pair "${normalizedPair}" is not allowed`);
             errorCount++;
             continue;
           }
@@ -785,37 +856,119 @@ export default function OrdersPage() {
           const rate = parseFloat(row["Rate"] || row["rate"] || "0");
 
           if (!amountBuy || !amountSell || !rate) {
-            errors.push(`Row ${i + 2}: Missing required fields (Amount Buy, Amount Sell, or Rate)`);
+            errors.push(`Row ${rowNumber}: Missing required fields (Amount Buy, Amount Sell, or Rate)`);
+            errorCount++;
+            continue;
+          }
+
+          // Parse required accounts
+          const buyAccountName = String(row["Buy Account"] || row["buyAccount"] || "").trim();
+          if (!buyAccountName) {
+            errors.push(`Row ${rowNumber}: Buy Account is required`);
+            errorCount++;
+            continue;
+          }
+          const buyAccount = accountNameToAccount.get(buyAccountName.toLowerCase());
+          if (!buyAccount) {
+            errors.push(`Row ${rowNumber}: Buy Account "${buyAccountName}" not found`);
+            errorCount++;
+            continue;
+          }
+          if ((buyAccount.currencyCode || "").toUpperCase() !== fromCurrency) {
+            errors.push(
+              `Row ${rowNumber}: Buy Account "${buyAccountName}" currency (${buyAccount.currencyCode}) does not match fromCurrency (${fromCurrency})`
+            );
+            errorCount++;
+            continue;
+          }
+
+          const sellAccountName = String(row["Sell Account"] || row["sellAccount"] || "").trim();
+          if (!sellAccountName) {
+            errors.push(`Row ${rowNumber}: Sell Account is required`);
+            errorCount++;
+            continue;
+          }
+          const sellAccount = accountNameToAccount.get(sellAccountName.toLowerCase());
+          if (!sellAccount) {
+            errors.push(`Row ${rowNumber}: Sell Account "${sellAccountName}" not found`);
+            errorCount++;
+            continue;
+          }
+          if ((sellAccount.currencyCode || "").toUpperCase() !== toCurrency) {
+            errors.push(
+              `Row ${rowNumber}: Sell Account "${sellAccountName}" currency (${sellAccount.currencyCode}) does not match toCurrency (${toCurrency})`
+            );
             errorCount++;
             continue;
           }
 
           // Parse status
-          const statusStr = String(row["Status"] || row["status"] || "pending").trim().toLowerCase();
-          const statusMap: Record<string, OrderStatus> = {
-            "pending": "pending",
-            "under_process": "under_process",
-            "completed": "completed",
-            "cancelled": "cancelled",
-          };
-          const status = statusMap[statusStr] || "pending";
+          const statusStr = String(row["Status"] || row["status"] || "").trim().toLowerCase();
+          if (statusStr !== "completed") {
+            errors.push(`Row ${rowNumber}: Status must be "completed"`);
+            errorCount++;
+            continue;
+          }
+          const status: OrderStatus = "completed";
+
+          // Parse order type
+          const orderTypeStr = String(row["Order Type"] || row["OrderType"] || row["orderType"] || "").trim().toLowerCase();
+          if (orderTypeStr !== "online" && orderTypeStr !== "otc") {
+            errors.push(`Row ${rowNumber}: Order Type must be "online" or "otc"`);
+            errorCount++;
+            continue;
+          }
+          const orderType = orderTypeStr as "online" | "otc";
+
+          // Parse tags (optional) and validate existence
+          const rawTags = row["Tags"] ?? row["tags"];
+          const tagIds: number[] = [];
+          if (rawTags !== undefined && rawTags !== null && String(rawTags).trim() !== "") {
+            const tagNames = String(rawTags)
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean);
+
+            let tagValidationFailed = false;
+            for (const tagName of tagNames) {
+              const tagId = tagNameToId.get(tagName.toLowerCase());
+              if (!tagId) {
+                errors.push(`Row ${rowNumber}: Tag "${tagName}" does not exist`);
+                errorCount++;
+                tagValidationFailed = true;
+                break;
+              }
+              if (!tagIds.includes(tagId)) {
+                tagIds.push(tagId);
+              }
+            }
+
+            if (tagValidationFailed) {
+              continue;
+            }
+          }
 
           // Create order
           const orderData = {
             customerId,
-            handlerId: handlerId || undefined,
+            handlerId,
             fromCurrency,
             toCurrency,
             amountBuy,
             amountSell,
             rate,
-            status: status as OrderStatus,
+            status,
+            orderType,
+            buyAccountId: buyAccount.id,
+            sellAccountId: sellAccount.id,
+            tagIds,
           };
 
-          await addOrder(orderData);
+          await addOrder(orderData).unwrap();
+          seenOrderIds.add(normalizedOrderId);
           successCount++;
         } catch (error: any) {
-          errors.push(`Row ${i + 2}: ${error.message || "Unknown error"}`);
+          errors.push(`Row ${rowNumber}: ${error.message || "Unknown error"}`);
           errorCount++;
         }
       }
@@ -850,7 +1003,7 @@ export default function OrdersPage() {
     } finally {
       setIsImporting(false);
     }
-  }, [t]);
+  }, [customers, users, currencies, currencyPairs, accounts, tags, addOrder, t]);
 
   // Helper function to prevent number input from changing value on scroll
   const handleNumberInputWheel = useCallback((e: React.WheelEvent<HTMLInputElement>) => {
@@ -909,11 +1062,9 @@ export default function OrdersPage() {
     }
   };
 
-  const [addOrder, { isLoading: isSaving }] = useAddOrderMutation();
   const [updateOrder] = useUpdateOrderMutation();
   const [updateOrderStatus] = useUpdateOrderStatusMutation();
   const [deleteOrder, { isLoading: isDeleting }] = useDeleteOrderMutation();
-  const { data: tags = [] } = useGetTagsQuery();
   const [batchAssignTags, { isLoading: isTagging }] = useBatchAssignTagsMutation();
   const [batchUnassignTags, { isLoading: isUntagging }] = useBatchUnassignTagsMutation();
   const [addCustomer, { isLoading: isCreatingCustomer }] = useAddCustomerMutation();
@@ -1759,6 +1910,23 @@ export default function OrdersPage() {
   const handleOtcOrderSave = async (event: FormEvent) => {
     event.preventDefault();
     if (!otcForm.customerId || !otcForm.fromCurrency || !otcForm.toCurrency) return;
+    const handlerId = Number(otcForm.handlerId);
+    if (!otcForm.handlerId || Number.isNaN(handlerId)) {
+      alert("Handler is required");
+      return;
+    }
+    const buyAccountId =
+      otcReceipts.find((r) => r.accountId)?.accountId
+        ? Number(otcReceipts.find((r) => r.accountId)!.accountId)
+        : accounts.find((a) => a.currencyCode === otcForm.fromCurrency)?.id;
+    const sellAccountId =
+      otcPayments.find((p) => p.accountId)?.accountId
+        ? Number(otcPayments.find((p) => p.accountId)!.accountId)
+        : accounts.find((a) => a.currencyCode === otcForm.toCurrency)?.id;
+    if (!buyAccountId || !sellAccountId) {
+      alert("Please select accounts for both From and To currencies before saving.");
+      return;
+    }
 
     try {
       let orderId: number;
@@ -1774,6 +1942,9 @@ export default function OrdersPage() {
             amountBuy: Number(otcForm.amountBuy || 0),
             amountSell: Number(otcForm.amountSell || 0),
             rate: Number(otcForm.rate || 1),
+            handlerId,
+            buyAccountId,
+            sellAccountId,
           },
         }).unwrap();
         orderId = otcEditingOrderId;
@@ -1788,18 +1959,11 @@ export default function OrdersPage() {
           rate: Number(otcForm.rate || 1),
           status: "pending",
           orderType: "otc",
+          handlerId,
+          buyAccountId,
+          sellAccountId,
         }).unwrap();
         orderId = newOrder.id;
-      }
-
-      // Assign handler if selected (use updateOrder to keep status as pending)
-      if (otcForm.handlerId) {
-        await updateOrder({
-          id: orderId,
-          data: {
-            handlerId: Number(otcForm.handlerId),
-          },
-        }).unwrap();
       }
 
       // Delete existing receipts and payments when editing, then recreate from form
@@ -1885,8 +2049,22 @@ export default function OrdersPage() {
     if (!otcForm.customerId || !otcForm.fromCurrency || !otcForm.toCurrency) return;
 
     // Validate handler is assigned
-    if (!otcForm.handlerId) {
+    const handlerId = Number(otcForm.handlerId);
+    if (!otcForm.handlerId || Number.isNaN(handlerId)) {
       alert("Handler must be assigned before completing the order");
+      return;
+    }
+
+    const buyAccountId =
+      otcReceipts.find((r) => r.accountId)?.accountId
+        ? Number(otcReceipts.find((r) => r.accountId)!.accountId)
+        : accounts.find((a) => a.currencyCode === otcForm.fromCurrency)?.id;
+    const sellAccountId =
+      otcPayments.find((p) => p.accountId)?.accountId
+        ? Number(otcPayments.find((p) => p.accountId)!.accountId)
+        : accounts.find((a) => a.currencyCode === otcForm.toCurrency)?.id;
+    if (!buyAccountId || !sellAccountId) {
+      alert("Please select accounts for both From and To currencies before completing.");
       return;
     }
 
@@ -1938,6 +2116,9 @@ export default function OrdersPage() {
             amountBuy: Number(otcForm.amountBuy || 0),
             amountSell: Number(otcForm.amountSell || 0),
             rate: Number(otcForm.rate || 1),
+            handlerId,
+            buyAccountId,
+            sellAccountId,
           },
         }).unwrap();
         orderId = otcEditingOrderId;
@@ -1952,6 +2133,9 @@ export default function OrdersPage() {
           rate: Number(otcForm.rate || 1),
           status: "pending",
           orderType: "otc",
+          handlerId,
+          buyAccountId,
+          sellAccountId,
         }).unwrap();
         orderId = newOrder.id;
       }
@@ -3074,7 +3258,11 @@ export default function OrdersPage() {
       case "buyAccount": {
         const buyAccounts = order.buyAccounts || [];
         const firstAccount = buyAccounts.length > 0 ? buyAccounts[0] : null;
-        const accountName = firstAccount?.accountName || "-";
+        const fallbackAccountName =
+          order.buyAccountName ||
+          (order.buyAccountId ? accounts.find((acc) => acc.id === order.buyAccountId)?.name : null) ||
+          null;
+        const accountName = firstAccount?.accountName || fallbackAccountName || "-";
         
         // Check if profit or service charge should appear in buy account tooltip
         // Buy account is for fromCurrency, so check if profit/service charge currency matches fromCurrency
@@ -3148,7 +3336,11 @@ export default function OrdersPage() {
       case "sellAccount": {
         const sellAccounts = order.sellAccounts || [];
         const firstAccount = sellAccounts.length > 0 ? sellAccounts[0] : null;
-        const accountName = firstAccount?.accountName || "-";
+        const fallbackAccountName =
+          order.sellAccountName ||
+          (order.sellAccountId ? accounts.find((acc) => acc.id === order.sellAccountId)?.name : null) ||
+          null;
+        const accountName = firstAccount?.accountName || fallbackAccountName || "-";
         
         // Check if profit or service charge should appear in sell account tooltip
         // Sell account is for toCurrency, so check if profit/service charge currency matches toCurrency
@@ -8238,7 +8430,7 @@ export default function OrdersPage() {
             </div>
             <div className="mb-4">
               <p className="text-sm text-slate-600 mb-4">
-                {t("orders.importDescription") || "Select an Excel file (.xlsx) to import orders. The file should contain an 'Orders' sheet with columns: Customer, Handler (optional), Currency Pair, Amount Buy, Amount Sell, Rate, Status."}
+                {t("orders.importDescription") || "Select an Excel file (.xlsx) to import orders. The 'Orders' sheet must include: Order ID, Customer, Handler, Currency Pair, Amount Buy, Buy Account, Amount Sell, Sell Account, Rate, Status (completed), Order Type (online/otc), Tags (optional)."}
               </p>
               <div className="flex items-center gap-3">
                 <label className="flex-1">
