@@ -695,6 +695,12 @@ export default function OrdersPage() {
         "Amount Sell": 7800,
         "Sell Account": "Main HKD",
         "Rate": 7.8,
+        "Profit Amount": 50,
+        "Profit Currency": "USD",
+        "Profit Account": "Main USD",
+        "Service Charges Amount": -10,
+        "Service Charges Currency": "HKD",
+        "Service Charges Account": "Main HKD",
         "Status": "completed",
         "Order Type": "online",
         "Tags": "Priority, VIP"
@@ -709,6 +715,12 @@ export default function OrdersPage() {
         "Amount Sell": 500,
         "Sell Account": "USD Wallet",
         "Rate": 1.0,
+        "Profit Amount": "",
+        "Profit Currency": "",
+        "Profit Account": "",
+        "Service Charges Amount": "",
+        "Service Charges Currency": "",
+        "Service Charges Account": "",
         "Status": "completed",
         "Order Type": "otc",
         "Tags": ""
@@ -902,6 +914,87 @@ export default function OrdersPage() {
             continue;
           }
 
+          // Parse optional profit
+          const profitAmountRaw = row["Profit Amount"] ?? row["profitAmount"];
+          const profitAmount =
+            profitAmountRaw === undefined || profitAmountRaw === null || String(profitAmountRaw).trim() === ""
+              ? null
+              : parseFloat(profitAmountRaw);
+          const profitCurrencyRaw = String(row["Profit Currency"] || row["profitCurrency"] || "").trim();
+          const profitCurrency = profitCurrencyRaw ? profitCurrencyRaw.toUpperCase() : "";
+          const profitAccountName = String(row["Profit Account"] || row["profitAccount"] || "").trim();
+          if (profitAmount !== null && Number.isNaN(profitAmount)) {
+            errors.push(`Row ${rowNumber}: Profit Amount is invalid`);
+            errorCount++;
+            continue;
+          }
+          if (
+            (profitAmount !== null && (!profitAccountName || !profitCurrency)) ||
+            (profitAmount === null && (profitAccountName || profitCurrency))
+          ) {
+            errors.push(`Row ${rowNumber}: Profit amount, currency, and account must all be provided or all be empty`);
+            errorCount++;
+            continue;
+          }
+          const profitAccount =
+            profitAmount !== null || profitAccountName ? accountNameToAccount.get(profitAccountName.toLowerCase()) : null;
+          if (profitAccountName && !profitAccount) {
+            errors.push(`Row ${rowNumber}: Profit Account "${profitAccountName}" not found`);
+            errorCount++;
+            continue;
+          }
+          if (profitAccount && profitCurrency && (profitAccount.currencyCode || "").toUpperCase() !== profitCurrency) {
+            errors.push(
+              `Row ${rowNumber}: Profit Account "${profitAccountName}" currency (${profitAccount.currencyCode}) must match profit currency (${profitCurrency})`
+            );
+            errorCount++;
+            continue;
+          }
+
+          // Parse optional service charges
+          const serviceChargeAmountRaw = row["Service Charges Amount"] ?? row["Service Charge Amount"] ?? row["serviceChargeAmount"];
+          const serviceChargeAmount =
+            serviceChargeAmountRaw === undefined ||
+            serviceChargeAmountRaw === null ||
+            String(serviceChargeAmountRaw).trim() === ""
+              ? null
+              : parseFloat(serviceChargeAmountRaw);
+          const serviceChargeCurrencyRaw = String(
+            row["Service Charges Currency"] || row["Service Charge Currency"] || row["serviceChargeCurrency"] || ""
+          ).trim();
+          const serviceChargeCurrency = serviceChargeCurrencyRaw ? serviceChargeCurrencyRaw.toUpperCase() : "";
+          const serviceChargeAccountName = String(
+            row["Service Charges Account"] || row["Service Charge Account"] || row["serviceChargeAccount"] || ""
+          ).trim();
+          if (serviceChargeAmount !== null && Number.isNaN(serviceChargeAmount)) {
+            errors.push(`Row ${rowNumber}: Service Charges Amount is invalid`);
+            errorCount++;
+            continue;
+          }
+          if ((serviceChargeAmount !== null && !serviceChargeAccountName) || (serviceChargeAmount === null && serviceChargeAccountName)) {
+            errors.push(
+              `Row ${rowNumber}: Service charges amount, currency, and account must all be provided or all be empty`
+            );
+            errorCount++;
+            continue;
+          }
+          const serviceChargeAccount =
+            serviceChargeAmount !== null || serviceChargeAccountName
+              ? accountNameToAccount.get(serviceChargeAccountName.toLowerCase())
+              : null;
+          if (serviceChargeAccountName && !serviceChargeAccount) {
+            errors.push(`Row ${rowNumber}: Service Charges Account "${serviceChargeAccountName}" not found`);
+            errorCount++;
+            continue;
+          }
+          if (serviceChargeAccount && serviceChargeCurrency && (serviceChargeAccount.currencyCode || "").toUpperCase() !== serviceChargeCurrency) {
+            errors.push(
+              `Row ${rowNumber}: Service Charges Account "${serviceChargeAccountName}" currency (${serviceChargeAccount.currencyCode}) must match service charges currency (${serviceChargeCurrency})`
+            );
+            errorCount++;
+            continue;
+          }
+
           // Parse status
           const statusStr = String(row["Status"] || row["status"] || "").trim().toLowerCase();
           if (statusStr !== "completed") {
@@ -962,6 +1055,20 @@ export default function OrdersPage() {
             buyAccountId: buyAccount.id,
             sellAccountId: sellAccount.id,
             tagIds,
+            ...(profitAmount !== null && profitAccount
+              ? {
+                  profitAmount,
+                  profitCurrency: profitCurrency || profitAccount.currencyCode,
+                  profitAccountId: profitAccount.id,
+                }
+              : {}),
+            ...(serviceChargeAmount !== null && serviceChargeAccount
+              ? {
+                  serviceChargeAmount,
+                  serviceChargeCurrency: serviceChargeCurrency || serviceChargeAccount.currencyCode,
+                  serviceChargeAccountId: serviceChargeAccount.id,
+                }
+              : {}),
           };
 
           await addOrder(orderData).unwrap();
@@ -8430,7 +8537,8 @@ export default function OrdersPage() {
             </div>
             <div className="mb-4">
               <p className="text-sm text-slate-600 mb-4">
-                {t("orders.importDescription") || "Select an Excel file (.xlsx) to import orders. The 'Orders' sheet must include: Order ID, Customer, Handler, Currency Pair, Amount Buy, Buy Account, Amount Sell, Sell Account, Rate, Status (completed), Order Type (online/otc), Tags (optional)."}
+                {t("orders.importDescription") ||
+                  "Select an Excel file (.xlsx) to import orders. The 'Orders' sheet must include: Order ID, Customer, Handler, Currency Pair, Amount Buy, Buy Account, Amount Sell, Sell Account, Rate, Status (completed), Order Type (online/otc). Optional: Tags, Profit Amount, Profit Currency, Profit Account, Service Charges Amount, Service Charges Currency, Service Charges Account."}
               </p>
               <div className="flex items-center gap-3">
                 <label className="flex-1">

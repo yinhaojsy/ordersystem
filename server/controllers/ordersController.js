@@ -512,18 +512,124 @@ export const createOrder = (req, res, next) => {
   try {
     const payload = req.body || {};
     const { tagIds, ...orderData } = payload;
+
+    // Validate handler (required for imported orders)
+    if (orderData.handlerId === undefined || orderData.handlerId === null) {
+      return res.status(400).json({ message: "Handler is required" });
+    }
+    const handler = db.prepare("SELECT id, name FROM users WHERE id = ?").get(orderData.handlerId);
+    if (!handler) {
+      return res.status(400).json({ message: "Handler not found" });
+    }
+
+    // Validate required buy/sell accounts
+    if (orderData.buyAccountId === undefined || orderData.buyAccountId === null) {
+      return res.status(400).json({ message: "Buy account is required" });
+    }
+    if (orderData.sellAccountId === undefined || orderData.sellAccountId === null) {
+      return res.status(400).json({ message: "Sell account is required" });
+    }
+
+    const buyAccount = db.prepare("SELECT id, name, currencyCode FROM accounts WHERE id = ?").get(orderData.buyAccountId);
+    if (!buyAccount) {
+      return res.status(400).json({ message: "Buy account not found" });
+    }
+    if ((buyAccount.currencyCode || "").toUpperCase() !== (orderData.fromCurrency || "").toUpperCase()) {
+      return res.status(400).json({ message: "Buy account currency does not match fromCurrency" });
+    }
+    const sellAccount = db.prepare("SELECT id, name, currencyCode FROM accounts WHERE id = ?").get(orderData.sellAccountId);
+    if (!sellAccount) {
+      return res.status(400).json({ message: "Sell account not found" });
+    }
+    // Validate profit account/currency if provided
+    if (orderData.profitAmount !== undefined && orderData.profitAmount !== null) {
+      if (!orderData.profitAccountId || !orderData.profitCurrency) {
+        return res.status(400).json({ message: "Profit amount requires profit account and profit currency" });
+      }
+      const profitAccount = db.prepare("SELECT id, currencyCode FROM accounts WHERE id = ?").get(orderData.profitAccountId);
+      if (!profitAccount) {
+        return res.status(400).json({ message: "Profit account not found" });
+      }
+      if ((profitAccount.currencyCode || "").toUpperCase() !== String(orderData.profitCurrency || "").toUpperCase()) {
+        return res.status(400).json({ message: "Profit account currency does not match profit currency" });
+      }
+    }
+
+    // Validate service charge account/currency if provided
+    if (orderData.serviceChargeAmount !== undefined && orderData.serviceChargeAmount !== null) {
+      if (!orderData.serviceChargeAccountId || !orderData.serviceChargeCurrency) {
+        return res.status(400).json({ message: "Service charge amount requires service charge account and currency" });
+      }
+      const scAccount = db.prepare("SELECT id, currencyCode FROM accounts WHERE id = ?").get(orderData.serviceChargeAccountId);
+      if (!scAccount) {
+        return res.status(400).json({ message: "Service charge account not found" });
+      }
+      if ((scAccount.currencyCode || "").toUpperCase() !== String(orderData.serviceChargeCurrency || "").toUpperCase()) {
+        return res.status(400).json({ message: "Service charge account currency does not match service charge currency" });
+      }
+    }
+
+    if ((sellAccount.currencyCode || "").toUpperCase() !== (orderData.toCurrency || "").toUpperCase()) {
+      return res.status(400).json({ message: "Sell account currency does not match toCurrency" });
+    }
     
     const stmt = db.prepare(
-      `INSERT INTO orders (customerId, fromCurrency, toCurrency, amountBuy, amountSell, rate, status, buyAccountId, sellAccountId, isFlexOrder, orderType, createdAt)
-       VALUES (@customerId, @fromCurrency, @toCurrency, @amountBuy, @amountSell, @rate, @status, @buyAccountId, @sellAccountId, @isFlexOrder, @orderType, @createdAt);`,
+      `INSERT INTO orders (
+         customerId,
+         fromCurrency,
+         toCurrency,
+         amountBuy,
+         amountSell,
+         rate,
+         status,
+         handlerId,
+         buyAccountId,
+         sellAccountId,
+         isFlexOrder,
+         orderType,
+         profitAmount,
+         profitCurrency,
+         profitAccountId,
+         serviceChargeAmount,
+         serviceChargeCurrency,
+         serviceChargeAccountId,
+         createdAt
+       ) VALUES (
+         @customerId,
+         @fromCurrency,
+         @toCurrency,
+         @amountBuy,
+         @amountSell,
+         @rate,
+         @status,
+         @handlerId,
+         @buyAccountId,
+         @sellAccountId,
+         @isFlexOrder,
+         @orderType,
+         @profitAmount,
+         @profitCurrency,
+         @profitAccountId,
+         @serviceChargeAmount,
+         @serviceChargeCurrency,
+         @serviceChargeAccountId,
+         @createdAt
+       );`,
     );
     const result = stmt.run({
       ...orderData,
       status: orderData.status || "pending",
+      handlerId: orderData.handlerId ?? null,
       buyAccountId: orderData.buyAccountId || null,
       sellAccountId: orderData.sellAccountId || null,
       isFlexOrder: orderData.isFlexOrder ? 1 : 0,
       orderType: orderData.orderType || "online",
+      profitAmount: orderData.profitAmount ?? null,
+      profitCurrency: orderData.profitCurrency ?? null,
+      profitAccountId: orderData.profitAccountId ?? null,
+      serviceChargeAmount: orderData.serviceChargeAmount ?? null,
+      serviceChargeCurrency: orderData.serviceChargeCurrency ?? null,
+      serviceChargeAccountId: orderData.serviceChargeAccountId ?? null,
       createdAt: new Date().toISOString(),
     });
     
@@ -550,8 +656,16 @@ export const createOrder = (req, res, next) => {
     
     const row = db
       .prepare(
-        `SELECT o.*, c.name as customerName FROM orders o
+        `SELECT o.*, 
+                c.name as customerName, 
+                u.name as handlerName,
+                buyAcc.name as buyAccountName,
+                sellAcc.name as sellAccountName
+         FROM orders o
          LEFT JOIN customers c ON c.id = o.customerId
+         LEFT JOIN users u ON u.id = o.handlerId
+         LEFT JOIN accounts buyAcc ON buyAcc.id = o.buyAccountId
+         LEFT JOIN accounts sellAcc ON sellAcc.id = o.sellAccountId
          WHERE o.id = ?;`,
       )
       .get(orderId);
