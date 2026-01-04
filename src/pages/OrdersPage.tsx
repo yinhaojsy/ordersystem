@@ -2022,18 +2022,14 @@ export default function OrdersPage() {
       alert("Handler is required");
       return;
     }
-    const buyAccountId =
-      otcReceipts.find((r) => r.accountId)?.accountId
-        ? Number(otcReceipts.find((r) => r.accountId)!.accountId)
-        : accounts.find((a) => a.currencyCode === otcForm.fromCurrency)?.id;
-    const sellAccountId =
-      otcPayments.find((p) => p.accountId)?.accountId
-        ? Number(otcPayments.find((p) => p.accountId)!.accountId)
-        : accounts.find((a) => a.currencyCode === otcForm.toCurrency)?.id;
-    if (!buyAccountId || !sellAccountId) {
-      alert("Please select accounts for both From and To currencies before saving.");
-      return;
-    }
+    const buyAccountId = otcReceipts.find((r) => r.accountId)?.accountId
+      ? Number(otcReceipts.find((r) => r.accountId)!.accountId)
+      : null;
+    const sellAccountId = otcPayments.find((p) => p.accountId)?.accountId
+      ? Number(otcPayments.find((p) => p.accountId)!.accountId)
+      : null;
+    const buyAccountIdValue: number | undefined = buyAccountId === null ? undefined : buyAccountId;
+    const sellAccountIdValue: number | undefined = sellAccountId === null ? undefined : sellAccountId;
 
     try {
       let orderId: number;
@@ -2050,8 +2046,8 @@ export default function OrdersPage() {
             amountSell: Number(otcForm.amountSell || 0),
             rate: Number(otcForm.rate || 1),
             handlerId,
-            buyAccountId,
-            sellAccountId,
+            buyAccountId: buyAccountIdValue,
+            sellAccountId: sellAccountIdValue,
           },
         }).unwrap();
         orderId = otcEditingOrderId;
@@ -2067,8 +2063,8 @@ export default function OrdersPage() {
           status: "pending",
           orderType: "otc",
           handlerId,
-          buyAccountId,
-          sellAccountId,
+          buyAccountId: buyAccountIdValue,
+          sellAccountId: sellAccountIdValue,
         }).unwrap();
         orderId = newOrder.id;
       }
@@ -2170,6 +2166,8 @@ export default function OrdersPage() {
       otcPayments.find((p) => p.accountId)?.accountId
         ? Number(otcPayments.find((p) => p.accountId)!.accountId)
         : accounts.find((a) => a.currencyCode === otcForm.toCurrency)?.id;
+    const buyAccountIdValue = buyAccountId ?? undefined;
+    const sellAccountIdValue = sellAccountId ?? undefined;
     if (!buyAccountId || !sellAccountId) {
       alert("Please select accounts for both From and To currencies before completing.");
       return;
@@ -2224,8 +2222,8 @@ export default function OrdersPage() {
             amountSell: Number(otcForm.amountSell || 0),
             rate: Number(otcForm.rate || 1),
             handlerId,
-            buyAccountId,
-            sellAccountId,
+            buyAccountId: buyAccountIdValue,
+            sellAccountId: sellAccountIdValue,
           },
         }).unwrap();
         orderId = otcEditingOrderId;
@@ -2241,8 +2239,8 @@ export default function OrdersPage() {
           status: "pending",
           orderType: "otc",
           handlerId,
-          buyAccountId,
-          sellAccountId,
+          buyAccountId: buyAccountIdValue,
+          sellAccountId: sellAccountIdValue,
         }).unwrap();
         orderId = newOrder.id;
       }
@@ -3363,12 +3361,24 @@ export default function OrdersPage() {
           </td>
         );
       case "buyAccount": {
-        const buyAccounts = order.buyAccounts || [];
-        const firstAccount = buyAccounts.length > 0 ? buyAccounts[0] : null;
         const fallbackAccountName =
           order.buyAccountName ||
           (order.buyAccountId ? accounts.find((acc) => acc.id === order.buyAccountId)?.name : null) ||
           null;
+
+        // Imported orders may not have receipt aggregates; fall back to the primary account/amount
+        const buyAccounts =
+          (order.buyAccounts && order.buyAccounts.length > 0)
+            ? order.buyAccounts
+            : order.buyAccountId
+              ? [{
+                  accountId: order.buyAccountId,
+                  accountName: fallbackAccountName || `Account #${order.buyAccountId}`,
+                  amount: order.actualAmountBuy ?? order.amountBuy ?? 0,
+                }]
+              : [];
+
+        const firstAccount = buyAccounts.length > 0 ? buyAccounts[0] : null;
         const accountName = firstAccount?.accountName || fallbackAccountName || "-";
         
         // Check if profit or service charge should appear in buy account tooltip
@@ -3441,12 +3451,24 @@ export default function OrdersPage() {
         );
       }
       case "sellAccount": {
-        const sellAccounts = order.sellAccounts || [];
-        const firstAccount = sellAccounts.length > 0 ? sellAccounts[0] : null;
         const fallbackAccountName =
           order.sellAccountName ||
           (order.sellAccountId ? accounts.find((acc) => acc.id === order.sellAccountId)?.name : null) ||
           null;
+
+        // Imported orders may not have payment aggregates; fall back to the primary account/amount
+        const sellAccounts =
+          (order.sellAccounts && order.sellAccounts.length > 0)
+            ? order.sellAccounts
+            : order.sellAccountId
+              ? [{
+                  accountId: order.sellAccountId,
+                  accountName: fallbackAccountName || `Account #${order.sellAccountId}`,
+                  amount: order.actualAmountSell ?? order.amountSell ?? 0,
+                }]
+              : [];
+
+        const firstAccount = sellAccounts.length > 0 ? sellAccounts[0] : null;
         const accountName = firstAccount?.accountName || fallbackAccountName || "-";
         
         // Check if profit or service charge should appear in sell account tooltip

@@ -522,24 +522,26 @@ export const createOrder = (req, res, next) => {
       return res.status(400).json({ message: "Handler not found" });
     }
 
-    // Validate required buy/sell accounts
-    if (orderData.buyAccountId === undefined || orderData.buyAccountId === null) {
-      return res.status(400).json({ message: "Buy account is required" });
+    // Validate buy/sell accounts only if provided (allow creating pending orders without accounts)
+    let buyAccount = null;
+    let sellAccount = null;
+    if (orderData.buyAccountId !== undefined && orderData.buyAccountId !== null) {
+      buyAccount = db.prepare("SELECT id, name, currencyCode FROM accounts WHERE id = ?").get(orderData.buyAccountId);
+      if (!buyAccount) {
+        return res.status(400).json({ message: "Buy account not found" });
+      }
+      if ((buyAccount.currencyCode || "").toUpperCase() !== (orderData.fromCurrency || "").toUpperCase()) {
+        return res.status(400).json({ message: "Buy account currency does not match fromCurrency" });
+      }
     }
-    if (orderData.sellAccountId === undefined || orderData.sellAccountId === null) {
-      return res.status(400).json({ message: "Sell account is required" });
-    }
-
-    const buyAccount = db.prepare("SELECT id, name, currencyCode FROM accounts WHERE id = ?").get(orderData.buyAccountId);
-    if (!buyAccount) {
-      return res.status(400).json({ message: "Buy account not found" });
-    }
-    if ((buyAccount.currencyCode || "").toUpperCase() !== (orderData.fromCurrency || "").toUpperCase()) {
-      return res.status(400).json({ message: "Buy account currency does not match fromCurrency" });
-    }
-    const sellAccount = db.prepare("SELECT id, name, currencyCode FROM accounts WHERE id = ?").get(orderData.sellAccountId);
-    if (!sellAccount) {
-      return res.status(400).json({ message: "Sell account not found" });
+    if (orderData.sellAccountId !== undefined && orderData.sellAccountId !== null) {
+      sellAccount = db.prepare("SELECT id, name, currencyCode FROM accounts WHERE id = ?").get(orderData.sellAccountId);
+      if (!sellAccount) {
+        return res.status(400).json({ message: "Sell account not found" });
+      }
+      if ((sellAccount.currencyCode || "").toUpperCase() !== (orderData.toCurrency || "").toUpperCase()) {
+        return res.status(400).json({ message: "Sell account currency does not match toCurrency" });
+      }
     }
     // Validate profit account/currency if provided
     if (orderData.profitAmount !== undefined && orderData.profitAmount !== null) {
@@ -569,7 +571,7 @@ export const createOrder = (req, res, next) => {
       }
     }
 
-    if ((sellAccount.currencyCode || "").toUpperCase() !== (orderData.toCurrency || "").toUpperCase()) {
+    if (sellAccount && (sellAccount.currencyCode || "").toUpperCase() !== (orderData.toCurrency || "").toUpperCase()) {
       return res.status(400).json({ message: "Sell account currency does not match toCurrency" });
     }
     
@@ -620,8 +622,8 @@ export const createOrder = (req, res, next) => {
       ...orderData,
       status: orderData.status || "pending",
       handlerId: orderData.handlerId ?? null,
-      buyAccountId: orderData.buyAccountId || null,
-      sellAccountId: orderData.sellAccountId || null,
+      buyAccountId: orderData.buyAccountId ?? null,
+      sellAccountId: orderData.sellAccountId ?? null,
       isFlexOrder: orderData.isFlexOrder ? 1 : 0,
       orderType: orderData.orderType || "online",
       profitAmount: orderData.profitAmount ?? null,
@@ -697,7 +699,7 @@ export const updateOrder = (req, res, next) => {
     const { tagIds, ...orderUpdates } = updates;
     
     // Check if order exists and get existing profit/service charge data
-    const existingOrder = db.prepare("SELECT id, status, fromCurrency, toCurrency, profitAmount, profitAccountId, profitCurrency, serviceChargeAmount, serviceChargeAccountId, serviceChargeCurrency FROM orders WHERE id = ?").get(id);
+    const existingOrder = db.prepare("SELECT id, status, fromCurrency, toCurrency, profitAmount, profitAccountId, profitCurrency, serviceChargeAmount, serviceChargeAccountId, serviceChargeCurrency, buyAccountId, sellAccountId FROM orders WHERE id = ?").get(id);
     if (!existingOrder) {
       return res.status(404).json({ message: "Order not found" });
     }
@@ -705,7 +707,17 @@ export const updateOrder = (req, res, next) => {
     // Fields that can only be updated when order is pending
     const pendingOnlyFields = ["customerId", "fromCurrency", "toCurrency", "amountBuy", "amountSell", "rate"];
     // Fields that can be updated at any time (service charges and profit)
-    const alwaysUpdatableFields = ["serviceChargeAmount", "serviceChargeCurrency", "serviceChargeAccountId", "profitAmount", "profitCurrency", "profitAccountId", "handlerId"];
+    const alwaysUpdatableFields = [
+      "serviceChargeAmount",
+      "serviceChargeCurrency",
+      "serviceChargeAccountId",
+      "profitAmount",
+      "profitCurrency",
+      "profitAccountId",
+      "handlerId",
+      "buyAccountId",
+      "sellAccountId",
+    ];
     
     // Separate updates into pending-only and always-updatable
     const pendingOnlyUpdates = {};
@@ -740,6 +752,26 @@ export const updateOrder = (req, res, next) => {
       const currency = alwaysUpdatableUpdates.profitCurrency;
       if (currency !== null && currency !== "" && currency !== existingOrder.fromCurrency && currency !== existingOrder.toCurrency) {
         return res.status(400).json({ message: "Profit currency must be either fromCurrency or toCurrency" });
+      }
+    }
+
+    // Validate buy/sell account currencies when updating
+    if (alwaysUpdatableUpdates.buyAccountId !== undefined && alwaysUpdatableUpdates.buyAccountId !== null) {
+      const buyAcc = db.prepare("SELECT id, currencyCode FROM accounts WHERE id = ?;").get(alwaysUpdatableUpdates.buyAccountId);
+      if (!buyAcc) {
+        return res.status(400).json({ message: "Buy account not found" });
+      }
+      if ((buyAcc.currencyCode || "").toUpperCase() !== (existingOrder.fromCurrency || "").toUpperCase()) {
+        return res.status(400).json({ message: "Buy account currency does not match fromCurrency" });
+      }
+    }
+    if (alwaysUpdatableUpdates.sellAccountId !== undefined && alwaysUpdatableUpdates.sellAccountId !== null) {
+      const sellAcc = db.prepare("SELECT id, currencyCode FROM accounts WHERE id = ?;").get(alwaysUpdatableUpdates.sellAccountId);
+      if (!sellAcc) {
+        return res.status(400).json({ message: "Sell account not found" });
+      }
+      if ((sellAcc.currencyCode || "").toUpperCase() !== (existingOrder.toCurrency || "").toUpperCase()) {
+        return res.status(400).json({ message: "Sell account currency does not match toCurrency" });
       }
     }
 
