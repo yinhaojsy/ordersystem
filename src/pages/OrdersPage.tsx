@@ -1,324 +1,31 @@
-import React, { useState, type FormEvent, useEffect, useRef, type ReactNode, useMemo, useCallback, memo } from "react";
+import React, { useState, type FormEvent, useEffect, useRef, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import * as XLSX from "xlsx";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
-
-// Component for account tooltip with overflow handling
-const AccountTooltip = memo(function AccountTooltip({ 
-  accounts, 
-  label, 
-  children,
-  profitAmount,
-  profitCurrency,
-  profitAccountName,
-  serviceChargeAmount,
-  serviceChargeCurrency,
-  serviceChargeAccountName,
-  isSellAccount = false
-}: { 
-  accounts: Array<{ accountId: number; accountName: string; amount: number }>; 
-  label: string;
-  children: ReactNode;
-  profitAmount?: number | null;
-  profitCurrency?: string | null;
-  profitAccountName?: string | null;
-  serviceChargeAmount?: number | null;
-  serviceChargeCurrency?: string | null;
-  serviceChargeAccountName?: string | null;
-  isSellAccount?: boolean;
-}) {
-  const { t } = useTranslation();
-  const [position, setPosition] = useState<'above' | 'below'>('below');
-  const containerRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const checkPosition = () => {
-      if (!containerRef.current || !tooltipRef.current) return;
-      
-      const containerElement = containerRef.current;
-      const tooltipElement = tooltipRef.current;
-      
-      // Use requestAnimationFrame to ensure tooltip is rendered
-      requestAnimationFrame(() => {
-        const containerRect = containerElement.getBoundingClientRect();
-        const tooltipHeight = tooltipElement.offsetHeight || 200; // Approximate height if not measured yet
-        const spaceBelow = window.innerHeight - containerRect.bottom;
-        const spaceAbove = containerRect.top;
-        
-        // Position above if there's not enough space below, or if there's more space above
-        const shouldPositionAbove = spaceBelow < tooltipHeight || spaceAbove > spaceBelow;
-        
-        setPosition(shouldPositionAbove ? 'above' : 'below');
-      });
-    };
-
-    const container = containerRef.current;
-    if (container) {
-      const handleMouseEnter = () => {
-        checkPosition();
-        // Double-check after a brief delay to ensure tooltip is fully rendered
-        setTimeout(checkPosition, 10);
-      };
-      
-      container.addEventListener('mouseenter', handleMouseEnter);
-      // Also check on scroll
-      window.addEventListener('scroll', checkPosition, true);
-      return () => {
-        container.removeEventListener('mouseenter', handleMouseEnter);
-        window.removeEventListener('scroll', checkPosition, true);
-      };
-    }
-  }, [accounts.length]);
-
-  return (
-    <div ref={containerRef} className="relative group">
-      {children}
-      <div
-        ref={tooltipRef}
-        className={`absolute left-0 z-50 hidden group-hover:block bg-white border border-slate-200 rounded-lg shadow-xl p-3 min-w-[220px] max-w-[300px] ${
-          position === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
-        }`}
-        style={{
-          maxHeight: `${Math.min(window.innerHeight - 40, 400)}px`,
-          overflowY: 'auto',
-          overflowX: 'visible'
-        }}
-      >
-        <div className="text-xs font-semibold text-slate-700 mb-2 pb-2 border-b border-slate-200">
-          {label} ({accounts.length})
-        </div>
-        <div className="space-y-2">
-          {accounts.map((acc, idx) => (
-            <div key={idx} className="text-xs text-slate-600 flex justify-between items-center gap-3">
-              <span className="truncate">{acc.accountName}</span>
-              <span className="font-medium text-slate-800 whitespace-nowrap">
-                {isSellAccount ? `-${acc.amount.toFixed(2)}` : acc.amount.toFixed(2)}
-              </span>
-            </div>
-          ))}
-          {profitAmount !== null && profitAmount !== undefined && profitAccountName && (
-            <div className="text-xs text-blue-700 flex justify-between items-center gap-3 pt-2 border-t border-slate-200">
-              <span className="truncate font-semibold">Profit ({profitAccountName})</span>
-              <span className="font-medium whitespace-nowrap">
-                {profitAmount > 0 ? "+" : ""}{profitAmount.toFixed(2)} {profitCurrency || ""}
-              </span>
-            </div>
-          )}
-          {serviceChargeAmount !== null && serviceChargeAmount !== undefined && serviceChargeAccountName && (
-            <div className="text-xs flex justify-between items-center gap-3 pt-2 border-t border-slate-200">
-              <span className={`truncate font-semibold ${serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"}`}>
-                Fees ({serviceChargeAccountName})
-              </span>
-              <span className={`font-medium whitespace-nowrap ${serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"}`}>
-                {serviceChargeAmount > 0 ? "+" : ""}{serviceChargeAmount.toFixed(2)} {serviceChargeCurrency || ""}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-});
-
-// Searchable Select Component
-const SearchableSelect = memo(function SearchableSelect<T extends { id: number; name: string }>({
-  value,
-  onChange,
-  options,
-  placeholder,
-  label,
-  allOptionLabel,
-}: {
-  value: number | null;
-  onChange: (value: number | null) => void;
-  options: T[];
-  placeholder: string;
-  label: string;
-  allOptionLabel: string;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Filter options based on search term
-  const filteredOptions = useMemo(() => {
-    if (!searchTerm.trim()) return options;
-    const term = searchTerm.toLowerCase();
-    return options.filter((option) => option.name.toLowerCase().includes(term));
-  }, [options, searchTerm]);
-
-  // Get all options including "All" option
-  const allOptions = useMemo(() => {
-    return [{ id: null, name: allOptionLabel } as unknown as T & { id: number | null }, ...filteredOptions];
-  }, [filteredOptions, allOptionLabel]);
-
-  // Get selected option name
-  const selectedOption = options.find((opt) => opt.id === value);
-  const displayValue = selectedOption ? selectedOption.name : "";
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setSearchTerm("");
-        setHighlightedIndex(-1);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Reset search and highlight when dropdown closes
-  useEffect(() => {
-    if (!isOpen) {
-      setSearchTerm("");
-      setHighlightedIndex(-1);
-    }
-  }, [isOpen]);
-
-  // Focus input when dropdown opens
-  useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isOpen]);
-
-  // Reset highlighted index when search term changes
-  useEffect(() => {
-    setHighlightedIndex(-1);
-  }, [searchTerm]);
-
-  // Scroll highlighted option into view
-  useEffect(() => {
-    if (isOpen && highlightedIndex >= 0 && dropdownRef.current) {
-      const optionElement = dropdownRef.current.children[highlightedIndex] as HTMLElement;
-      if (optionElement) {
-        optionElement.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-    }
-  }, [highlightedIndex, isOpen]);
-
-  const handleSelect = (optionId: number | null) => {
-    onChange(optionId);
-    setIsOpen(false);
-    setSearchTerm("");
-    setHighlightedIndex(-1);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!isOpen && (e.key === "ArrowDown" || e.key === "Enter")) {
-      setIsOpen(true);
-      return;
-    }
-
-    if (!isOpen) return;
-
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        setHighlightedIndex((prev) => {
-          const next = prev < allOptions.length - 1 ? prev + 1 : 0;
-          return next;
-        });
-        break;
-      case "ArrowUp":
-        e.preventDefault();
-        setHighlightedIndex((prev) => {
-          const next = prev > 0 ? prev - 1 : allOptions.length - 1;
-          return next;
-        });
-        break;
-      case "Enter":
-        e.preventDefault();
-        if (highlightedIndex >= 0 && highlightedIndex < allOptions.length) {
-          handleSelect(allOptions[highlightedIndex].id);
-        }
-        break;
-      case "Escape":
-        e.preventDefault();
-        setIsOpen(false);
-        setSearchTerm("");
-        setHighlightedIndex(-1);
-        break;
-    }
-  };
-
-  return (
-    <div ref={containerRef} className="relative">
-      <label className="block text-xs font-semibold text-slate-700 mb-1">
-        {label}
-      </label>
-      <div className="relative">
-        <input
-          ref={inputRef}
-          type="text"
-          value={isOpen ? searchTerm : displayValue}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            if (!isOpen) setIsOpen(true);
-          }}
-          onFocus={() => setIsOpen(true)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-        >
-          <svg
-            className={`w-5 h-5 transition-transform ${isOpen ? "rotate-180" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-      </div>
-      {isOpen && (
-        <div ref={dropdownRef} className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-          {allOptions.map((option, index) => (
-            <div
-              key={option.id ?? "all"}
-              onClick={() => handleSelect(option.id)}
-              onMouseEnter={() => setHighlightedIndex(index)}
-              className={`px-3 py-2 text-sm cursor-pointer ${
-                index === highlightedIndex
-                  ? "bg-blue-100 text-blue-900 font-medium"
-                  : value === option.id
-                  ? "bg-blue-50 text-blue-700 font-medium"
-                  : "text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {option.name}
-            </div>
-          ))}
-          {filteredOptions.length === 0 && searchTerm.trim() && (
-            <div className="px-3 py-2 text-sm text-slate-500">No results found</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}) as <T extends { id: number; name: string }>(props: {
-  value: number | null;
-  onChange: (value: number | null) => void;
-  options: T[];
-  placeholder: string;
-  label: string;
-  allOptionLabel: string;
-}) => React.ReactElement;
+import OtcOrderModal from "../components/orders/OtcOrderModal";
+import OnlineOrderModal from "../components/orders/OnlineOrderModal";
+import { AccountTooltip } from "../components/orders/AccountTooltip";
+import { SearchableSelect } from "../components/common/SearchableSelect";
+import { OrdersFilters } from "../components/orders/OrdersFilters";
+import { OrdersTable } from "../components/orders/OrdersTable";
+import { OrdersColumnDropdown } from "../components/orders/OrdersColumnDropdown";
+import { CreateCustomerModal } from "../components/orders/CreateCustomerModal";
+import { ProcessOrderModal } from "../components/orders/ProcessOrderModal";
+import { ImportOrdersModal } from "../components/orders/ImportOrdersModal";
+import { OrderWarningModals } from "../components/orders/OrderWarningModals";
+import { calculateAmountSell as calculateAmountSellUtil } from "../utils/orders/orderCalculations";
+import { processImportFile } from "../utils/orders/orderImport";
+import { exportOrdersToExcel } from "../utils/orders/orderExport";
+import { useOrdersFilters } from "../hooks/orders/useOrdersFilters";
+import { useOrdersTable } from "../hooks/orders/useOrdersTable";
+import { useOrderForm } from "../hooks/orders/useOrderForm";
+import { useProcessOrderModal } from "../hooks/orders/useProcessOrderModal";
+import { useViewOrderModal } from "../hooks/orders/useViewOrderModal";
+import { useOtcOrder } from "../hooks/orders/useOtcOrder";
+import { useBeneficiaryForm } from "../hooks/orders/useBeneficiaryForm";
 
 import {
   useAddOrderMutation,
@@ -356,167 +63,32 @@ import { hasActionPermission } from "../utils/permissions";
 import type { OrderStatus, Order } from "../types";
 import { formatDate } from "../utils/format";
 
-// Date preset helper functions
-const getCurrentWeekRange = () => {
-  const today = new Date();
-  const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday, go back 6 days; otherwise go to Monday
-  const monday = new Date(today);
-  monday.setDate(today.getDate() + diff);
-  monday.setHours(0, 0, 0, 0);
-  
-  const endDate = new Date(today);
-  endDate.setHours(23, 59, 59, 999);
-  
-  return {
-    from: monday.toISOString().split('T')[0],
-    to: endDate.toISOString().split('T')[0],
-  };
-};
-
-const getLastWeekRange = () => {
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const lastMonday = new Date(today);
-  lastMonday.setDate(today.getDate() + diff - 7);
-  lastMonday.setHours(0, 0, 0, 0);
-  
-  const lastSunday = new Date(lastMonday);
-  lastSunday.setDate(lastMonday.getDate() + 6);
-  lastSunday.setHours(23, 59, 59, 999);
-  
-  return {
-    from: lastMonday.toISOString().split('T')[0],
-    to: lastSunday.toISOString().split('T')[0],
-  };
-};
-
-const getCurrentMonthRange = () => {
-  const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-  firstDay.setHours(0, 0, 0, 0);
-  
-  const endDate = new Date(today);
-  endDate.setHours(23, 59, 59, 999);
-  
-  return {
-    from: firstDay.toISOString().split('T')[0],
-    to: endDate.toISOString().split('T')[0],
-  };
-};
-
-const getLastMonthRange = () => {
-  const today = new Date();
-  const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  firstDayLastMonth.setHours(0, 0, 0, 0);
-  
-  const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-  lastDayLastMonth.setHours(23, 59, 59, 999);
-  
-  return {
-    from: firstDayLastMonth.toISOString().split('T')[0],
-    to: lastDayLastMonth.toISOString().split('T')[0],
-  };
-};
-
 export default function OrdersPage() {
   const { t } = useTranslation();
   const authUser = useAppSelector((s) => s.auth.user);
   const { data: roles = [] } = useGetRolesQuery();
 
-  // Filter state
-  const [filters, setFilters] = useState<{
-    datePreset: 'all' | 'currentWeek' | 'lastWeek' | 'currentMonth' | 'lastMonth' | 'custom';
-    dateFrom: string | null;
-    dateTo: string | null;
-    handlerId: number | null;
-    customerId: number | null;
-    currencyPair: string | null;
-    buyAccountId: number | null;
-    sellAccountId: number | null;
-    status: OrderStatus | null;
-    orderType: "online" | "otc" | null;
-    tagIds: number[];
-  }>({
-    datePreset: 'all',
-    dateFrom: null,
-    dateTo: null,
-    handlerId: null,
-    customerId: null,
-    currencyPair: null,
-    buyAccountId: null,
-    sellAccountId: null,
-    status: null,
-    orderType: null,
-    tagIds: [],
-  });
+  // Page state
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
-  const [tagFilterHighlight, setTagFilterHighlight] = useState<number>(-1);
 
-  // Helper function to build query parameters from filters
-  const buildQueryParams = useCallback((
-    filterState: {
-      datePreset: 'all' | 'currentWeek' | 'lastWeek' | 'currentMonth' | 'lastMonth' | 'custom';
-      dateFrom: string | null;
-      dateTo: string | null;
-      handlerId: number | null;
-      customerId: number | null;
-      currencyPair: string | null;
-      buyAccountId: number | null;
-      sellAccountId: number | null;
-      status: OrderStatus | null;
-      orderType: "online" | "otc" | null;
-      tagIds: number[];
-    },
-    includePagination = false,
-    page?: number
-  ) => {
-    const params: {
-      dateFrom?: string;
-      dateTo?: string;
-      handlerId?: number;
-      customerId?: number;
-      fromCurrency?: string;
-      toCurrency?: string;
-      buyAccountId?: number;
-      sellAccountId?: number;
-      status?: OrderStatus;
-      orderType?: "online" | "otc";
-      tagIds?: string;
-      page?: number;
-      limit?: number;
-    } = {};
-
-    if (filterState.dateFrom) params.dateFrom = filterState.dateFrom;
-    if (filterState.dateTo) params.dateTo = filterState.dateTo;
-    if (filterState.handlerId !== null) params.handlerId = filterState.handlerId;
-    if (filterState.customerId !== null) params.customerId = filterState.customerId;
-    if (filterState.currencyPair) {
-      const [from, to] = filterState.currencyPair.split('/');
-      params.fromCurrency = from;
-      params.toCurrency = to;
-    }
-    if (filterState.buyAccountId !== null) params.buyAccountId = filterState.buyAccountId;
-    if (filterState.sellAccountId !== null) params.sellAccountId = filterState.sellAccountId;
-    if (filterState.status) params.status = filterState.status;
-    if (filterState.orderType) params.orderType = filterState.orderType;
-    if (filterState.tagIds.length > 0) params.tagIds = filterState.tagIds.join(',');
-    
-    if (includePagination) {
-      params.page = page ?? currentPage;
-      params.limit = 20;
-    }
-
-    return params;
-  }, [currentPage]);
-
-  // Build query parameters for API
-  const queryParams = useMemo(() => buildQueryParams(filters, true, currentPage), [filters, currentPage, buildQueryParams]);
+  // Filter state and handlers
+  const {
+    filters,
+    setFilters,
+    updateFilter,
+    handleDatePresetChange,
+    handleClearFilters,
+    queryParams,
+    exportQueryParams,
+    isTagFilterOpen,
+    setIsTagFilterOpen,
+    tagFilterHighlight,
+    setTagFilterHighlight,
+    tagFilterListRef,
+  } = useOrdersFilters(currentPage, setCurrentPage);
 
   const { data: ordersData, isLoading, refetch: refetchOrders } = useGetOrdersQuery(queryParams);
   const orders = ordersData?.orders || [];
@@ -529,6 +101,22 @@ export default function OrdersPage() {
   const { data: accounts = [] } = useGetAccountsQuery();
   const { data: tags = [] } = useGetTagsQuery();
   const [addOrder, { isLoading: isSaving }] = useAddOrderMutation();
+
+  // Order form state and handlers
+  const {
+    form,
+    setForm,
+    calculatedField,
+    setCalculatedField,
+    isFlexOrderMode,
+    setIsFlexOrderMode,
+    editingOrderId,
+    setEditingOrderId,
+    isModalOpen,
+    setIsModalOpen,
+    resetForm,
+    closeModal,
+  } = useOrderForm(currencies);
 
   // Get unique currency pairs from all orders (for dropdown)
   // Note: This would ideally come from the backend, but for now we'll generate from currencies
@@ -547,127 +135,18 @@ export default function OrdersPage() {
     return Array.from(pairs).sort();
   }, [currencies]);
 
-  // Handle date preset changes
-  const handleDatePresetChange = useCallback((preset: 'all' | 'currentWeek' | 'lastWeek' | 'currentMonth' | 'lastMonth' | 'custom') => {
-    let dateFrom: string | null = null;
-    let dateTo: string | null = null;
-
-    if (preset === 'all') {
-      // Clear date filters
-      dateFrom = null;
-      dateTo = null;
-    } else if (preset === 'currentWeek') {
-      const range = getCurrentWeekRange();
-      dateFrom = range.from;
-      dateTo = range.to;
-    } else if (preset === 'lastWeek') {
-      const range = getLastWeekRange();
-      dateFrom = range.from;
-      dateTo = range.to;
-    } else if (preset === 'currentMonth') {
-      const range = getCurrentMonthRange();
-      dateFrom = range.from;
-      dateTo = range.to;
-    } else if (preset === 'lastMonth') {
-      const range = getLastMonthRange();
-      dateFrom = range.from;
-      dateTo = range.to;
-    }
-    // For 'custom', keep existing dateFrom/dateTo values
-
-    setFilters((prev) => ({
-      ...prev,
-      datePreset: preset,
-      dateFrom,
-      dateTo,
-    }));
-    setCurrentPage(1); // Reset to first page when filter changes
-  }, []);
-
-  // Clear all filters
-  const handleClearFilters = useCallback(() => {
-    setFilters({
-      datePreset: 'all',
-      dateFrom: null,
-      dateTo: null,
-      handlerId: null,
-      customerId: null,
-      currencyPair: null,
-      buyAccountId: null,
-      sellAccountId: null,
-      status: null,
-      orderType: null,
-      tagIds: [],
-    });
-    setCurrentPage(1);
-  }, []);
-
-  // Build export query parameters (same as queryParams but without pagination)
-  const exportQueryParams = useMemo(() => buildQueryParams(filters, false), [filters, buildQueryParams]);
 
   // Export orders function
   const [isExporting, setIsExporting] = useState(false);
   const handleExportOrders = useCallback(async () => {
     try {
       setIsExporting(true);
-      
-      // Fetch all filtered orders using the export endpoint
-      const queryString = new URLSearchParams();
-      if (exportQueryParams.dateFrom) queryString.append("dateFrom", exportQueryParams.dateFrom);
-      if (exportQueryParams.dateTo) queryString.append("dateTo", exportQueryParams.dateTo);
-      if (exportQueryParams.handlerId !== undefined) queryString.append("handlerId", exportQueryParams.handlerId.toString());
-      if (exportQueryParams.customerId !== undefined) queryString.append("customerId", exportQueryParams.customerId.toString());
-      if (exportQueryParams.fromCurrency) queryString.append("fromCurrency", exportQueryParams.fromCurrency);
-      if (exportQueryParams.toCurrency) queryString.append("toCurrency", exportQueryParams.toCurrency);
-      if (exportQueryParams.buyAccountId !== undefined) queryString.append("buyAccountId", exportQueryParams.buyAccountId.toString());
-      if (exportQueryParams.sellAccountId !== undefined) queryString.append("sellAccountId", exportQueryParams.sellAccountId.toString());
-      if (exportQueryParams.status) queryString.append("status", exportQueryParams.status);
-      if (exportQueryParams.orderType) queryString.append("orderType", exportQueryParams.orderType);
-      if (exportQueryParams.tagIds) queryString.append("tagIds", exportQueryParams.tagIds);
-
-      const response = await fetch(`/api/orders/export${queryString.toString() ? `?${queryString.toString()}` : ""}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch orders for export");
-      }
-      const ordersToExport: Order[] = await response.json();
-
-      // Prepare data for Excel
-      const ordersData = ordersToExport.map((order) => ({
-        "Order ID": order.id,
-        "Date": formatDate(order.createdAt),
-        "Handler": order.handlerName || "-",
-        "Customer": order.customerName || "-",
-        "Currency Pair": `${order.fromCurrency}/${order.toCurrency}`,
-        "Rate": order.rate,
-        "Amount Buy": order.amountBuy,
-        "From Currency": order.fromCurrency,
-        "Buy Account": order.buyAccountName || "-",
-        "Amount Sell": order.amountSell,
-        "To Currency": order.toCurrency,
-        "Sell Account": order.sellAccountName || "-",
-        "Status": order.status,
-        "Order Type": order.orderType || "-",
-        "Profit Amount": order.profitAmount || 0,
-        "Profit Currency": order.profitCurrency || "-",
-        "Service Charge Amount": order.serviceChargeAmount || 0,
-        "Service Charge Currency": order.serviceChargeCurrency || "-",
-        "Tags": order.tags && order.tags.length > 0 ? order.tags.map((tag) => tag.name).join(", ") : "-",
-      }));
-
-      // Create workbook
-      const wb = XLSX.utils.book_new();
-      const ordersSheet = XLSX.utils.json_to_sheet(ordersData);
-      XLSX.utils.book_append_sheet(wb, ordersSheet, "Orders");
-
-      // Write file
-      const fileName = `orders_export_${new Date().toISOString().split("T")[0]}.xlsx`;
-      XLSX.writeFile(wb, fileName);
-
+      const result = await exportOrdersToExcel(exportQueryParams, t);
       setAlertModal({
         isOpen: true,
         message: (t("orders.exportSuccess") || "Successfully exported {{count}} orders to {{fileName}}")
-          .replace("{{count}}", ordersToExport.length.toString())
-          .replace("{{fileName}}", fileName),
+          .replace("{{count}}", result.count.toString())
+          .replace("{{fileName}}", result.fileName),
         type: "success",
       });
     } catch (error) {
@@ -744,338 +223,38 @@ export default function OrdersPage() {
     try {
       setIsImporting(true);
 
-      // Read Excel file
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: "array" });
+      // Process import file
+      const { orders: validatedOrders, errors: validationErrors } = await processImportFile(
+        file,
+        customers,
+        users,
+        currencies,
+        currencyPairs,
+        accounts,
+        tags
+      );
 
-      // Read Orders sheet
-      const ordersSheet = workbook.Sheets["Orders"];
-      if (!ordersSheet) {
-        setAlertModal({
-          isOpen: true,
-          message: t("orders.ordersSheetNotFound") || "Orders sheet not found in the file",
-          type: "error",
-        });
-        setIsImporting(false);
-        return;
-      }
-
-      const ordersData = XLSX.utils.sheet_to_json(ordersSheet) as any[];
-
-      if (ordersData.length === 0) {
-        setAlertModal({
-          isOpen: true,
-          message: t("orders.noOrdersInFile") || "No orders found in the file",
-          type: "error",
-        });
-        setIsImporting(false);
-        return;
-      }
-
-      // Get customers, users, currencies, accounts, and tags for mapping/validation
-      const customerMap = new Map(customers.map((c) => [c.name.toLowerCase(), c.id]));
-      const userMap = new Map(users.map((u) => [u.name.toLowerCase(), u.id]));
-      const activeCurrencyCodes = new Set(currencies.filter((c) => c.active).map((c) => c.code.toUpperCase()));
-      const currencyPairSet = new Set(currencyPairs.map((p) => p.toUpperCase()));
-      const tagNameToId = new Map(tags.map((t) => [t.name.toLowerCase(), t.id]));
-      const accountNameToAccount = new Map(accounts.map((a) => [a.name.toLowerCase(), a]));
-
-      // Fetch existing orders to prevent importing duplicates by Order ID
-      const existingOrdersResponse = await fetch("/api/orders/export");
-      if (!existingOrdersResponse.ok) {
-        throw new Error("Could not load existing orders to validate Order IDs");
-      }
-      const existingOrders: Order[] = await existingOrdersResponse.json();
-      const existingOrderIds = new Set(existingOrders.map((o) => String(o.id).toLowerCase()));
-      const seenOrderIds = new Set<string>();
-
+      // Import validated orders
       let successCount = 0;
-      let errorCount = 0;
-      const errors: string[] = [];
+      let errorCount = validationErrors.length;
+      const errors = [...validationErrors];
 
-      // Process each order
-      for (let i = 0; i < ordersData.length; i++) {
-        const row = ordersData[i];
-        const rowNumber = i + 2;
+      for (const orderData of validatedOrders) {
         try {
-          // Validate Order ID uniqueness
-          const orderIdRaw = String(row["Order ID"] || row["Order Id"] || row["orderId"] || "").trim();
-          if (!orderIdRaw) {
-            errors.push(`Row ${rowNumber}: Order ID is required`);
-            errorCount++;
-            continue;
-          }
-          const normalizedOrderId = orderIdRaw.toLowerCase();
-          if (existingOrderIds.has(normalizedOrderId)) {
-            errors.push(`Row ${rowNumber}: Order ID "${orderIdRaw}" already exists`);
-            errorCount++;
-            continue;
-          }
-          if (seenOrderIds.has(normalizedOrderId)) {
-            errors.push(`Row ${rowNumber}: Order ID "${orderIdRaw}" is duplicated in the file`);
-            errorCount++;
-            continue;
-          }
-
-          // Find customer by name
-          const customerName = String(row["Customer"] || row["customer"] || "").trim();
-          const customerId = customerMap.get(customerName.toLowerCase());
-          if (!customerId) {
-            errors.push(`Row ${rowNumber}: Customer "${customerName || "?"}" not found`);
-            errorCount++;
-            continue;
-          }
-
-          // Find handler by name (required)
-          const handlerName = String(row["Handler"] || row["handler"] || "").trim();
-          if (!handlerName) {
-            errors.push(`Row ${rowNumber}: Handler is required`);
-            errorCount++;
-            continue;
-          }
-          const handlerId = userMap.get(handlerName.toLowerCase());
-          if (!handlerId) {
-            errors.push(`Row ${rowNumber}: Handler "${handlerName}" not found`);
-            errorCount++;
-            continue;
-          }
-
-          // Parse currency pair
-          const currencyPair = String(row["Currency Pair"] || row["currencyPair"] || "").trim();
-          const [fromCurrencyRaw, toCurrencyRaw] = currencyPair.split("/").map((c) => c.trim());
-          const fromCurrency = fromCurrencyRaw?.toUpperCase() || "";
-          const toCurrency = toCurrencyRaw?.toUpperCase() || "";
-          if (!fromCurrency || !toCurrency) {
-            errors.push(`Row ${rowNumber}: Invalid currency pair "${currencyPair}"`);
-            errorCount++;
-            continue;
-          }
-          if (!activeCurrencyCodes.has(fromCurrency) || !activeCurrencyCodes.has(toCurrency)) {
-            errors.push(`Row ${rowNumber}: Currency pair uses unknown currencies (${fromCurrency}/${toCurrency})`);
-            errorCount++;
-            continue;
-          }
-          const normalizedPair = `${fromCurrency}/${toCurrency}`;
-          if (!currencyPairSet.has(normalizedPair)) {
-            errors.push(`Row ${rowNumber}: Currency pair "${normalizedPair}" is not allowed`);
-            errorCount++;
-            continue;
-          }
-
-          // Parse amounts and rate
-          const amountBuy = parseFloat(row["Amount Buy"] || row["amountBuy"] || "0");
-          const amountSell = parseFloat(row["Amount Sell"] || row["amountSell"] || "0");
-          const rate = parseFloat(row["Rate"] || row["rate"] || "0");
-
-          if (!amountBuy || !amountSell || !rate) {
-            errors.push(`Row ${rowNumber}: Missing required fields (Amount Buy, Amount Sell, or Rate)`);
-            errorCount++;
-            continue;
-          }
-
-          // Parse required accounts
-          const buyAccountName = String(row["Buy Account"] || row["buyAccount"] || "").trim();
-          if (!buyAccountName) {
-            errors.push(`Row ${rowNumber}: Buy Account is required`);
-            errorCount++;
-            continue;
-          }
-          const buyAccount = accountNameToAccount.get(buyAccountName.toLowerCase());
-          if (!buyAccount) {
-            errors.push(`Row ${rowNumber}: Buy Account "${buyAccountName}" not found`);
-            errorCount++;
-            continue;
-          }
-          if ((buyAccount.currencyCode || "").toUpperCase() !== fromCurrency) {
-            errors.push(
-              `Row ${rowNumber}: Buy Account "${buyAccountName}" currency (${buyAccount.currencyCode}) does not match fromCurrency (${fromCurrency})`
-            );
-            errorCount++;
-            continue;
-          }
-
-          const sellAccountName = String(row["Sell Account"] || row["sellAccount"] || "").trim();
-          if (!sellAccountName) {
-            errors.push(`Row ${rowNumber}: Sell Account is required`);
-            errorCount++;
-            continue;
-          }
-          const sellAccount = accountNameToAccount.get(sellAccountName.toLowerCase());
-          if (!sellAccount) {
-            errors.push(`Row ${rowNumber}: Sell Account "${sellAccountName}" not found`);
-            errorCount++;
-            continue;
-          }
-          if ((sellAccount.currencyCode || "").toUpperCase() !== toCurrency) {
-            errors.push(
-              `Row ${rowNumber}: Sell Account "${sellAccountName}" currency (${sellAccount.currencyCode}) does not match toCurrency (${toCurrency})`
-            );
-            errorCount++;
-            continue;
-          }
-
-          // Parse optional profit
-          const profitAmountRaw = row["Profit Amount"] ?? row["profitAmount"];
-          const profitAmount =
-            profitAmountRaw === undefined || profitAmountRaw === null || String(profitAmountRaw).trim() === ""
-              ? null
-              : parseFloat(profitAmountRaw);
-          const profitCurrencyRaw = String(row["Profit Currency"] || row["profitCurrency"] || "").trim();
-          const profitCurrency = profitCurrencyRaw ? profitCurrencyRaw.toUpperCase() : "";
-          const profitAccountName = String(row["Profit Account"] || row["profitAccount"] || "").trim();
-          if (profitAmount !== null && Number.isNaN(profitAmount)) {
-            errors.push(`Row ${rowNumber}: Profit Amount is invalid`);
-            errorCount++;
-            continue;
-          }
-          if (
-            (profitAmount !== null && (!profitAccountName || !profitCurrency)) ||
-            (profitAmount === null && (profitAccountName || profitCurrency))
-          ) {
-            errors.push(`Row ${rowNumber}: Profit amount, currency, and account must all be provided or all be empty`);
-            errorCount++;
-            continue;
-          }
-          const profitAccount =
-            profitAmount !== null || profitAccountName ? accountNameToAccount.get(profitAccountName.toLowerCase()) : null;
-          if (profitAccountName && !profitAccount) {
-            errors.push(`Row ${rowNumber}: Profit Account "${profitAccountName}" not found`);
-            errorCount++;
-            continue;
-          }
-          if (profitAccount && profitCurrency && (profitAccount.currencyCode || "").toUpperCase() !== profitCurrency) {
-            errors.push(
-              `Row ${rowNumber}: Profit Account "${profitAccountName}" currency (${profitAccount.currencyCode}) must match profit currency (${profitCurrency})`
-            );
-            errorCount++;
-            continue;
-          }
-
-          // Parse optional service charges
-          const serviceChargeAmountRaw = row["Service Charges Amount"] ?? row["Service Charge Amount"] ?? row["serviceChargeAmount"];
-          const serviceChargeAmount =
-            serviceChargeAmountRaw === undefined ||
-            serviceChargeAmountRaw === null ||
-            String(serviceChargeAmountRaw).trim() === ""
-              ? null
-              : parseFloat(serviceChargeAmountRaw);
-          const serviceChargeCurrencyRaw = String(
-            row["Service Charges Currency"] || row["Service Charge Currency"] || row["serviceChargeCurrency"] || ""
-          ).trim();
-          const serviceChargeCurrency = serviceChargeCurrencyRaw ? serviceChargeCurrencyRaw.toUpperCase() : "";
-          const serviceChargeAccountName = String(
-            row["Service Charges Account"] || row["Service Charge Account"] || row["serviceChargeAccount"] || ""
-          ).trim();
-          if (serviceChargeAmount !== null && Number.isNaN(serviceChargeAmount)) {
-            errors.push(`Row ${rowNumber}: Service Charges Amount is invalid`);
-            errorCount++;
-            continue;
-          }
-          if ((serviceChargeAmount !== null && !serviceChargeAccountName) || (serviceChargeAmount === null && serviceChargeAccountName)) {
-            errors.push(
-              `Row ${rowNumber}: Service charges amount, currency, and account must all be provided or all be empty`
-            );
-            errorCount++;
-            continue;
-          }
-          const serviceChargeAccount =
-            serviceChargeAmount !== null || serviceChargeAccountName
-              ? accountNameToAccount.get(serviceChargeAccountName.toLowerCase())
-              : null;
-          if (serviceChargeAccountName && !serviceChargeAccount) {
-            errors.push(`Row ${rowNumber}: Service Charges Account "${serviceChargeAccountName}" not found`);
-            errorCount++;
-            continue;
-          }
-          if (serviceChargeAccount && serviceChargeCurrency && (serviceChargeAccount.currencyCode || "").toUpperCase() !== serviceChargeCurrency) {
-            errors.push(
-              `Row ${rowNumber}: Service Charges Account "${serviceChargeAccountName}" currency (${serviceChargeAccount.currencyCode}) must match service charges currency (${serviceChargeCurrency})`
-            );
-            errorCount++;
-            continue;
-          }
-
-          // Parse status
-          const statusStr = String(row["Status"] || row["status"] || "").trim().toLowerCase();
-          if (statusStr !== "completed") {
-            errors.push(`Row ${rowNumber}: Status must be "completed"`);
-            errorCount++;
-            continue;
-          }
-          const status: OrderStatus = "completed";
-
-          // Parse order type
-          const orderTypeStr = String(row["Order Type"] || row["OrderType"] || row["orderType"] || "").trim().toLowerCase();
-          if (orderTypeStr !== "online" && orderTypeStr !== "otc") {
-            errors.push(`Row ${rowNumber}: Order Type must be "online" or "otc"`);
-            errorCount++;
-            continue;
-          }
-          const orderType = orderTypeStr as "online" | "otc";
-
-          // Parse tags (optional) and validate existence
-          const rawTags = row["Tags"] ?? row["tags"];
-          const tagIds: number[] = [];
-          if (rawTags !== undefined && rawTags !== null && String(rawTags).trim() !== "") {
-            const tagNames = String(rawTags)
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean);
-
-            let tagValidationFailed = false;
-            for (const tagName of tagNames) {
-              const tagId = tagNameToId.get(tagName.toLowerCase());
-              if (!tagId) {
-                errors.push(`Row ${rowNumber}: Tag "${tagName}" does not exist`);
-                errorCount++;
-                tagValidationFailed = true;
-                break;
-              }
-              if (!tagIds.includes(tagId)) {
-                tagIds.push(tagId);
-              }
-            }
-
-            if (tagValidationFailed) {
-              continue;
-            }
-          }
-
-          // Create order
-          const orderData = {
-            customerId,
-            handlerId,
-            fromCurrency,
-            toCurrency,
-            amountBuy,
-            amountSell,
-            rate,
-            status,
-            orderType,
-            buyAccountId: buyAccount.id,
-            sellAccountId: sellAccount.id,
-            tagIds,
-            ...(profitAmount !== null && profitAccount
-              ? {
-                  profitAmount,
-                  profitCurrency: profitCurrency || profitAccount.currencyCode,
-                  profitAccountId: profitAccount.id,
-                }
-              : {}),
-            ...(serviceChargeAmount !== null && serviceChargeAccount
-              ? {
-                  serviceChargeAmount,
-                  serviceChargeCurrency: serviceChargeCurrency || serviceChargeAccount.currencyCode,
-                  serviceChargeAccountId: serviceChargeAccount.id,
-                }
-              : {}),
+          // Convert null values to undefined for API compatibility
+          const apiOrderData = {
+            ...orderData,
+            profitAmount: orderData.profitAmount ?? undefined,
+            profitCurrency: orderData.profitCurrency ?? undefined,
+            profitAccountId: orderData.profitAccountId ?? undefined,
+            serviceChargeAmount: orderData.serviceChargeAmount ?? undefined,
+            serviceChargeCurrency: orderData.serviceChargeCurrency ?? undefined,
+            serviceChargeAccountId: orderData.serviceChargeAccountId ?? undefined,
           };
-
-          await addOrder(orderData).unwrap();
-          seenOrderIds.add(normalizedOrderId);
+          await addOrder(apiOrderData).unwrap();
           successCount++;
         } catch (error: any) {
-          errors.push(`Row ${rowNumber}: ${error.message || "Unknown error"}`);
+          errors.push(`Order ${orderData.customerId}: ${error.message || "Unknown error"}`);
           errorCount++;
         }
       }
@@ -1102,11 +281,26 @@ export default function OrdersPage() {
       // Reset file input
       e.target.value = "";
     } catch (error: any) {
-      setAlertModal({
-        isOpen: true,
-        message: t("orders.importError") || `Failed to import orders: ${error.message || "Unknown error"}`,
-        type: "error",
-      });
+      const errorMessage = error.message || "Unknown error";
+      if (errorMessage.includes("Orders sheet not found")) {
+        setAlertModal({
+          isOpen: true,
+          message: t("orders.ordersSheetNotFound") || "Orders sheet not found in the file",
+          type: "error",
+        });
+      } else if (errorMessage.includes("No orders found")) {
+        setAlertModal({
+          isOpen: true,
+          message: t("orders.noOrdersInFile") || "No orders found in the file",
+          type: "error",
+        });
+      } else {
+        setAlertModal({
+          isOpen: true,
+          message: t("orders.importError") || `Failed to import orders: ${errorMessage}`,
+          type: "error",
+        });
+      }
     } finally {
       setIsImporting(false);
     }
@@ -1121,53 +315,9 @@ export default function OrdersPage() {
   }, []);
 
   // Helper function to calculate amountSell from amountBuy using the same logic as order creation
-  const calculateAmountSell = (amountBuy: number, rate: number, fromCurrency: string, toCurrency: string): number => {
-    if (!Number.isFinite(rate) || rate <= 0) {
-      return 0;
-    }
-    // Determine which side is the "stronger" currency so we know which way to apply the rate.
-    // Heuristic: USDT (or any currency with rate <= 1) is the base; otherwise pick the currency with the smaller rate.
-    const getCurrencyRate = (code: string) => {
-      const currency = currencies.find((c) => c.code === code);
-      const candidate =
-        currency?.conversionRateBuy ??
-        currency?.baseRateBuy ??
-        currency?.baseRateSell ??
-        currency?.conversionRateSell;
-      return typeof candidate === "number" ? candidate : null;
-    };
-
-    const fromRate = getCurrencyRate(fromCurrency);
-    const toRate = getCurrencyRate(toCurrency);
-
-    const inferredFromIsUSDT = fromRate !== null ? fromRate <= 1 : fromCurrency === "USDT";
-    const inferredToIsUSDT = toRate !== null ? toRate <= 1 : toCurrency === "USDT";
-
-    // If both sides look like USDT (rate <= 1), default to multiply
-    if (inferredFromIsUSDT && inferredToIsUSDT) {
-      return amountBuy * rate;
-    }
-
-    let baseIsFrom: boolean | null = null;
-    if (inferredFromIsUSDT !== inferredToIsUSDT) {
-      // One side is USDT (or behaves like it)
-      baseIsFrom = inferredFromIsUSDT;
-    } else if (!inferredFromIsUSDT && !inferredToIsUSDT && fromRate !== null && toRate !== null) {
-      // Neither is USDT: pick the currency with the smaller rate as the stronger/base currency
-      baseIsFrom = fromRate < toRate;
-    } else {
-      // Default to multiply if we can't determine
-      return amountBuy * rate;
-    }
-
-    if (baseIsFrom) {
-      // Stronger/base currency (fromCurrency) → weaker: multiply by rate
-      return amountBuy * rate;
-    } else {
-      // Weaker → stronger/base currency (toCurrency): divide by rate
-      return amountBuy / rate;
-    }
-  };
+  const calculateAmountSell = useCallback((amountBuy: number, rate: number, fromCurrency: string, toCurrency: string): number => {
+    return calculateAmountSellUtil(amountBuy, rate, fromCurrency, toCurrency, currencies);
+  }, [currencies]);
 
   const [updateOrder] = useUpdateOrderMutation();
   const [updateOrderStatus] = useUpdateOrderStatusMutation();
@@ -1196,6 +346,7 @@ export default function OrdersPage() {
   const [isBatchTagMode, setIsBatchTagMode] = useState(false);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  // Tag filter helpers (needs tags from query)
   const selectedTagNames = useMemo(
     () =>
       filters.tagIds
@@ -1209,17 +360,6 @@ export default function OrdersPage() {
     }
     return selectedTagNames.join(", ");
   }, [selectedTagNames, t]);
-  const tagFilterListRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (isTagFilterOpen && tags.length > 0) {
-      setTagFilterHighlight(0);
-      // Move focus to the list for keyboard navigation
-      setTimeout(() => tagFilterListRef.current?.focus(), 0);
-    } else if (!isTagFilterOpen) {
-      setTagFilterHighlight(-1);
-    }
-  }, [isTagFilterOpen, tags.length]);
 
   const handleTagFilterKeyDown = (e: React.KeyboardEvent) => {
     if (!isTagFilterOpen) {
@@ -1260,102 +400,28 @@ export default function OrdersPage() {
       e.preventDefault();
       if (tagFilterHighlight >= 0 && tagFilterHighlight < tags.length) {
         const tag = tags[tagFilterHighlight];
-        setFilters((prev) => {
-          const exists = prev.tagIds.includes(tag.id);
-          const next = exists ? prev.tagIds.filter((id) => id !== tag.id) : [...prev.tagIds, tag.id];
-          return { ...prev, tagIds: next };
-        });
-        setCurrentPage(1);
+        const exists = filters.tagIds.includes(tag.id);
+        const next = exists ? filters.tagIds.filter((id) => id !== tag.id) : [...filters.tagIds, tag.id];
+        updateFilter('tagIds', next);
       }
     }
   };
   
-  // Column visibility state
-  const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
-  const columnDropdownRef = useRef<HTMLDivElement | null>(null);
-  
-  // Define all available column keys (used for initialization)
-  const columnKeys = ["id", "date", "handler", "customer", "pair", "buy", "sell", "rate", "status", "orderType", "buyAccount", "sellAccount", "profit", "serviceCharges", "tags"];
-  
-  // Define all available columns (with translated labels) - this is the master list
-  const getAvailableColumns = () => [
-    { key: "id", label: t("orders.orderId") },
-    { key: "date", label: t("orders.date") },
-    { key: "handler", label: t("orders.handler") },
-    { key: "customer", label: t("orders.customer") },
-    { key: "pair", label: t("orders.pair") },
-    { key: "buy", label: t("orders.buy") },
-    { key: "sell", label: t("orders.sell") },
-    { key: "rate", label: t("orders.rate") },
-    { key: "status", label: t("orders.status") },
-    { key: "orderType", label: t("orders.orderType") || "Order Type" },
-    { key: "buyAccount", label: t("orders.buyAccount") },
-    { key: "sellAccount", label: t("orders.sellAccount") },
-    { key: "profit", label: t("orders.profit") },
-    { key: "serviceCharges", label: t("orders.serviceCharges") },
-    { key: "tags", label: t("orders.tags") || "Tags" },
-  ];
-  
-  // Initialize column order from localStorage or default order
-  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
-    const saved = localStorage.getItem("ordersPage_columnOrder");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Validate that it's an array of strings
-        if (Array.isArray(parsed) && parsed.every((item): item is string => typeof item === "string")) {
-          // Validate that all columns are present
-          const savedSet = new Set(parsed);
-          const defaultSet = new Set(columnKeys);
-          if (savedSet.size === defaultSet.size && [...savedSet].every(key => defaultSet.has(key))) {
-            return parsed;
-          }
-        }
-      } catch {
-        // If parsing fails, use default order
-      }
-    }
-    // Default order
-    return [...columnKeys];
-  });
-  
-  // Get ordered columns based on columnOrder
-  const availableColumns = columnOrder.map(key => {
-    const column = getAvailableColumns().find(col => col.key === key);
-    return column || { key, label: key };
-  }).filter(col => col);
-  
-  // Initialize column visibility from localStorage or default to all visible
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem("ordersPage_visibleColumns");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (!Array.isArray(parsed)) {
-          return new Set<string>(columnKeys);
-        }
-        const savedSet = new Set<string>(parsed.filter((item): item is string => typeof item === "string"));
-        // Merge with current columnKeys to ensure new columns (like tags) are included
-        // Start with saved columns, then add any new columns that aren't in saved
-        const merged = new Set<string>(savedSet);
-        columnKeys.forEach(key => {
-          if (!savedSet.has(key)) {
-            merged.add(key); // Add new columns like "tags" to visible columns
-          }
-        });
-        return merged;
-      } catch {
-        // If parsing fails, return all columns visible
-        return new Set<string>(columnKeys);
-      }
-    }
-    // Default: all columns visible
-    return new Set<string>(columnKeys);
-  });
-  
-  // Drag and drop state
-  const [draggedColumnIndex, setDraggedColumnIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // Column management via hook
+  const {
+    isColumnDropdownOpen,
+    setIsColumnDropdownOpen,
+    columnDropdownRef,
+    availableColumns,
+    visibleColumns,
+    toggleColumnVisibility,
+    draggedColumnIndex,
+    dragOverIndex,
+    handleColumnDragStart,
+    handleColumnDragOver,
+    handleColumnDragEnd,
+    handleColumnDragLeave,
+  } = useOrdersTable();
 
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
     isOpen: false,
@@ -1369,72 +435,86 @@ export default function OrdersPage() {
     orderId: null,
     isBulk: false,
   });
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isFlexOrderMode, setIsFlexOrderMode] = useState(false);
   const [isCreateCustomerModalOpen, setIsCreateCustomerModalOpen] = useState(false);
-  const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
-  const [processModalOrderId, setProcessModalOrderId] = useState<number | null>(null);
-  const [viewModalOrderId, setViewModalOrderId] = useState<number | null>(null);
-  const [makePaymentModalOrderId, setMakePaymentModalOrderId] = useState<number | null>(null);
-  const [isOtcOrderModalOpen, setIsOtcOrderModalOpen] = useState(false);
-  const [otcEditingOrderId, setOtcEditingOrderId] = useState<number | null>(null);
-  const previousOrderStatusRef = useRef<string | null>(null);
+  // Process order modal state and handlers
+  const {
+    processModalOrderId,
+    setProcessModalOrderId,
+    processForm,
+    setProcessForm,
+    resetProcessForm,
+    closeProcessModal,
+  } = useProcessOrderModal();
   
-  // Service charge and profit state
-  const [showProfitSection, setShowProfitSection] = useState(false);
-  const [showServiceChargeSection, setShowServiceChargeSection] = useState(false);
-  // Upload section visibility state
-  const [showReceiptUpload, setShowReceiptUpload] = useState(false);
-  const [showPaymentUpload, setShowPaymentUpload] = useState(false);
-  const [profitAmount, setProfitAmount] = useState<string>("");
-  const [profitCurrency, setProfitCurrency] = useState<string>("");
-  const [profitAccountId, setProfitAccountId] = useState<string>("");
-  const [serviceChargeAmount, setServiceChargeAmount] = useState<string>("");
-  const [serviceChargeCurrency, setServiceChargeCurrency] = useState<string>("");
-  const [serviceChargeAccountId, setServiceChargeAccountId] = useState<string>("");
+  // View order modal state and handlers
+  const {
+    viewModalOrderId,
+    setViewModalOrderId,
+    makePaymentModalOrderId,
+    setMakePaymentModalOrderId,
+    closeViewModal,
+    receiptUploads,
+    setReceiptUploads,
+    paymentUploads,
+    setPaymentUploads,
+    receiptUploadKey,
+    setReceiptUploadKey,
+    paymentUploadKey,
+    setPaymentUploadKey,
+    showReceiptUpload,
+    setShowReceiptUpload,
+    showPaymentUpload,
+    setShowPaymentUpload,
+    receiptDragOver,
+    setReceiptDragOver,
+    paymentDragOver,
+    setPaymentDragOver,
+    activeUploadType,
+    setActiveUploadType,
+    receiptFileInputRefs,
+    paymentFileInputRefs,
+    flexOrderRate,
+    setFlexOrderRate,
+    excessPaymentWarning,
+    setExcessPaymentWarning,
+    profitAmount,
+    setProfitAmount,
+    profitCurrency,
+    setProfitCurrency,
+    profitAccountId,
+    setProfitAccountId,
+    serviceChargeAmount,
+    setServiceChargeAmount,
+    serviceChargeCurrency,
+    setServiceChargeCurrency,
+    serviceChargeAccountId,
+    setServiceChargeAccountId,
+    showProfitSection,
+    setShowProfitSection,
+    showServiceChargeSection,
+    setShowServiceChargeSection,
+    showExcessPaymentModal,
+    setShowExcessPaymentModal,
+    excessPaymentModalData,
+    setExcessPaymentModalData,
+    showMissingPaymentModal,
+    setShowMissingPaymentModal,
+    missingPaymentModalData,
+    setMissingPaymentModalData,
+    showExcessReceiptModal,
+    setShowExcessReceiptModal,
+    excessReceiptModalData,
+    setExcessReceiptModalData,
+    showExcessPaymentModalNormal,
+    setShowExcessPaymentModalNormal,
+    excessPaymentModalNormalData,
+    setExcessPaymentModalNormalData,
+  } = useViewOrderModal();
+  
+  const previousOrderStatusRef = useRef<string | null>(null);
   
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const menuElementRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
-  const receiptFileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
-  const paymentFileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
-  const [calculatedField, setCalculatedField] = useState<"buy" | "sell" | null>(null);
-  const [receiptUploadKey, setReceiptUploadKey] = useState(0);
-  const [paymentUploadKey, setPaymentUploadKey] = useState(0);
-  const [flexOrderRate, setFlexOrderRate] = useState<string | null>(null);
-  const [excessPaymentWarning, setExcessPaymentWarning] = useState<{
-    excessAmount: number;
-    additionalReceiptsNeeded: number;
-  } | null>(null);
-  const [showExcessPaymentModal, setShowExcessPaymentModal] = useState(false);
-  const [excessPaymentModalData, setExcessPaymentModalData] = useState<{
-    expectedPayment: number;
-    actualPayment: number;
-    excess: number;
-    additionalReceipts: number;
-    fromCurrency: string;
-    toCurrency: string;
-  } | null>(null);
-  const [showMissingPaymentModal, setShowMissingPaymentModal] = useState(false);
-  const [missingPaymentModalData, setMissingPaymentModalData] = useState<{
-    expectedPayment: number;
-    actualPayment: number;
-    missing: number;
-    toCurrency: string;
-  } | null>(null);
-  const [showExcessReceiptModal, setShowExcessReceiptModal] = useState(false);
-  const [excessReceiptModalData, setExcessReceiptModalData] = useState<{
-    expectedReceipt: number;
-    attemptedReceipt: number;
-    excess: number;
-    fromCurrency: string;
-  } | null>(null);
-  const [showExcessPaymentModalNormal, setShowExcessPaymentModalNormal] = useState(false);
-  const [excessPaymentModalNormalData, setExcessPaymentModalNormalData] = useState<{
-    expectedPayment: number;
-    attemptedPayment: number;
-    excess: number;
-    toCurrency: string;
-  } | null>(null);
   const [viewerModal, setViewerModal] = useState<{
     isOpen: boolean;
     src: string;
@@ -1442,135 +522,77 @@ export default function OrdersPage() {
     title: string;
   } | null>(null);
 
-  const [form, setForm] = useState({
-    customerId: "",
-    fromCurrency: "",
-    toCurrency: "",
-    amountBuy: "",
-    amountSell: "",
-    rate: "",
-    status: "pending" as OrderStatus,
-  });
-
   const [customerForm, setCustomerForm] = useState({
     name: "",
     email: "",
     phone: "",
   });
 
-  const [processForm, setProcessForm] = useState<{
-    handlerId: string;
-    paymentFlow: "receive_first" | "pay_first";
-    // Commented out for future use:
-    // paymentType: "CRYPTO" | "FIAT";
-    // networkChain: string;
-    // walletAddresses: string[];
-    // bankName: string;
-    // accountTitle: string;
-    // accountNumber: string;
-    // accountIban: string;
-    // swiftCode: string;
-    // bankAddress: string;
-  }>({
-    handlerId: "",
-    paymentFlow: "receive_first",
-    // Commented out for future use:
-    // paymentType: "CRYPTO" as "CRYPTO" | "FIAT",
-    // networkChain: "",
-    // walletAddresses: [""],
-    // bankName: "",
-    // accountTitle: "",
-    // accountNumber: "",
-    // accountIban: "",
-    // swiftCode: "",
-    // bankAddress: "",
-  });
+  // processForm is now provided by useProcessOrderModal hook
 
-  const [beneficiaryForm, setBeneficiaryForm] = useState({
-    paymentAccountId: "",
-    // Commented out for future use:
-    // paymentType: "CRYPTO" as "CRYPTO" | "FIAT",
-    // networkChain: "",
-    // walletAddresses: [""],
-    // bankName: "",
-    // accountTitle: "",
-    // accountNumber: "",
-    // accountIban: "",
-    // swiftCode: "",
-    // bankAddress: "",
-  });
-  const [saveBeneficiaryToCustomer, setSaveBeneficiaryToCustomer] = useState(false);
-  const [selectedCustomerBeneficiaryId, setSelectedCustomerBeneficiaryId] = useState<number | "">(
-    "",
+  // Beneficiary form state and handlers
+  const {
+    beneficiaryForm,
+    setBeneficiaryForm,
+    saveBeneficiaryToCustomer,
+    setSaveBeneficiaryToCustomer,
+    selectedCustomerBeneficiaryId,
+    setSelectedCustomerBeneficiaryId,
+    applyCustomerBeneficiaryToForm,
+    resetBeneficiaryForm,
+    closeMakePaymentModal,
+    handleAddBeneficiary,
+  } = useBeneficiaryForm(
+    orders,
+    accounts,
+    makePaymentModalOrderId,
+    setOpenMenuId,
+    setViewModalOrderId,
+    setMakePaymentModalOrderId,
+    t
   );
 
-  const applyCustomerBeneficiaryToForm = (beneficiaryId: number) => {
-    // Commented out for future use - beneficiary details
-    // const selected = customerBeneficiaries.find((b) => b.id === beneficiaryId);
-    // if (!selected) return;
-    // if (selected.paymentType === "CRYPTO") {
-    //   setBeneficiaryForm({
-    //     paymentType: "CRYPTO",
-    //     networkChain: selected.networkChain || "",
-    //     walletAddresses: selected.walletAddresses && selected.walletAddresses.length > 0
-    //       ? selected.walletAddresses
-    //       : [""],
-    //     bankName: "",
-    //     accountTitle: "",
-    //     accountNumber: "",
-    //     accountIban: "",
-    //     swiftCode: "",
-    //     bankAddress: "",
-    //   });
-    // } else {
-    //   setBeneficiaryForm({
-    //     paymentType: "FIAT",
-    //     networkChain: "",
-    //     walletAddresses: [""],
-    //     bankName: selected.bankName || "",
-    //     accountTitle: selected.accountTitle || "",
-    //     accountNumber: selected.accountNumber || "",
-    //     accountIban: selected.accountIban || "",
-    //     swiftCode: selected.swiftCode || "",
-    //     bankAddress: selected.bankAddress || "",
-    //   });
-    // }
-  };
-
-  const [receiptUploads, setReceiptUploads] = useState<Array<{ image: string; file?: File; amount: string; accountId: string }>>([{ image: "", amount: "", accountId: "" }]);
-  const [paymentUploads, setPaymentUploads] = useState<Array<{ image: string; file?: File; amount: string; accountId: string }>>([{ image: "", amount: "", accountId: "" }]);
+  // receiptUploads and paymentUploads are now provided by useViewOrderModal hook
   
-  // OTC Order state
-  const [otcForm, setOtcForm] = useState({
-    customerId: "",
-    fromCurrency: "",
-    toCurrency: "",
-    amountBuy: "",
-    amountSell: "",
-    rate: "",
-    handlerId: "",
-  });
-  const [otcReceipts, setOtcReceipts] = useState<Array<{ amount: string; accountId: string }>>([]);
-  const [otcPayments, setOtcPayments] = useState<Array<{ amount: string; accountId: string }>>([]);
-  const [otcProfitAmount, setOtcProfitAmount] = useState<string>("");
-  const [otcProfitCurrency, setOtcProfitCurrency] = useState<string>("");
-  const [otcProfitAccountId, setOtcProfitAccountId] = useState<string>("");
-  const [otcServiceChargeAmount, setOtcServiceChargeAmount] = useState<string>("");
-  const [otcServiceChargeCurrency, setOtcServiceChargeCurrency] = useState<string>("");
-  const [otcServiceChargeAccountId, setOtcServiceChargeAccountId] = useState<string>("");
-  const [showOtcProfitSection, setShowOtcProfitSection] = useState(false);
-  const [showOtcServiceChargeSection, setShowOtcServiceChargeSection] = useState(false);
-  const [otcCalculatedField, setOtcCalculatedField] = useState<"buy" | "sell" | null>(null);
-  const [receiptDragOver, setReceiptDragOver] = useState(false);
-  const [paymentDragOver, setPaymentDragOver] = useState(false);
-  const [activeUploadType, setActiveUploadType] = useState<"receipt" | "payment" | null>(null);
+  // OTC Order state and handlers
+  const {
+    isOtcOrderModalOpen,
+    setIsOtcOrderModalOpen,
+    otcEditingOrderId,
+    setOtcEditingOrderId,
+    otcForm,
+    setOtcForm,
+    otcReceipts,
+    setOtcReceipts,
+    otcPayments,
+    setOtcPayments,
+    otcProfitAmount,
+    setOtcProfitAmount,
+    otcProfitCurrency,
+    setOtcProfitCurrency,
+    otcProfitAccountId,
+    setOtcProfitAccountId,
+    otcServiceChargeAmount,
+    setOtcServiceChargeAmount,
+    otcServiceChargeCurrency,
+    setOtcServiceChargeCurrency,
+    otcServiceChargeAccountId,
+    setOtcServiceChargeAccountId,
+    showOtcProfitSection,
+    setShowOtcProfitSection,
+    showOtcServiceChargeSection,
+    setShowOtcServiceChargeSection,
+    otcCalculatedField,
+    setOtcCalculatedField,
+    otcOrderDetails,
+    isOtcCompleted,
+    handleOtcOrderSave,
+    handleOtcOrderComplete,
+    closeOtcModal,
+  } = useOtcOrder(accounts, setOpenMenuId, setIsCreateCustomerModalOpen);
 
   const { data: orderDetails } = useGetOrderDetailsQuery(viewModalOrderId || 0, {
     skip: !viewModalOrderId,
-  });
-
-  const { data: otcOrderDetails } = useGetOrderDetailsQuery(otcEditingOrderId || 0, {
-    skip: !otcEditingOrderId,
   });
 
   // Helper function to determine which currency is the base (stronger) currency
@@ -1660,130 +682,15 @@ export default function OrdersPage() {
     }
   }, [orderDetails?.order?.status, excessPaymentWarning, viewModalOrderId]);
 
-  // Determine if OTC order is completed/cancelled for view mode
-  const isOtcCompleted = useMemo(() => {
-    return otcEditingOrderId && otcOrderDetails?.order && (otcOrderDetails.order.status === "completed" || otcOrderDetails.order.status === "cancelled");
-  }, [otcEditingOrderId, otcOrderDetails]);
+  // OTC order state and handlers are now provided by useOtcOrder hook
 
-  // Load OTC order details when editing
-  useEffect(() => {
-    if (otcEditingOrderId && otcOrderDetails && otcOrderDetails.order) {
-      const order = otcOrderDetails.order;
-      setOtcForm({
-        customerId: String(order.customerId),
-        fromCurrency: order.fromCurrency,
-        toCurrency: order.toCurrency,
-        amountBuy: String(order.amountBuy),
-        amountSell: String(order.amountSell),
-        rate: String(order.rate),
-        handlerId: order.handlerId ? String(order.handlerId) : "",
-      });
-      // Load receipts and payments - ensure we have valid arrays
-      const receipts = Array.isArray(otcOrderDetails.receipts) ? otcOrderDetails.receipts : [];
-      const payments = Array.isArray(otcOrderDetails.payments) ? otcOrderDetails.payments : [];
-      
-      setOtcReceipts(receipts.map(r => ({
-        amount: String(r.amount || ""),
-        accountId: r.accountId ? String(r.accountId) : "",
-      })));
-      
-      setOtcPayments(payments.map(p => ({
-        amount: String(p.amount || ""),
-        accountId: p.accountId ? String(p.accountId) : "",
-      })));
-      
-      // Load profit and service charges
-      if (order.profitAmount !== null && order.profitAmount !== undefined) {
-        setOtcProfitAmount(String(order.profitAmount));
-        setOtcProfitCurrency(order.profitCurrency || "");
-        setOtcProfitAccountId(order.profitAccountId ? String(order.profitAccountId) : "");
-        setShowOtcProfitSection(true);
-      }
-      if (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined) {
-        setOtcServiceChargeAmount(String(order.serviceChargeAmount));
-        setOtcServiceChargeCurrency(order.serviceChargeCurrency || "");
-        setOtcServiceChargeAccountId(order.serviceChargeAccountId ? String(order.serviceChargeAccountId) : "");
-        setShowOtcServiceChargeSection(true);
-      }
-    }
-  }, [otcEditingOrderId, otcOrderDetails]);
+  // resetForm is now provided by useOrderForm hook
 
-  const resetForm = () => {
-    setForm({
-      customerId: "",
-      fromCurrency: "",
-      toCurrency: "",
-      amountBuy: "",
-      amountSell: "",
-      rate: "",
-      status: "pending",
-    });
-    setCalculatedField(null);
-  };
+  // resetProcessForm is now provided by useProcessOrderModal hook
 
-  const resetProcessForm = () => {
-    setProcessForm({
-      handlerId: "",
-      paymentFlow: "receive_first",
-      // Commented out for future use:
-      // paymentType: "CRYPTO",
-      // networkChain: "",
-      // walletAddresses: [""],
-      // bankName: "",
-      // accountTitle: "",
-      // accountNumber: "",
-      // accountIban: "",
-      // swiftCode: "",
-      // bankAddress: "",
-    });
-  };
+  // resetBeneficiaryForm is now provided by useBeneficiaryForm hook
 
-  const resetBeneficiaryForm = () => {
-    setBeneficiaryForm({
-      paymentAccountId: "",
-      // Commented out for future use:
-      // paymentType: "CRYPTO",
-      // networkChain: "",
-      // walletAddresses: [""],
-      // bankName: "",
-      // accountTitle: "",
-      // accountNumber: "",
-      // accountIban: "",
-      // swiftCode: "",
-      // bankAddress: "",
-    });
-    setSaveBeneficiaryToCustomer(false);
-    setSelectedCustomerBeneficiaryId("");
-  };
-
-  const resetOtcForm = () => {
-    setOtcForm({
-      customerId: "",
-      fromCurrency: "",
-      toCurrency: "",
-      amountBuy: "",
-      amountSell: "",
-      rate: "",
-      handlerId: "",
-    });
-    setOtcReceipts([]);
-    setOtcPayments([]);
-    setOtcProfitAmount("");
-    setOtcProfitCurrency("");
-    setOtcProfitAccountId("");
-    setOtcServiceChargeAmount("");
-    setOtcServiceChargeCurrency("");
-    setOtcServiceChargeAccountId("");
-    setShowOtcProfitSection(false);
-    setShowOtcServiceChargeSection(false);
-    setOtcCalculatedField(null);
-  };
-
-  const closeOtcModal = () => {
-    resetOtcForm();
-    setIsOtcOrderModalOpen(false);
-    setOtcEditingOrderId(null);
-  };
+  // resetOtcForm and closeOtcModal are now provided by useOtcOrder hook
  /*  // When fromCurrency or toCurrency changes, fetch the buy and sell rates for the selected non-USDT currency (rates are against USDT)
   useEffect(() => {
     const fetchConversionRates = async () => {
@@ -1828,81 +735,7 @@ export default function OrdersPage() {
 
 
 
-  // Auto-calculate amount when rate or source amount changes
-  useEffect(() => {
-    if (!form.rate || form.rate === "0" || !calculatedField) return;
-    if (!form.fromCurrency || !form.toCurrency) return;
-
-    const rate = Number(form.rate);
-    if (isNaN(rate) || rate <= 0) return;
-
-    // Determine which side is the "stronger" currency so we know which way to apply the rate.
-    // Heuristic: USDT (or any currency with rate <= 1) is the base; otherwise pick the currency with the smaller rate.
-    const getCurrencyRate = (code: string) => {
-      const currency = currencies.find((c) => c.code === code);
-      const candidate =
-        currency?.conversionRateBuy ??
-        currency?.baseRateBuy ??
-        currency?.baseRateSell ??
-        currency?.conversionRateSell;
-      return typeof candidate === "number" ? candidate : null;
-    };
-
-    const fromRate = getCurrencyRate(form.fromCurrency);
-    const toRate = getCurrencyRate(form.toCurrency);
-
-    const inferredFromIsUSDT = fromRate !== null ? fromRate <= 1 : form.fromCurrency === "USDT";
-    const inferredToIsUSDT = toRate !== null ? toRate <= 1 : form.toCurrency === "USDT";
-
-    // If both sides look like USDT (rate <= 1), nothing to auto-calc
-    if (inferredFromIsUSDT && inferredToIsUSDT) return;
-
-    let baseIsFrom: boolean | null = null;
-    if (inferredFromIsUSDT !== inferredToIsUSDT) {
-      // One side is USDT (or behaves like it)
-      baseIsFrom = inferredFromIsUSDT;
-    } else if (!inferredFromIsUSDT && !inferredToIsUSDT && fromRate !== null && toRate !== null) {
-      // Neither is USDT: pick the currency with the smaller rate as the stronger/base currency
-      baseIsFrom = fromRate < toRate;
-    } else {
-      return;
-    }
-
-    if (calculatedField === "buy" && form.amountBuy) {
-      const buyAmount = Number(form.amountBuy);
-      if (!isNaN(buyAmount) && buyAmount > 0) {
-        let sellAmount: string;
-        if (baseIsFrom) {
-          // Stronger/base currency → weaker: multiply by rate
-          sellAmount = (buyAmount * rate).toFixed(2);
-        } else {
-          // Weaker → stronger/base: divide by rate
-          sellAmount = (buyAmount / rate).toFixed(2);
-        }
-        setForm((prev) => ({ ...prev, amountSell: sellAmount }));
-      }
-    } else if (calculatedField === "sell" && form.amountSell) {
-      const sellAmount = Number(form.amountSell);
-      if (!isNaN(sellAmount) && sellAmount > 0) {
-        let buyAmount: string;
-        if (baseIsFrom) {
-          // Stronger/base currency → weaker: divide to get base amount
-          buyAmount = (sellAmount / rate).toFixed(2);
-        } else {
-          // Weaker → stronger/base: multiply to get base amount
-          buyAmount = (sellAmount * rate).toFixed(2);
-        }
-        setForm((prev) => ({ ...prev, amountBuy: buyAmount }));
-      }
-    }
-  }, [form.rate, form.amountBuy, form.amountSell, calculatedField, form.fromCurrency, form.toCurrency, currencies]);
-
-  const closeModal = () => {
-    resetForm();
-    setIsModalOpen(false);
-    setEditingOrderId(null);
-    setIsFlexOrderMode(false);
-  };
+  // Auto-calculation logic is now handled by useOrderForm hook
 
   const resetCustomerForm = () => {
     setCustomerForm({
@@ -1943,19 +776,11 @@ export default function OrdersPage() {
     // Check if it's an OTC order
     if (order.orderType === "otc") {
       // Open OTC modal for editing/viewing (OTC orders can be viewed/edited in OTC modal regardless of status)
+      // Form will be loaded automatically by useOtcOrder hook when otcEditingOrderId changes
       setOtcEditingOrderId(orderId);
-      setOtcForm({
-        customerId: String(order.customerId),
-        fromCurrency: order.fromCurrency,
-        toCurrency: order.toCurrency,
-        amountBuy: String(order.amountBuy),
-        amountSell: String(order.amountSell),
-        rate: String(order.rate),
-        handlerId: order.handlerId ? String(order.handlerId) : "",
-      });
       setIsOtcOrderModalOpen(true);
       setOpenMenuId(null);
-      // Load receipts, payments, profit, service charges via orderDetails query
+      // Load receipts, payments, profit, service charges via orderDetails query (handled by useOtcOrder hook)
       return;
     }
     
@@ -1976,368 +801,13 @@ export default function OrdersPage() {
     setOpenMenuId(null);
   }, [orders]);
 
-  const closeProcessModal = () => {
-    resetProcessForm();
-    setProcessModalOrderId(null);
-  };
+  // closeProcessModal is now provided by useProcessOrderModal hook
 
-  const closeViewModal = () => {
-    setViewModalOrderId(null);
-    setReceiptUploads([{ image: "", amount: "", accountId: "" }]);
-    setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
-    setReceiptUploadKey(0);
-    setPaymentUploadKey(0);
-    setFlexOrderRate(null);
-    setExcessPaymentWarning(null);
-    // Reset profit and service charge state
-    setProfitAmount("");
-    setProfitCurrency("");
-    setProfitAccountId("");
-    setServiceChargeAmount("");
-    setServiceChargeCurrency("");
-    setServiceChargeAccountId("");
-    setShowProfitSection(false);
-    setShowServiceChargeSection(false);
-    setShowReceiptUpload(false);
-    setShowPaymentUpload(false);
-    setShowServiceChargeSection(false);
-    // Clear refs
-    receiptFileInputRefs.current = {};
-    paymentFileInputRefs.current = {};
-  };
+  // closeViewModal is now provided by useViewOrderModal hook
 
-  const closeMakePaymentModal = () => {
-    resetBeneficiaryForm();
-    setMakePaymentModalOrderId(null);
-    setSaveBeneficiaryToCustomer(false);
-    setSelectedCustomerBeneficiaryId("");
-  };
+  // closeMakePaymentModal is now provided by useBeneficiaryForm hook
 
-  // OTC Order handlers
-  const handleOtcOrderSave = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!otcForm.customerId || !otcForm.fromCurrency || !otcForm.toCurrency) return;
-    const handlerId = Number(otcForm.handlerId);
-    if (!otcForm.handlerId || Number.isNaN(handlerId)) {
-      alert("Handler is required");
-      return;
-    }
-    const buyAccountId = otcReceipts.find((r) => r.accountId)?.accountId
-      ? Number(otcReceipts.find((r) => r.accountId)!.accountId)
-      : null;
-    const sellAccountId = otcPayments.find((p) => p.accountId)?.accountId
-      ? Number(otcPayments.find((p) => p.accountId)!.accountId)
-      : null;
-    const buyAccountIdValue: number | undefined = buyAccountId === null ? undefined : buyAccountId;
-    const sellAccountIdValue: number | undefined = sellAccountId === null ? undefined : sellAccountId;
-
-    try {
-      let orderId: number;
-      
-      if (otcEditingOrderId) {
-        // Update existing order
-        await updateOrder({
-          id: otcEditingOrderId,
-          data: {
-            customerId: Number(otcForm.customerId),
-            fromCurrency: otcForm.fromCurrency,
-            toCurrency: otcForm.toCurrency,
-            amountBuy: Number(otcForm.amountBuy || 0),
-            amountSell: Number(otcForm.amountSell || 0),
-            rate: Number(otcForm.rate || 1),
-            handlerId,
-            buyAccountId: buyAccountIdValue,
-            sellAccountId: sellAccountIdValue,
-          },
-        }).unwrap();
-        orderId = otcEditingOrderId;
-      } else {
-        // Create new OTC order
-        const newOrder = await addOrder({
-          customerId: Number(otcForm.customerId),
-          fromCurrency: otcForm.fromCurrency,
-          toCurrency: otcForm.toCurrency,
-          amountBuy: Number(otcForm.amountBuy || 0),
-          amountSell: Number(otcForm.amountSell || 0),
-          rate: Number(otcForm.rate || 1),
-          status: "pending",
-          orderType: "otc",
-          handlerId,
-          buyAccountId: buyAccountIdValue,
-          sellAccountId: sellAccountIdValue,
-        }).unwrap();
-        orderId = newOrder.id;
-      }
-
-      // Delete existing receipts and payments when editing, then recreate from form
-      if (otcEditingOrderId && otcOrderDetails) {
-        // Delete existing receipts
-        for (const receipt of otcOrderDetails.receipts || []) {
-          try {
-            await deleteReceipt(receipt.id).unwrap();
-          } catch (error) {
-            console.error("Error deleting receipt:", error);
-          }
-        }
-        // Delete existing payments
-        for (const payment of otcOrderDetails.payments || []) {
-          try {
-            await deletePayment(payment.id).unwrap();
-          } catch (error) {
-            console.error("Error deleting payment:", error);
-          }
-        }
-      }
-
-      // Create receipts (without image for OTC orders)
-      for (const receipt of otcReceipts) {
-        const receiptAmount = Number(receipt.amount) || 0;
-        if (receiptAmount !== 0 && receipt.accountId) {
-          await addReceipt({
-            id: orderId,
-            amount: receiptAmount,
-            accountId: Number(receipt.accountId),
-            imagePath: "", // Empty for OTC orders - backend will use placeholder
-          } as any).unwrap();
-        }
-      }
-
-      // Create payments (without image for OTC orders)
-      for (const payment of otcPayments) {
-        const paymentAmount = Number(payment.amount) || 0;
-        if (paymentAmount !== 0 && payment.accountId) {
-          await addPayment({
-            id: orderId,
-            amount: paymentAmount,
-            accountId: Number(payment.accountId),
-            imagePath: "", // Empty for OTC orders - backend will use placeholder
-          } as any).unwrap();
-        }
-      }
-
-      // Add profit if provided
-      if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
-        await updateOrder({
-          id: orderId,
-          data: {
-            profitAmount: Number(otcProfitAmount),
-            profitCurrency: otcProfitCurrency,
-            profitAccountId: Number(otcProfitAccountId),
-          },
-        }).unwrap();
-      }
-
-      // Add service charges if provided
-      if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
-        await updateOrder({
-          id: orderId,
-          data: {
-            serviceChargeAmount: Number(otcServiceChargeAmount),
-            serviceChargeCurrency: otcServiceChargeCurrency,
-            serviceChargeAccountId: Number(otcServiceChargeAccountId),
-          },
-        }).unwrap();
-      }
-
-      closeOtcModal();
-    } catch (error: any) {
-      console.error("Error saving OTC order:", error);
-      const errorMessage = error?.data?.message || error?.message || "Failed to save OTC order";
-      alert(errorMessage);
-    }
-  };
-
-  const handleOtcOrderComplete = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!otcForm.customerId || !otcForm.fromCurrency || !otcForm.toCurrency) return;
-
-    // Validate handler is assigned
-    const handlerId = Number(otcForm.handlerId);
-    if (!otcForm.handlerId || Number.isNaN(handlerId)) {
-      alert("Handler must be assigned before completing the order");
-      return;
-    }
-
-    const buyAccountId =
-      otcReceipts.find((r) => r.accountId)?.accountId
-        ? Number(otcReceipts.find((r) => r.accountId)!.accountId)
-        : accounts.find((a) => a.currencyCode === otcForm.fromCurrency)?.id;
-    const sellAccountId =
-      otcPayments.find((p) => p.accountId)?.accountId
-        ? Number(otcPayments.find((p) => p.accountId)!.accountId)
-        : accounts.find((a) => a.currencyCode === otcForm.toCurrency)?.id;
-    const buyAccountIdValue = buyAccountId ?? undefined;
-    const sellAccountIdValue = sellAccountId ?? undefined;
-    if (!buyAccountId || !sellAccountId) {
-      alert("Please select accounts for both From and To currencies before completing.");
-      return;
-    }
-
-    // Validate that all receipts with amounts have accounts selected
-    const receiptsWithoutAccounts = otcReceipts.filter(
-      (r) => (Number(r.amount) || 0) > 0 && !r.accountId
-    );
-    if (receiptsWithoutAccounts.length > 0) {
-      alert("All receipts with amounts must have an account selected. Please select accounts for all receipts with amounts.");
-      return;
-    }
-
-    // Validate that all payments with amounts have accounts selected
-    const paymentsWithoutAccounts = otcPayments.filter(
-      (p) => (Number(p.amount) || 0) > 0 && !p.accountId
-    );
-    if (paymentsWithoutAccounts.length > 0) {
-      alert("All payments with amounts must have an account selected. Please select accounts for all payments with amounts.");
-      return;
-    }
-
-    // Validate receipt total equals amountBuy
-    const receiptTotal = otcReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-    const amountBuy = Number(otcForm.amountBuy || 0);
-    if (Math.abs(receiptTotal - amountBuy) > 0.01) {
-      alert(`Receipt total (${receiptTotal.toFixed(2)}) must equal Amount Buy (${amountBuy.toFixed(2)})`);
-      return;
-    }
-
-    // Validate payment total equals amountSell
-    const paymentTotal = otcPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const amountSell = Number(otcForm.amountSell || 0);
-    if (Math.abs(paymentTotal - amountSell) > 0.01) {
-      alert(`Payment total (${paymentTotal.toFixed(2)}) must equal Amount Sell (${amountSell.toFixed(2)})`);
-      return;
-    }
-
-    try {
-      let orderId: number;
-      
-      if (otcEditingOrderId) {
-        // Update existing order
-        await updateOrder({
-          id: otcEditingOrderId,
-          data: {
-            customerId: Number(otcForm.customerId),
-            fromCurrency: otcForm.fromCurrency,
-            toCurrency: otcForm.toCurrency,
-            amountBuy: Number(otcForm.amountBuy || 0),
-            amountSell: Number(otcForm.amountSell || 0),
-            rate: Number(otcForm.rate || 1),
-            handlerId,
-            buyAccountId: buyAccountIdValue,
-            sellAccountId: sellAccountIdValue,
-          },
-        }).unwrap();
-        orderId = otcEditingOrderId;
-      } else {
-        // Create new OTC order
-        const newOrder = await addOrder({
-          customerId: Number(otcForm.customerId),
-          fromCurrency: otcForm.fromCurrency,
-          toCurrency: otcForm.toCurrency,
-          amountBuy: Number(otcForm.amountBuy || 0),
-          amountSell: Number(otcForm.amountSell || 0),
-          rate: Number(otcForm.rate || 1),
-          status: "pending",
-          orderType: "otc",
-          handlerId,
-          buyAccountId: buyAccountIdValue,
-          sellAccountId: sellAccountIdValue,
-        }).unwrap();
-        orderId = newOrder.id;
-      }
-
-      // Assign handler
-      await processOrder({
-        id: orderId,
-        handlerId: Number(otcForm.handlerId),
-      }).unwrap();
-
-      // Delete existing receipts and payments when editing, then recreate from form
-      if (otcEditingOrderId && otcOrderDetails) {
-        // Delete existing receipts
-        for (const receipt of otcOrderDetails.receipts || []) {
-          try {
-            await deleteReceipt(receipt.id).unwrap();
-          } catch (error) {
-            console.error("Error deleting receipt:", error);
-          }
-        }
-        // Delete existing payments
-        for (const payment of otcOrderDetails.payments || []) {
-          try {
-            await deletePayment(payment.id).unwrap();
-          } catch (error) {
-            console.error("Error deleting payment:", error);
-          }
-        }
-      }
-
-      // Create and confirm receipts
-      for (const receipt of otcReceipts) {
-        const receiptAmount = Number(receipt.amount) || 0;
-        if (receiptAmount !== 0 && receipt.accountId) {
-          const receiptResult = await addReceipt({
-            id: orderId,
-            amount: receiptAmount,
-            accountId: Number(receipt.accountId),
-            imagePath: "",
-          } as any).unwrap();
-          // Confirm receipt immediately for OTC orders
-          await confirmReceipt((receiptResult as any).id).unwrap();
-        }
-      }
-
-      // Create and confirm payments
-      for (const payment of otcPayments) {
-        const paymentAmount = Number(payment.amount) || 0;
-        if (paymentAmount !== 0 && payment.accountId) {
-          const paymentResult = await addPayment({
-            id: orderId,
-            amount: paymentAmount,
-            accountId: Number(payment.accountId),
-            imagePath: "",
-          } as any).unwrap();
-          // Confirm payment immediately for OTC orders
-          await confirmPayment((paymentResult as any).id).unwrap();
-        }
-      }
-
-      // Add profit if provided
-      if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
-        await updateOrder({
-          id: orderId,
-          data: {
-            profitAmount: Number(otcProfitAmount),
-            profitCurrency: otcProfitCurrency,
-            profitAccountId: Number(otcProfitAccountId),
-          },
-        }).unwrap();
-      }
-
-      // Add service charges if provided
-      if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
-        await updateOrder({
-          id: orderId,
-          data: {
-            serviceChargeAmount: Number(otcServiceChargeAmount),
-            serviceChargeCurrency: otcServiceChargeCurrency,
-            serviceChargeAccountId: Number(otcServiceChargeAccountId),
-          },
-        }).unwrap();
-      }
-
-      // Complete the order
-      await updateOrderStatus({
-        id: orderId,
-        status: "completed",
-      }).unwrap();
-
-      closeOtcModal();
-    } catch (error: any) {
-      console.error("Error completing OTC order:", error);
-      const errorMessage = error?.data?.message || error?.message || "Failed to complete OTC order";
-      alert(errorMessage);
-    }
-  };
+  // OTC Order handlers are now provided by useOtcOrder hook
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -2370,6 +840,8 @@ export default function OrdersPage() {
         rate: Number(form.rate || 1),
         status: form.status,
         isFlexOrder: isFlexOrderMode,
+        handlerId: authUser?.id ?? undefined,
+        orderType: "online",
       }).unwrap();
       resetForm();
       setIsModalOpen(false);
@@ -2502,67 +974,7 @@ export default function OrdersPage() {
     
   };
 
-  const handleAddBeneficiary = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!makePaymentModalOrderId || !beneficiaryForm.paymentAccountId) return;
-
-    // Get order and account details for balance validation
-    const paymentOrder = orders.find((o) => o.id === makePaymentModalOrderId);
-    const selectedAccount = accounts.find((a) => a.id === Number(beneficiaryForm.paymentAccountId));
-    
-    if (paymentOrder && selectedAccount) {
-      const requiredAmount = paymentOrder.amountSell;
-      const currentBalance = selectedAccount.balance;
-      
-      // Check if account has insufficient funds
-      if (currentBalance < requiredAmount) {
-        const newBalance = currentBalance - requiredAmount;
-        const confirmMessage = t("orders.insufficientBalanceWarning", {
-          accountName: selectedAccount.name,
-          currentBalance: currentBalance.toFixed(2),
-          currency: selectedAccount.currencyCode,
-          requiredAmount: requiredAmount.toFixed(2),
-          newBalance: newBalance.toFixed(2)
-        });
-        
-        if (!window.confirm(confirmMessage)) {
-          return; // User cancelled
-        }
-      }
-    }
-
-    const payload: any = {
-      id: makePaymentModalOrderId,
-      paymentAccountId: Number(beneficiaryForm.paymentAccountId),
-      // Commented out for future use:
-      // paymentType: beneficiaryForm.paymentType,
-      // if (beneficiaryForm.paymentType === "CRYPTO") {
-      //   payload.networkChain = beneficiaryForm.networkChain;
-      //   payload.walletAddresses = beneficiaryForm.walletAddresses.filter((addr) => addr.trim());
-      // } else {
-      //   payload.bankName = beneficiaryForm.bankName;
-      //   payload.accountTitle = beneficiaryForm.accountTitle;
-      //   payload.accountNumber = beneficiaryForm.accountNumber;
-      //   payload.accountIban = beneficiaryForm.accountIban;
-      //   payload.swiftCode = beneficiaryForm.swiftCode;
-      //   payload.bankAddress = beneficiaryForm.bankAddress;
-      // }
-    };
-
-    await addBeneficiary(payload);
-    // Commented out for future use:
-    // if (saveBeneficiaryToCustomer && makePaymentOrder?.customerId) {
-    //   const customerPayload = { ...payload, customerId: makePaymentOrder.customerId };
-    //   delete customerPayload.id;
-    //   await addCustomerBeneficiary(customerPayload);
-    // }
-    resetBeneficiaryForm();
-    const orderId = makePaymentModalOrderId;
-    setMakePaymentModalOrderId(null);
-    setOpenMenuId(null);
-    
-    setViewModalOrderId(orderId);
-  };
+  // handleAddBeneficiary is now provided by useBeneficiaryForm hook
 
   const handleAddPayment = async (event: FormEvent) => {
     event.preventDefault();
@@ -2936,134 +1348,7 @@ export default function OrdersPage() {
   const canDeleteOrder = useMemo(() => Boolean(currentRole?.permissions?.actions?.deleteOrder), [currentRole]);
   const canDeleteManyOrders = useMemo(() => Boolean(currentRole?.permissions?.actions?.deleteManyOrders), [currentRole]);
 
-  const getActionButtons = useCallback((order: typeof orders[0]) => {
-    const buttons = [];
-    
-    if (order.status === "pending") {
-      buttons.push(
-        <button
-          key="edit"
-          className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-slate-50 first:rounded-t-lg"
-          onClick={() => startEdit(order.id)}
-        >
-          {t("common.edit")}
-        </button>
-      );
-      buttons.push(
-        <button
-          key="process"
-          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50"
-          onClick={() => {
-            setProcessModalOrderId(order.id);
-            setOpenMenuId(null);
-          }}
-        >
-          {t("orders.process")}
-        </button>
-      );
-    }
-
-
-    if (order.status === "under_process") {
-      // For OTC orders, show Edit button to open OTC modal
-      if (order.orderType === "otc") {
-        buttons.push(
-          <button
-            key="edit"
-            className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-slate-50 first:rounded-t-lg"
-            onClick={() => startEdit(order.id)}
-          >
-            {t("common.edit")}
-          </button>
-        );
-      } else {
-        // Show View button for regular orders under process
-        buttons.push(
-          <button
-            key="view"
-            className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
-            onClick={() => {
-              setViewModalOrderId(order.id);
-              setOpenMenuId(null);
-            }}
-          >
-            {t("orders.view")}
-          </button>
-        );
-      }
-    }
-
-    if (order.status === "completed" || order.status === "cancelled") {
-      // For OTC orders, show Edit button to open OTC modal (even for completed/cancelled, but it should be view-only in modal)
-      if (order.orderType === "otc") {
-        buttons.push(
-          <button
-            key="edit"
-            className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
-            onClick={() => startEdit(order.id)}
-          >
-            {t("orders.view")}
-          </button>
-        );
-      } else {
-        buttons.push(
-          <button
-            key="view"
-            className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
-            onClick={() => {
-              setViewModalOrderId(order.id);
-              setOpenMenuId(null);
-            }}
-          >
-            {t("orders.view")}
-          </button>
-        );
-      }
-    }
-
-    // Don't show Cancel button for completed or cancelled orders or when role lacks permission
-    if (canCancelOrder && order.status !== "completed" && order.status !== "cancelled") {
-      buttons.push(
-        <button
-          key="cancel"
-          className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-slate-50"
-          onClick={() => setStatus(order.id, "cancelled")}
-        >
-          {t("orders.cancel")}
-        </button>
-      );
-    }
-
-    if (canDeleteOrder) {
-      buttons.push(
-        <button
-          key="delete"
-          className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 last:rounded-b-lg border-t border-slate-200"
-          onClick={() => handleDeleteClick(order.id)}
-          disabled={isDeleting}
-        >
-          {isDeleting ? t("common.deleting") : t("orders.delete")}
-        </button>
-      );
-    }
-
-    return buttons;
-  }, [startEdit, setProcessModalOrderId, setViewModalOrderId, setOpenMenuId, setStatus, handleDeleteClick, canCancelOrder, canDeleteOrder, isDeleting, t]);
-
-  const getStatusTone = useCallback((status: OrderStatus) => {
-    switch (status) {
-      case "pending":
-        return "amber";
-      case "under_process":
-        return "blue";
-      case "completed":
-        return "emerald";
-      case "cancelled":
-        return "rose";
-      default:
-        return "slate";
-    }
-  }, []);
+  // Action buttons and status tone are now handled by OrderActionsMenu component
 
   // Helper function to open PDF data URI in a new tab
   const openPdfInNewTab = useCallback((dataUri: string) => {
@@ -3210,394 +1495,7 @@ export default function OrdersPage() {
     }
   }, [viewerModal]);
 
-  // Save column visibility to localStorage
-  useEffect(() => {
-    localStorage.setItem("ordersPage_visibleColumns", JSON.stringify(Array.from(visibleColumns)));
-  }, [visibleColumns]);
-
-  // Save column order to localStorage
-  useEffect(() => {
-    localStorage.setItem("ordersPage_columnOrder", JSON.stringify(columnOrder));
-  }, [columnOrder]);
-
-  // Handle click outside column dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (isColumnDropdownOpen && columnDropdownRef.current && !columnDropdownRef.current.contains(event.target as Node)) {
-        setIsColumnDropdownOpen(false);
-      }
-    };
-
-    if (isColumnDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }
-  }, [isColumnDropdownOpen]);
-
-  // Drag and drop handlers for column reordering
-  const handleColumnDragStart = (index: number) => {
-    setDraggedColumnIndex(index);
-  };
-
-  const handleColumnDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    setDragOverIndex(index);
-  };
-
-  const handleColumnDragEnd = () => {
-    if (draggedColumnIndex !== null && dragOverIndex !== null && draggedColumnIndex !== dragOverIndex) {
-      const newOrder = [...columnOrder];
-      const [removed] = newOrder.splice(draggedColumnIndex, 1);
-      newOrder.splice(dragOverIndex, 0, removed);
-      setColumnOrder(newOrder);
-    }
-    setDraggedColumnIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const handleColumnDragLeave = () => {
-    setDragOverIndex(null);
-  };
-
-  // Helper function to get column label
-  const getColumnLabel = (key: string): string => {
-    const column = getAvailableColumns().find(col => col.key === key);
-    return column?.label || key;
-  };
-
-  // Helper function to render cell content for a column
-  const renderCellContent = (columnKey: string, order: typeof orders[0]) => {
-    switch (columnKey) {
-      case "id":
-        return <td key={columnKey} className="py-2 font-mono text-slate-600">#{order.id}</td>;
-      case "date":
-        return <td key={columnKey} className="py-2">{formatDate(order.createdAt)}</td>;
-      case "handler":
-        return (
-          <td key={columnKey} className="py-2">
-            {order.handlerName ? (
-              order.handlerName
-            ) : (
-              <span className="text-rose-600">
-                {t("orders.noHandlerAssigned")}
-              </span>
-            )}
-          </td>
-        );
-      case "customer":
-        return (
-          <td key={columnKey} className="py-2 font-semibold">
-            <div className="flex items-center gap-2">
-              {order.customerName || order.customerId}
-              {order.isFlexOrder && (
-                <Badge tone="purple">
-                  Flex Order
-                </Badge>
-              )}
-            </div>
-          </td>
-        );
-      case "pair":
-        return (
-          <td key={columnKey} className="py-2">
-            {order.fromCurrency} → {order.toCurrency}
-          </td>
-        );
-      case "buy":
-        return (
-          <td key={columnKey} className="py-2">
-            {order.isFlexOrder && order.actualAmountBuy ? (
-              <span>
-                <span className="text-purple-600 font-semibold">{Math.round(order.actualAmountBuy)}</span>
-                {/* <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountBuy)}</span> */}
-              </span>
-            ) : (
-              Math.round(order.amountBuy)
-            )}
-          </td>
-        );
-      case "sell":
-        return (
-          <td key={columnKey} className="py-2">
-            {order.isFlexOrder && order.actualAmountSell ? (
-              <span>
-                -<span className="text-purple-600 font-semibold">{Math.round(order.actualAmountSell)}</span>
-                {/* <span className="text-slate-400 text-xs ml-1 line-through">{Math.round(order.amountSell)}</span> */}
-              </span>
-            ) : (
-              `-${Math.round(order.amountSell)}`
-            )}
-          </td>
-        );
-      case "rate":
-        return (
-          <td key={columnKey} className="py-2">
-            {order.isFlexOrder && order.actualRate ? (
-              <span>
-                <span className="text-purple-600 font-semibold">{order.actualRate}</span>
-                {/* <span className="text-slate-400 text-xs ml-1 line-through">{order.rate}</span> */}
-              </span>
-            ) : (
-              order.rate
-            )}
-          </td>
-        );
-      case "status":
-        return (
-          <td key={columnKey} className="py-2">
-            <Badge tone={getStatusTone(order.status)}>
-              {t(`orders.${order.status}`)}
-            </Badge>
-          </td>
-        );
-      case "orderType":
-        return (
-          <td key={columnKey} className="py-2">
-            <Badge tone={order.orderType === "otc" ? "amber" : "blue"}>
-              {order.orderType === "otc" ? "OTC" : "Online"}
-            </Badge>
-          </td>
-        );
-      case "buyAccount": {
-        const fallbackAccountName =
-          order.buyAccountName ||
-          (order.buyAccountId ? accounts.find((acc) => acc.id === order.buyAccountId)?.name : null) ||
-          null;
-
-        // Imported orders may not have receipt aggregates; fall back to the primary account/amount
-        const buyAccounts =
-          (order.buyAccounts && order.buyAccounts.length > 0)
-            ? order.buyAccounts
-            : order.buyAccountId
-              ? [{
-                  accountId: order.buyAccountId,
-                  accountName: fallbackAccountName || `Account #${order.buyAccountId}`,
-                  amount: order.actualAmountBuy ?? order.amountBuy ?? 0,
-                }]
-              : [];
-
-        const firstAccount = buyAccounts.length > 0 ? buyAccounts[0] : null;
-        const accountName = firstAccount?.accountName || fallbackAccountName || "-";
-        
-        // Check if profit or service charge should appear in buy account tooltip
-        // Buy account is for fromCurrency, so check if profit/service charge currency matches fromCurrency
-        const showProfitInBuy = order.profitCurrency === order.fromCurrency && 
-                                order.profitAmount !== null && 
-                                order.profitAmount !== undefined &&
-                                order.profitAccountId;
-        const showServiceChargeInBuy = order.serviceChargeCurrency === order.fromCurrency && 
-                                       order.serviceChargeAmount !== null && 
-                                       order.serviceChargeAmount !== undefined &&
-                                       order.serviceChargeAccountId;
-        
-        const profitAccountName = showProfitInBuy && order.profitAccountId 
-          ? accounts.find(acc => acc.id === order.profitAccountId)?.name || null
-          : null;
-        const serviceChargeAccountName = showServiceChargeInBuy && order.serviceChargeAccountId
-          ? accounts.find(acc => acc.id === order.serviceChargeAccountId)?.name || null
-          : null;
-        
-        // Check if profit/service charge accounts are different from buyAccounts
-        const profitAccountId = showProfitInBuy ? order.profitAccountId : null;
-        const serviceChargeAccountId = showServiceChargeInBuy ? order.serviceChargeAccountId : null;
-        
-        const profitAccountInBuyAccounts = profitAccountId 
-          ? buyAccounts.some(acc => acc.accountId === profitAccountId)
-          : false;
-        const serviceChargeAccountInBuyAccounts = serviceChargeAccountId
-          ? buyAccounts.some(acc => acc.accountId === serviceChargeAccountId)
-          : false;
-        
-        // Count includes buyAccounts plus profit/service charge accounts if they're different
-        let accountCount = buyAccounts.length;
-        if (profitAccountId && !profitAccountInBuyAccounts) {
-          accountCount++;
-        }
-        if (serviceChargeAccountId && !serviceChargeAccountInBuyAccounts) {
-          accountCount++;
-        }
-        
-        const hasMultiple = accountCount > 1;
-        const shouldShowTooltip = hasMultiple || showProfitInBuy || showServiceChargeInBuy;
-        
-        return (
-          <td key={columnKey} className="py-2 text-slate-600">
-            {shouldShowTooltip ? (
-              <AccountTooltip 
-                accounts={buyAccounts} 
-                label={t("orders.buyAccount")}
-                profitAmount={showProfitInBuy ? order.profitAmount : null}
-                profitCurrency={showProfitInBuy ? order.profitCurrency : null}
-                profitAccountName={profitAccountName}
-                serviceChargeAmount={showServiceChargeInBuy ? order.serviceChargeAmount : null}
-                serviceChargeCurrency={showServiceChargeInBuy ? order.serviceChargeCurrency : null}
-                serviceChargeAccountName={serviceChargeAccountName}
-              >
-                <div className="flex items-center gap-2 cursor-default">
-                  <span>{accountName}</span>
-                  {hasMultiple && (
-                    <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
-                      {accountCount}
-                    </span>
-                  )}
-                </div>
-              </AccountTooltip>
-            ) : (
-              <span>{accountName}</span>
-            )}
-          </td>
-        );
-      }
-      case "sellAccount": {
-        const fallbackAccountName =
-          order.sellAccountName ||
-          (order.sellAccountId ? accounts.find((acc) => acc.id === order.sellAccountId)?.name : null) ||
-          null;
-
-        // Imported orders may not have payment aggregates; fall back to the primary account/amount
-        const sellAccounts =
-          (order.sellAccounts && order.sellAccounts.length > 0)
-            ? order.sellAccounts
-            : order.sellAccountId
-              ? [{
-                  accountId: order.sellAccountId,
-                  accountName: fallbackAccountName || `Account #${order.sellAccountId}`,
-                  amount: order.actualAmountSell ?? order.amountSell ?? 0,
-                }]
-              : [];
-
-        const firstAccount = sellAccounts.length > 0 ? sellAccounts[0] : null;
-        const accountName = firstAccount?.accountName || fallbackAccountName || "-";
-        
-        // Check if profit or service charge should appear in sell account tooltip
-        // Sell account is for toCurrency, so check if profit/service charge currency matches toCurrency
-        const showProfitInSell = order.profitCurrency === order.toCurrency && 
-                                 order.profitAmount !== null && 
-                                 order.profitAmount !== undefined &&
-                                 order.profitAccountId;
-        const showServiceChargeInSell = order.serviceChargeCurrency === order.toCurrency && 
-                                        order.serviceChargeAmount !== null && 
-                                        order.serviceChargeAmount !== undefined &&
-                                        order.serviceChargeAccountId;
-        
-        const profitAccountName = showProfitInSell && order.profitAccountId 
-          ? accounts.find(acc => acc.id === order.profitAccountId)?.name || null
-          : null;
-        const serviceChargeAccountName = showServiceChargeInSell && order.serviceChargeAccountId
-          ? accounts.find(acc => acc.id === order.serviceChargeAccountId)?.name || null
-          : null;
-        
-        // Check if profit/service charge accounts are different from sellAccounts
-        const profitAccountId = showProfitInSell ? order.profitAccountId : null;
-        const serviceChargeAccountId = showServiceChargeInSell ? order.serviceChargeAccountId : null;
-        
-        const profitAccountInSellAccounts = profitAccountId 
-          ? sellAccounts.some(acc => acc.accountId === profitAccountId)
-          : false;
-        const serviceChargeAccountInSellAccounts = serviceChargeAccountId
-          ? sellAccounts.some(acc => acc.accountId === serviceChargeAccountId)
-          : false;
-        
-        // Count includes sellAccounts plus profit/service charge accounts if they're different
-        let accountCount = sellAccounts.length;
-        if (profitAccountId && !profitAccountInSellAccounts) {
-          accountCount++;
-        }
-        if (serviceChargeAccountId && !serviceChargeAccountInSellAccounts) {
-          accountCount++;
-        }
-        
-        const hasMultiple = accountCount > 1;
-        const shouldShowTooltip = hasMultiple || showProfitInSell || showServiceChargeInSell;
-        
-        return (
-          <td key={columnKey} className="py-2 text-slate-600">
-            {shouldShowTooltip ? (
-              <AccountTooltip 
-                accounts={sellAccounts} 
-                label={t("orders.sellAccount")}
-                profitAmount={showProfitInSell ? order.profitAmount : null}
-                // profitCurrency={showProfitInSell ? order.profitCurrency : null}
-                profitAccountName={profitAccountName}
-                serviceChargeAmount={showServiceChargeInSell ? order.serviceChargeAmount : null}
-                // serviceChargeCurrency={showServiceChargeInSell ? order.serviceChargeCurrency : null}
-                serviceChargeAccountName={serviceChargeAccountName}
-                isSellAccount={true}
-              >
-                <div className="flex items-center gap-2 cursor-default">
-                  <span>{accountName}</span>
-                  {hasMultiple && (
-                    <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
-                      {accountCount}
-                    </span>
-                  )}
-                </div>
-              </AccountTooltip>
-            ) : (
-              <span>{accountName}</span>
-            )}
-          </td>
-        );
-      }
-      case "profit":
-        return (
-          <td key={columnKey} className="py-2 text-slate-600">
-            {order.profitAmount !== null && order.profitAmount !== undefined ? (
-              <span className="text-blue-700 font-medium">
-                {order.profitAmount > 0 ? "+" : ""}{order.profitAmount.toFixed(2)} {order.profitCurrency || ""}
-              </span>
-            ) : (
-              <span className="text-slate-400">-</span>
-            )}
-          </td>
-        );
-      case "serviceCharges":
-        return (
-          <td key={columnKey} className="py-2 text-slate-600">
-            {order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined ? (
-              <span className={`font-medium ${order.serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"}`}>
-                {order.serviceChargeAmount > 0 ? "+" : ""}{order.serviceChargeAmount.toFixed(2)} {order.serviceChargeCurrency || ""}
-              </span>
-            ) : (
-              <span className="text-slate-400">-</span>
-            )}
-          </td>
-        );
-      case "tags":
-        return (
-          <td key={columnKey} className="py-2">
-            <div className="flex flex-wrap gap-1">
-              {order.tags && Array.isArray(order.tags) && order.tags.length > 0 ? (
-                order.tags.map((tag: { id: number; name: string; color: string }) => (
-                  <Badge key={tag.id} tone="slate" backgroundColor={tag.color}>
-                    {tag.name}
-                  </Badge>
-                ))
-              ) : (
-                <span className="text-slate-400 text-xs">-</span>
-              )}
-            </div>
-          </td>
-        );
-      default:
-        return null;
-    }
-  };
-
-  // Toggle column visibility
-  const toggleColumnVisibility = (columnKey: string) => {
-    setVisibleColumns((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(columnKey)) {
-        newSet.delete(columnKey);
-      } else {
-        newSet.add(columnKey);
-      }
-      return newSet;
-    });
-  };
+  // Column management and rendering is now handled by OrdersTable component
 
   const currentOrder = orders.find((o) => o.id === viewModalOrderId);
   const makePaymentOrder = orders.find((o) => o.id === makePaymentModalOrderId);
@@ -3726,1090 +1624,132 @@ export default function OrdersPage() {
               </svg>
               {t("orders.import") || "Import Orders"}
             </button>
-            <div className="relative" ref={columnDropdownRef}>
-              <button
-                onClick={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
-                aria-label={t("orders.columns") || "Columns"}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                </svg>
-                {t("orders.columns") || "Columns"}
-                <svg
-                  className={`w-4 h-4 transition-transform ${isColumnDropdownOpen ? "rotate-180" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-              {isColumnDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-slate-200 z-50 py-2">
-                  <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200">
-                    {t("orders.showColumns") || "Show Columns"}
-                  </div>
-                  {availableColumns.map((column, index) => (
-                    <div
-                      key={column.key}
-                      onDragOver={(e) => handleColumnDragOver(e, index)}
-                      onDragLeave={handleColumnDragLeave}
-                      className={`flex items-center gap-2 px-4 py-2 hover:bg-slate-50 ${
-                        dragOverIndex === index ? 'bg-blue-50 border-t-2 border-blue-500' : ''
-                      } ${draggedColumnIndex === index ? 'opacity-50' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleColumns.has(column.key)}
-                        onChange={() => toggleColumnVisibility(column.key)}
-                        onClick={(e) => e.stopPropagation()}
-                        onDragStart={(e) => e.preventDefault()}
-                        className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 flex-shrink-0"
-                      />
-                      <span 
-                        className="text-sm text-slate-700 flex-1"
-                        onDragStart={(e) => e.preventDefault()}
-                      >
-                        {column.label}
-                      </span>
-                      <div
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = 'move';
-                          e.dataTransfer.setData('text/plain', index.toString());
-                          handleColumnDragStart(index);
-                        }}
-                        onDragEnd={handleColumnDragEnd}
-                        className="cursor-move flex-shrink-0 text-slate-400 hover:text-slate-600 select-none"
-                        style={{ userSelect: 'none' }}
-                      >
-                        <svg
-                          className="w-4 h-4 pointer-events-none"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 8h16M4 16h16"
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <OrdersColumnDropdown
+              isOpen={isColumnDropdownOpen}
+              onToggle={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
+              availableColumns={availableColumns}
+              visibleColumns={visibleColumns}
+              onToggleColumn={toggleColumnVisibility}
+              draggedColumnIndex={draggedColumnIndex}
+              dragOverIndex={dragOverIndex}
+              onDragStart={handleColumnDragStart}
+              onDragOver={handleColumnDragOver}
+              onDragEnd={handleColumnDragEnd}
+              onDragLeave={handleColumnDragLeave}
+              dropdownRef={columnDropdownRef}
+              t={t}
+            />
           </div>
         }
       >
         {/* Filter Section */}
-        <div className="mb-4 border-b border-slate-200 pb-4">
-          <button
-            onClick={() => setIsFilterExpanded(!isFilterExpanded)}
-            className="flex items-center justify-between w-full text-left text-sm font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <svg
-                className={`w-5 h-5 transition-transform ${isFilterExpanded ? "rotate-90" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              {t("orders.filters") || "Filters"}
-            </span>
-            <span className="text-xs font-normal text-slate-500">
-              {Object.values(filters).filter(v => v !== null && v !== 'all' && v !== 'custom').length > 0 && `(${Object.values(filters).filter(v => v !== null && v !== 'all' && v !== 'custom').length} active)`}
-            </span>
-          </button>
-          
-          {isFilterExpanded && (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {/* Date Preset */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.datePreset") || "Date Range"}
-                </label>
-                <select
-                  value={filters.datePreset}
-                  onChange={(e) => handleDatePresetChange(e.target.value as any)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">{t("orders.all") || "All"}</option>
-                  <option value="currentWeek">{t("orders.currentWeek") || "Current Week"}</option>
-                  <option value="lastWeek">{t("orders.lastWeek") || "Last Week"}</option>
-                  <option value="currentMonth">{t("orders.currentMonth") || "Current Month"}</option>
-                  <option value="lastMonth">{t("orders.lastMonth") || "Last Month"}</option>
-                  <option value="custom">{t("orders.custom") || "Custom"}</option>
-                </select>
-              </div>
+        <OrdersFilters
+          filters={filters}
+          isExpanded={isFilterExpanded}
+          onToggleExpanded={() => setIsFilterExpanded(!isFilterExpanded)}
+          onDatePresetChange={handleDatePresetChange}
+          onFilterChange={updateFilter}
+          onClearFilters={handleClearFilters}
+          onExport={handleExportOrders}
+          isExporting={isExporting}
+          isTagFilterOpen={isTagFilterOpen}
+          setIsTagFilterOpen={setIsTagFilterOpen}
+          tagFilterHighlight={tagFilterHighlight}
+          setTagFilterHighlight={setTagFilterHighlight}
+          tagFilterListRef={tagFilterListRef}
+          onTagFilterKeyDown={handleTagFilterKeyDown}
+          users={users}
+          customers={customers}
+          accounts={accounts}
+          currencyPairs={currencyPairs}
+          tags={tags}
+          selectedTagNames={selectedTagNames}
+          tagFilterLabel={tagFilterLabel}
+        />
 
-              {/* Date From */}
-              {filters.datePreset === 'custom' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t("orders.dateFrom") || "Date From"}
-                  </label>
-                  <input
-                    type="date"
-                    value={filters.dateFrom || ""}
-                    onChange={(e) => {
-                      setFilters((prev) => ({ ...prev, dateFrom: e.target.value || null }));
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              )}
-
-              {/* Date To */}
-              {filters.datePreset === 'custom' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {t("orders.dateTo") || "Date To"}
-                  </label>
-                  <input
-                    type="date"
-                    value={filters.dateTo || ""}
-                    onChange={(e) => {
-                      setFilters((prev) => ({ ...prev, dateTo: e.target.value || null }));
-                      setCurrentPage(1);
-                    }}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              )}
-
-              {/* Handler */}
-              <SearchableSelect
-                value={filters.handlerId}
-                onChange={(value) => {
-                  setFilters((prev) => ({ ...prev, handlerId: value }));
-                  setCurrentPage(1);
-                }}
-                options={users}
-                placeholder={t("orders.selectHandler") || "Type to search handlers..."}
-                label={t("orders.handler") || "Handler"}
-                allOptionLabel={t("orders.all") || "All"}
-              />
-
-              {/* Customer */}
-              <SearchableSelect
-                value={filters.customerId}
-                onChange={(value) => {
-                  setFilters((prev) => ({ ...prev, customerId: value }));
-                  setCurrentPage(1);
-                }}
-                options={customers}
-                placeholder={t("orders.selectCustomer") || "Type to search customers..."}
-                label={t("orders.customer") || "Customer"}
-                allOptionLabel={t("orders.all") || "All"}
-              />
-
-              {/* Currency Pair */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.currencyPair") || "Currency Pair"}
-                </label>
-                <select
-                  value={filters.currencyPair || ""}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, currencyPair: e.target.value || null }));
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">{t("orders.all") || "All"}</option>
-                  {currencyPairs.map((pair) => (
-                    <option key={pair} value={pair}>
-                      {pair}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Buy Account */}
-              <SearchableSelect
-                value={filters.buyAccountId}
-                onChange={(value) => {
-                  setFilters((prev) => ({ ...prev, buyAccountId: value }));
-                  setCurrentPage(1);
-                }}
-                options={accounts}
-                placeholder={t("orders.selectBuyAccount") || "Type to search buy accounts..."}
-                label={t("orders.buyAccount") || "Buy Account"}
-                allOptionLabel={t("orders.all") || "All"}
-              />
-
-              {/* Sell Account */}
-              <SearchableSelect
-                value={filters.sellAccountId}
-                onChange={(value) => {
-                  setFilters((prev) => ({ ...prev, sellAccountId: value }));
-                  setCurrentPage(1);
-                }}
-                options={accounts}
-                placeholder={t("orders.selectSellAccount") || "Type to search sell accounts..."}
-                label={t("orders.sellAccount") || "Sell Account"}
-                allOptionLabel={t("orders.all") || "All"}
-              />
-
-              {/* Status */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.status") || "Status"}
-                </label>
-                <select
-                  value={filters.status || ""}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, status: (e.target.value || null) as OrderStatus | null }));
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">{t("orders.all") || "All"}</option>
-                  <option value="pending">{t("orders.pending") || "Pending"}</option>
-                  <option value="under_process">{t("orders.underProcess") || "Under Process"}</option>
-                  <option value="completed">{t("orders.completed") || "Completed"}</option>
-                  <option value="cancelled">{t("orders.cancelled") || "Cancelled"}</option>
-                </select>
-              </div>
-
-              {/* Order Type */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.orderType") || "Order Type"}
-                </label>
-                <select
-                  value={filters.orderType || ""}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, orderType: (e.target.value || null) as "online" | "otc" | null }));
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">{t("orders.all") || "All"}</option>
-                  <option value="online">Online</option>
-                  <option value="otc">OTC</option>
-                </select>
-              </div>
-
-              {/* Tag Filter */}
-              <div className="relative">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  {t("orders.tag") || "Tag"}
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setIsTagFilterOpen((prev) => !prev)}
-                  onKeyDown={handleTagFilterKeyDown}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm flex items-center justify-between hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <span
-                    className="truncate flex-1 min-w-0 text-left"
-                    title={selectedTagNames.length ? selectedTagNames.join(", ") : undefined}
-                  >
-                    {tagFilterLabel}
-                  </span>
-                  {filters.tagIds.length > 0 && (
-                    <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] text-slate-700 font-medium shrink-0">
-                      {filters.tagIds.length}
-                    </span>
-                  )}
-                  <svg className="w-4 h-4 text-slate-500" viewBox="0 0 20 20" fill="none" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 8l4 4 4-4" />
-                  </svg>
-                </button>
-                {isTagFilterOpen && (
-                  <div
-                    ref={tagFilterListRef}
-                    tabIndex={0}
-                    onKeyDown={handleTagFilterKeyDown}
-                    className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto p-2 focus:outline-none"
-                  >
-                    {tags.length === 0 && (
-                      <div className="text-sm text-slate-500 px-2 py-1">
-                        {t("orders.noTagsAvailable") || "No tags available"}
-                      </div>
-                    )}
-                    {tags.map((tag: { id: number; name: string; color: string }, idx: number) => {
-                      const isHighlighted = tagFilterHighlight === idx;
-                      return (
-                        <label
-                          key={tag.id}
-                          onMouseEnter={() => setTagFilterHighlight(idx)}
-                          className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer ${
-                            isHighlighted ? "bg-blue-50" : "hover:bg-slate-50"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4"
-                            checked={filters.tagIds.includes(tag.id)}
-                            onChange={(e) => {
-                              setFilters((prev) => {
-                                const exists = prev.tagIds.includes(tag.id);
-                                const next = e.target.checked
-                                  ? [...prev.tagIds, tag.id]
-                                  : prev.tagIds.filter((id) => id !== tag.id);
-                                return { ...prev, tagIds: next };
-                              });
-                              setCurrentPage(1);
-                            }}
-                          />
-                          <Badge tone="slate" backgroundColor={tag.color}>
-                            {tag.name}
-                          </Badge>
-                        </label>
-                      );
-                    })}
-                    {tags.length > 0 && (
-                      <div className="flex justify-between items-center pt-2 mt-2 border-t border-slate-200">
-                        <button
-                          className="text-xs text-slate-600 hover:text-slate-900"
-                          onClick={() => {
-                            setFilters((prev) => ({ ...prev, tagIds: [] }));
-                            setCurrentPage(1);
-                          }}
-                        >
-                          {t("common.clear") || "Clear"}
-                        </button>
-                        <button
-                          className="text-xs text-blue-600 hover:text-blue-800"
-                          onClick={() => setIsTagFilterOpen(false)}
-                        >
-                          {t("common.done") || "Done"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Clear Filters Button */}
-              <div className="flex items-end">
-                <button
-                  onClick={handleClearFilters}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  {t("orders.clearFilters") || "Clear Filters"}
-                </button>
-              </div>
-
-              {/* Export Button */}
-              <div className="flex items-end">
-                <button
-                  onClick={handleExportOrders}
-                  disabled={isExporting}
-                  className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  {isExporting ? (
-                    <>
-                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      {t("orders.exporting") || "Exporting..."}
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      {t("orders.export") || "Export to Excel"}
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-{/* REMOVE THE BELOW DIV TO THIS ONE IF DON'T WANT HEIGHT FULL
-        <div className="overflow-x-auto">
-         */}
-        <div className="overflow-x-auto min-h-[60vh]">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-600">
-                {(isBatchTagMode || (canDeleteManyOrders && isBatchDeleteMode)) && (
-                  <th className="py-2 w-8">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={
-                        !!orders.length &&
-                        selectedOrderIds.length === orders.length
-                      }
-                      onChange={(e) =>
-                        setSelectedOrderIds(
-                          e.target.checked ? orders.map((o) => o.id) : [],
-                        )
-                      }
-                    />
-                  </th>
-                )}
-                {columnOrder.map((columnKey) => 
-                  visibleColumns.has(columnKey) && (
-                    <th key={columnKey} className="py-2">{getColumnLabel(columnKey)}</th>
-                  )
-                )}
-                <th className="py-2">{t("orders.actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order.id} className="border-b border-slate-100">
-                  {(isBatchTagMode || (canDeleteManyOrders && isBatchDeleteMode)) && (
-                    <td className="py-2">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4"
-                        checked={selectedOrderIds.includes(order.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedOrderIds((prev) =>
-                              prev.includes(order.id)
-                                ? prev
-                                : [...prev, order.id],
-                            );
-                          } else {
-                            setSelectedOrderIds((prev) =>
-                              prev.filter((id) => id !== order.id),
-                            );
-                          }
-                        }}
-                      />
-                    </td>
-                  )}
-                  {columnOrder.map((columnKey) => 
-                    visibleColumns.has(columnKey) ? renderCellContent(columnKey, order) : null
-                  )}
-                  <td className="py-2">
-                    <div
-                      className="relative inline-block"
-                      ref={(el) => {
-                        menuRefs.current[order.id] = el;
-                      }}
-                    >
-                      <button
-                        className="flex items-center justify-center p-1 hover:bg-slate-100 rounded transition-colors"
-                        onClick={() =>
-                          setOpenMenuId(
-                            openMenuId === order.id ? null : order.id,
-                          )
-                        }
-                        aria-label={t("orders.actions")}
-                      >
-                        <svg
-                          className="w-5 h-5 text-slate-600"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                        </svg>
-                      </button>
-
-                      {openMenuId === order.id && (
-                        <div 
-                          ref={(el) => {
-                            menuElementRefs.current[order.id] = el;
-                          }}
-                          className={`absolute right-0 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-[9999] ${
-                            menuPositionAbove[order.id] ? 'bottom-full mb-1' : 'top-0'
-                          }`}
-                        >
-                          {getActionButtons(order)}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!orders.length && (
-                <tr>
-                  <td className="py-4 text-sm text-slate-500" colSpan={8}>
-                    {t("orders.noOrders")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
-            <div className="text-sm text-slate-600">
-              {t("orders.showing") || "Showing"} {(currentPage - 1) * 20 + 1} {t("orders.to") || "to"} {Math.min(currentPage * 20, totalOrders)} {t("orders.of") || "of"} {totalOrders} {t("orders.orders") || "orders"}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {t("orders.previous") || "Previous"}
-              </button>
-              <span className="text-sm text-slate-600">
-                {t("orders.page") || "Page"} {currentPage} {t("orders.of") || "of"} {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {t("orders.next") || "Next"}
-              </button>
-            </div>
-          </div>
-        )}
+        <OrdersTable
+          orders={orders}
+          accounts={accounts}
+          showCheckbox={isBatchTagMode || (canDeleteManyOrders && isBatchDeleteMode)}
+          selectedOrderIds={selectedOrderIds}
+          onSelectOrder={(orderId, selected) => {
+            if (selected) {
+              setSelectedOrderIds((prev) =>
+                prev.includes(orderId) ? prev : [...prev, orderId]
+              );
+            } else {
+              setSelectedOrderIds((prev) => prev.filter((id) => id !== orderId));
+            }
+          }}
+          onSelectAll={(selected) => {
+            setSelectedOrderIds(selected ? orders.map((o) => o.id) : []);
+          }}
+          openMenuId={openMenuId}
+          menuPositionAbove={menuPositionAbove}
+          menuRefs={menuRefs}
+          menuElementRefs={menuElementRefs}
+          onMenuToggle={(orderId) => setOpenMenuId(openMenuId === orderId ? null : orderId)}
+          onEdit={startEdit}
+          onProcess={(orderId) => {
+            setProcessModalOrderId(orderId);
+            setOpenMenuId(null);
+          }}
+          onView={(orderId) => {
+            setViewModalOrderId(orderId);
+            setOpenMenuId(null);
+          }}
+          onCancel={(orderId) => setStatus(orderId, "cancelled")}
+          onDelete={handleDeleteClick}
+          canCancelOrder={canCancelOrder}
+          canDeleteOrder={canDeleteOrder}
+          isDeleting={isDeleting}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalOrders={totalOrders}
+          onPageChange={setCurrentPage}
+        />
       </SectionCard>
 
-      {/* Create Order Modal */}
-      {isModalOpen && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">
-                {editingOrderId 
-                  ? t("orders.editOrderTitle") 
-                  : isFlexOrderMode 
-                    ? t("orders.createFlexOrder") 
-                    : t("orders.createOrderTitle")}
-              </h2>
-              <button
-                onClick={closeModal}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label={t("common.close")}
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <form className="grid gap-3" onSubmit={submit}>
-              <div className="col-span-full flex gap-2">
-                <select
-                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
-                  value={form.customerId}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, customerId: e.target.value }))
-                  }
-                  required
-                >
-                  <option value="">{t("orders.selectCustomer")}</option>
-                  {customers.map((customer) => (
-                    <option value={customer.id} key={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateCustomerModalOpen(true)}
-                  className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors whitespace-nowrap"
-                >
-                  {t("orders.createNewCustomer")}
-                </button>
-              </div>
-              <div className="col-span-full grid grid-cols-2 gap-3">
-                <select
-                  className="rounded-lg border border-slate-200 px-3 py-2"
-                  value={form.fromCurrency}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, fromCurrency: e.target.value }))
-                  }
-                  required
-                >
-                  <option value="">{t("orders.from")}</option>
-                  {currencies
-                    .filter((currency) => Boolean(currency.active) && currency.code !== form.toCurrency)
-                    .map((currency) => (
-                      <option key={currency.id} value={currency.code}>
-                        {currency.code}
-                      </option>
-                    ))}
-                </select>
-                <select
-                  className="rounded-lg border border-slate-200 px-3 py-2"
-                  value={form.toCurrency}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, toCurrency: e.target.value }))
-                  }
-                  required
-                >
-                  <option value="">{t("orders.to")}</option>
-                  {currencies
-                    .filter((currency) => Boolean(currency.active) && currency.code !== form.fromCurrency)
-                    .map((currency) => (
-                      <option key={currency.id} value={currency.code}>
-                        {currency.code}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <input
-                className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                placeholder={t("orders.exchangeRate")}
-                value={form.rate}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setForm((p) => ({ ...p, rate: value }));
-                  if (!value) {
-                    setCalculatedField(null);
-                  }
-                }}
-                required
-                type="number"
-                step="0.0001"
-                onWheel={handleNumberInputWheel}
-              />
-              <div className="col-span-full grid grid-cols-2 gap-3">
-                <input
-                  className={`rounded-lg border border-slate-200 px-3 py-2 ${
-                    calculatedField === "sell"
-                      ? "bg-slate-50 cursor-not-allowed"
-                      : ""
-                  }`}
-                  placeholder={t("orders.amountBuy")}
-                  value={form.amountBuy}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setForm((p) => ({ ...p, amountBuy: value }));
-                    if (value && form.rate) {
-                      const rate = Number(form.rate);
-                      if (!isNaN(rate) && rate > 0) {
-                        const buyAmount = Number(value);
-                        if (!isNaN(buyAmount) && buyAmount > 0) {
-                          const sellAmount = (buyAmount * rate).toFixed(4);
-                          setForm((p) => ({ ...p, amountSell: sellAmount }));
-                        }
-                      }
-                      setCalculatedField("buy");
-                    } else if (!value) {
-                      setCalculatedField(null);
-                      setForm((p) => ({ ...p, amountSell: "" }));
-                    }
-                  }}
-                  readOnly={calculatedField === "sell"}
-                  required
-                  type="number"
-                  onWheel={handleNumberInputWheel}
-                />
-                <input
-                  className={`rounded-lg border border-slate-200 px-3 py-2 ${
-                    calculatedField === "buy"
-                      ? "bg-slate-50 cursor-not-allowed"
-                      : ""
-                  }`}
-                  placeholder={t("orders.amountSell")}
-                  value={form.amountSell}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setForm((p) => ({ ...p, amountSell: value }));
-                    if (value && form.rate) {
-                      const rate = Number(form.rate);
-                      if (!isNaN(rate) && rate > 0) {
-                        const sellAmount = Number(value);
-                        if (!isNaN(sellAmount) && sellAmount > 0) {
-                          const buyAmount = (sellAmount / rate).toFixed(4);
-                          setForm((p) => ({ ...p, amountBuy: buyAmount }));
-                        }
-                      }
-                      setCalculatedField("sell");
-                    } else if (!value) {
-                      setCalculatedField(null);
-                      setForm((p) => ({ ...p, amountBuy: "" }));
-                    }
-                  }}
-                  readOnly={calculatedField === "buy"}
-                  required
-                  type="number"
-                  onWheel={handleNumberInputWheel}
-                />
-              </div>
-              <div className="col-span-full flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
-                >
-                  {isSaving ? t("common.saving") : editingOrderId ? t("orders.updateOrder") : t("orders.saveOrder")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <OnlineOrderModal
+        isOpen={isModalOpen}
+        isFlexOrderMode={isFlexOrderMode}
+        editingOrderId={editingOrderId}
+        isSaving={isSaving}
+        form={form}
+        setForm={setForm}
+        calculatedField={calculatedField}
+        setCalculatedField={setCalculatedField}
+        customers={customers}
+        currencies={currencies}
+        handleNumberInputWheel={handleNumberInputWheel}
+        onSubmit={submit}
+        onClose={closeModal}
+        setIsCreateCustomerModalOpen={setIsCreateCustomerModalOpen}
+        t={t}
+      />
 
       {/* Create Customer Modal */}
-      {isCreateCustomerModalOpen && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">
-                {t("orders.createNewCustomerTitle")}
-              </h2>
-              <button
-                onClick={() => {
-                  setIsCreateCustomerModalOpen(false);
-                  resetCustomerForm();
-                }}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label={t("common.close")}
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <form className="grid gap-3" onSubmit={handleCreateCustomer}>
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2"
-                placeholder={t("customers.name")}
-                value={customerForm.name}
-                onChange={(e) =>
-                  setCustomerForm((p) => ({ ...p, name: e.target.value }))
-                }
-                required
-              />
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2"
-                placeholder={t("customers.email")}
-                type="email"
-                value={customerForm.email}
-                onChange={(e) =>
-                  setCustomerForm((p) => ({ ...p, email: e.target.value }))
-                }
-              />
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2"
-                placeholder={t("customers.phone")}
-                type="tel"
-                value={customerForm.phone}
-                onChange={(e) =>
-                  setCustomerForm((p) => ({ ...p, phone: e.target.value }))
-                }
-              />
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateCustomerModalOpen(false);
-                    resetCustomerForm();
-                  }}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCreatingCustomer}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
-                >
-                  {isCreatingCustomer ? t("common.saving") : t("customers.createCustomer")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CreateCustomerModal
+        isOpen={isCreateCustomerModalOpen}
+        customerForm={customerForm}
+        setCustomerForm={setCustomerForm}
+        isCreatingCustomer={isCreatingCustomer}
+        onClose={() => {
+          setIsCreateCustomerModalOpen(false);
+          resetCustomerForm();
+        }}
+        onSubmit={handleCreateCustomer}
+      />
 
       {/* Process Order Modal */}
-      {processModalOrderId && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">
-                {t("orders.processOrderTitle")}
-              </h2>
-              <button
-                onClick={closeProcessModal}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label={t("common.close")}
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <form className="grid gap-3" onSubmit={handleProcess}>
-              <select
-                className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                value={processForm.handlerId}
-                onChange={(e) =>
-                  setProcessForm((p) => ({ ...p, handlerId: e.target.value }))
-                }
-                required
-              >
-                <option value="">{t("orders.selectHandler")}</option>
-                {users.map((user) => (
-                  <option value={user.id} key={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
-
-              {/* Commented out for future use - CRYPTO/FIAT payment type selection */}
-              {/* 
-              <div className="col-span-full">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  {t("orders.paymentType")}
-                </label>
-                <div className="flex gap-4">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="paymentType"
-                      value="CRYPTO"
-                      checked={processForm.paymentType === "CRYPTO"}
-                      onChange={(e) =>
-                        setProcessForm((p) => ({
-                          ...p,
-                          paymentType: e.target.value as "CRYPTO" | "FIAT",
-                        }))
-                      }
-                      className="mr-2"
-                    />
-                    {t("orders.crypto")}
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="paymentType"
-                      value="FIAT"
-                      checked={processForm.paymentType === "FIAT"}
-                      onChange={(e) =>
-                        setProcessForm((p) => ({
-                          ...p,
-                          paymentType: e.target.value as "CRYPTO" | "FIAT",
-                        }))
-                      }
-                      className="mr-2"
-                    />
-                    {t("orders.fiat")}
-                  </label>
-                </div>
-              </div>
-
-              {processForm.paymentType === "CRYPTO" ? (
-                <>
-                  <select
-                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    value={processForm.networkChain}
-                    onChange={(e) =>
-                      setProcessForm((p) => ({
-                        ...p,
-                        networkChain: e.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">{t("orders.selectNetworkChain")}</option>
-                    <option value="TRC20">TRC20</option>
-                    <option value="ERC20">ERC20</option>
-                    <option value="BEP20">BEP20</option>
-                    <option value="POLYGON">POLYGON</option>
-                  </select>
-                  <div className="col-span-full">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      {t("orders.walletAddresses")}
-                    </label>
-                    {processForm.walletAddresses.map((addr, index) => (
-                      <div key={index} className="mb-2">
-                        <input
-                          type="text"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                          placeholder={t("orders.walletAddress")}
-                          value={addr}
-                          onChange={(e) => {
-                            const newAddresses = [...processForm.walletAddresses];
-                            newAddresses[index] = e.target.value;
-                            setProcessForm((p) => ({
-                              ...p,
-                              walletAddresses: newAddresses,
-                            }));
-                          }}
-                        />
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setProcessForm((p) => ({
-                          ...p,
-                          walletAddresses: [...p.walletAddresses, ""],
-                        }))
-                      }
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      {t("orders.addAnotherAddress")}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.bankName")}
-                    value={processForm.bankName}
-                    onChange={(e) =>
-                      setProcessForm((p) => ({
-                        ...p,
-                        bankName: e.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.accountTitle")}
-                    value={processForm.accountTitle}
-                    onChange={(e) =>
-                      setProcessForm((p) => ({
-                        ...p,
-                        accountTitle: e.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.accountNumber")}
-                    value={processForm.accountNumber}
-                    onChange={(e) =>
-                      setProcessForm((p) => ({
-                        ...p,
-                        accountNumber: e.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.accountIban")}
-                    value={processForm.accountIban}
-                    onChange={(e) =>
-                      setProcessForm((p) => ({
-                        ...p,
-                        accountIban: e.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.swiftCode")}
-                    value={processForm.swiftCode}
-                    onChange={(e) =>
-                      setProcessForm((p) => ({
-                        ...p,
-                        swiftCode: e.target.value,
-                      }))
-                    }
-                  />
-                  <textarea
-                    className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.bankAddress")}
-                    value={processForm.bankAddress}
-                    onChange={(e) =>
-                      setProcessForm((p) => ({
-                        ...p,
-                        bankAddress: e.target.value,
-                      }))
-                    }
-                    rows={3}
-                  />
-                </>
-              )}
-              */}
-
-              <div className="col-span-full flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={closeProcessModal}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-                >
-                  {t("orders.processOrder")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ProcessOrderModal
+        isOpen={!!processModalOrderId}
+        processForm={processForm}
+        setProcessForm={setProcessForm}
+        users={users}
+        onClose={closeProcessModal}
+        onSubmit={handleProcess}
+      />
 
       {/* View Order Modal */}
       {viewModalOrderId && orderDetails && (
@@ -7882,429 +4822,42 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Excess Payment Warning Modal */}
-      {showExcessPaymentModal && excessPaymentModalData && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
-                  <svg
-                    className="h-6 w-6 text-amber-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                  </svg>
-                </div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Payment Exceeds Expected Amount
-                </h2>
-              </div>
-              <button
-                onClick={() => {
-                  setShowExcessPaymentModal(false);
-                  setExcessPaymentModalData(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <svg
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
+      {/* Order Warning Modals */}
+      <OrderWarningModals
+        showExcessPaymentModal={showExcessPaymentModal}
+        excessPaymentModalData={excessPaymentModalData}
+        onCloseExcessPayment={() => {
+          setShowExcessPaymentModal(false);
+          setExcessPaymentModalData(null);
+        }}
+        showMissingPaymentModal={showMissingPaymentModal}
+        missingPaymentModalData={missingPaymentModalData}
+        onCloseMissingPayment={() => {
+          setShowMissingPaymentModal(false);
+          setMissingPaymentModalData(null);
+        }}
+        showExcessReceiptModal={showExcessReceiptModal}
+        excessReceiptModalData={excessReceiptModalData}
+        onCloseExcessReceipt={() => {
+          setShowExcessReceiptModal(false);
+          setExcessReceiptModalData(null);
+        }}
+        showExcessPaymentModalNormal={showExcessPaymentModalNormal}
+        excessPaymentModalNormalData={excessPaymentModalNormalData}
+        onCloseExcessPaymentNormal={() => {
+          setShowExcessPaymentModalNormal(false);
+          setExcessPaymentModalNormalData(null);
+        }}
+      />
 
-            <div className="mb-6 space-y-3">
-              <div className="rounded-lg bg-amber-50 p-4">
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-amber-800 font-medium">{t("orders.expectedPayment")}:</span>
-                    <span className="text-amber-900 font-semibold">
-                      {excessPaymentModalData.expectedPayment.toFixed(2)} {excessPaymentModalData.toCurrency}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-amber-800 font-medium">{t("orders.actualPayment")}:</span>
-                    <span className="text-amber-900 font-semibold">
-                      {excessPaymentModalData.actualPayment.toFixed(2)} {excessPaymentModalData.toCurrency}
-                    </span>
-                  </div>
-                  <div className="border-t border-amber-200 pt-2 mt-2">
-                    <div className="flex justify-between">
-                      <span className="text-amber-900 font-semibold">{t("orders.excess")}:</span>
-                      <span className="text-amber-900 font-bold">
-                        {excessPaymentModalData.excess.toFixed(2)} {excessPaymentModalData.toCurrency}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+      {/* Excess Payment Warning Modal - Replaced by OrderWarningModals */}
+      {/* Removed old modal code - now using OrderWarningModals component */}
 
-              <div className="rounded-lg bg-slate-50 p-4">
-                <p className="text-sm text-slate-700 mb-2">
-                  <span className="font-semibold text-slate-900">{t("orders.actionRequired")}:</span>
-                </p>
-                <p className="text-sm text-slate-600">
-                  {t("orders.youMustUpload")}{" "}
-                  <span className="font-semibold text-slate-900">
-                    {excessPaymentModalData.additionalReceipts.toFixed(2)} {excessPaymentModalData.fromCurrency}
-                  </span>{" "}
-                  {t("orders.additionalReceipts")}
-                </p>
-              </div>
-            </div>
+      {/* Excess Receipt Warning Modal - Replaced by OrderWarningModals */}
+      {/* Removed old modal code - now using OrderWarningModals component */}
 
-            <div className="flex justify-end">
-              <button
-                onClick={() => {
-                  setShowExcessPaymentModal(false);
-                  setExcessPaymentModalData(null);
-                }}
-                className="rounded-lg bg-amber-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700 transition-colors"
-              >
-                {t("orders.iUnderstand")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Missing Payment Warning Modal */}
-      {showMissingPaymentModal && missingPaymentModalData && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-md rounded-2xl border border-blue-200 bg-white p-6 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
-                  <svg
-                    className="h-6 w-6 text-blue-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                  </svg>
-                </div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  {t("orders.amountsDoNotMatch")}
-                </h2>
-              </div>
-              <button
-                onClick={() => {
-                  setShowMissingPaymentModal(false);
-                  setMissingPaymentModalData(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <svg
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="mb-6 space-y-3">
-              <div className="rounded-lg bg-blue-50 p-4">
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-blue-800 font-medium">{t("orders.expectedPayment")}:</span>
-                    <span className="text-blue-900 font-semibold">
-                      {missingPaymentModalData.expectedPayment.toFixed(2)} {missingPaymentModalData.toCurrency}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-blue-800 font-medium">{t("orders.actualPayment")}:</span>
-                    <span className="text-blue-900 font-semibold">
-                      {missingPaymentModalData.actualPayment.toFixed(2)} {missingPaymentModalData.toCurrency}
-                    </span>
-                  </div>
-                  <div className="border-t border-blue-200 pt-2 mt-2">
-                    <div className="flex justify-between">
-                      <span className="text-blue-900 font-semibold">{t("orders.missing")}:</span>
-                      <span className="text-blue-900 font-bold">
-                        {missingPaymentModalData.missing.toFixed(2)} {missingPaymentModalData.toCurrency}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg bg-slate-50 p-4">
-                <p className="text-sm text-slate-700 mb-2">
-                  <span className="font-semibold text-slate-900">{t("orders.actionRequired")}:</span>
-                </p>
-                <p className="text-sm text-slate-600">
-                  {t("orders.pleaseUploadRemaining")}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                onClick={() => {
-                  setShowMissingPaymentModal(false);
-                  setMissingPaymentModalData(null);
-                }}
-                className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-              >
-                {t("orders.iUnderstand")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Excess Receipt Warning Modal */}
-      {showExcessReceiptModal && excessReceiptModalData && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
-                  <svg
-                    className="h-6 w-6 text-red-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                  </svg>
-                </div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  {t("orders.receiptAmountExceedsOrderAmount")}
-                </h2>
-              </div>
-              <button
-                onClick={() => {
-                  setShowExcessReceiptModal(false);
-                  setExcessReceiptModalData(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <svg
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="mb-6 space-y-3">
-              <div className="rounded-lg bg-red-50 p-4">
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-red-800 font-medium">{t("orders.expectedReceiptAmount")}:</span>
-                    <span className="text-red-900 font-semibold">
-                      {excessReceiptModalData.expectedReceipt.toFixed(2)} {excessReceiptModalData.fromCurrency}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-red-800 font-medium">{t("orders.attemptToReceive")}:</span>
-                    <span className="text-red-900 font-semibold">
-                      {excessReceiptModalData.attemptedReceipt.toFixed(2)} {excessReceiptModalData.fromCurrency}
-                    </span>
-                  </div>
-                  <div className="border-t border-red-200 pt-2 mt-2">
-                    <div className="flex justify-between">
-                      <span className="text-red-900 font-semibold">{t("orders.excess")}:</span>
-                      <span className="text-red-900 font-bold">
-                        {excessReceiptModalData.excess.toFixed(2)} {excessReceiptModalData.fromCurrency}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg bg-slate-50 p-4">
-                <p className="text-sm text-slate-700 mb-2">
-                  <span className="font-semibold text-slate-900">{t("orders.cannotUpload")}:</span>
-                </p>
-                <p className="text-sm text-slate-600">
-                  {t("orders.forNormalOrdersCannotUploadReceipts")}{" "}
-                  <span className="font-semibold text-slate-900">
-                    {excessReceiptModalData.expectedReceipt.toFixed(2)} {excessReceiptModalData.fromCurrency}
-                  </span>.
-                </p>
-                <p className="text-sm text-slate-600 mt-2">
-                  <span className="font-semibold text-slate-900">{t("orders.note")}:</span> {t("orders.excessReceiptsOnlyAllowed")}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                onClick={() => {
-                  setShowExcessReceiptModal(false);
-                  setExcessReceiptModalData(null);
-                }}
-                className="rounded-lg bg-red-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-red-700 transition-colors"
-              >
-                {t("orders.iUnderstand")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Excess Payment Warning Modal for Normal Orders */}
-      {showExcessPaymentModalNormal && excessPaymentModalNormalData && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
-                  <svg
-                    className="h-6 w-6 text-red-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                  </svg>
-                </div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  {t("orders.paymentAmountExceedsOrderAmount")}
-                </h2>
-              </div>
-              <button
-                onClick={() => {
-                  setShowExcessPaymentModalNormal(false);
-                  setExcessPaymentModalNormalData(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <svg
-                  className="h-6 w-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="mb-6 space-y-3">
-              <div className="rounded-lg bg-red-50 p-4">
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-red-800 font-medium">{t("orders.expectedPaymentAmount")}:</span>
-                    <span className="text-red-900 font-semibold">
-                      {excessPaymentModalNormalData.expectedPayment.toFixed(2)} {excessPaymentModalNormalData.toCurrency}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-red-800 font-medium">{t("orders.attemptToPay")}:</span>
-                    <span className="text-red-900 font-semibold">
-                      {excessPaymentModalNormalData.attemptedPayment.toFixed(2)} {excessPaymentModalNormalData.toCurrency}
-                    </span>
-                  </div>
-                  <div className="border-t border-red-200 pt-2 mt-2">
-                    <div className="flex justify-between">
-                      <span className="text-red-900 font-semibold">{t("orders.excess")}:</span>
-                      <span className="text-red-900 font-bold">
-                        {excessPaymentModalNormalData.excess.toFixed(2)} {excessPaymentModalNormalData.toCurrency}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg bg-slate-50 p-4">
-                <p className="text-sm text-slate-700 mb-2">
-                  <span className="font-semibold text-slate-900">{t("orders.cannotUpload")}:</span>
-                </p>
-                <p className="text-sm text-slate-600">
-                  {t("orders.forNormalOrdersCannotUpload")}{" "}
-                  <span className="font-semibold text-slate-900">
-                    {excessPaymentModalNormalData.expectedPayment.toFixed(2)} {excessPaymentModalNormalData.toCurrency}
-                  </span>.
-                </p>
-                <p className="text-sm text-slate-600 mt-2">
-                  <span className="font-semibold text-slate-900">{t("orders.note")}:</span> {t("orders.excessPaymentsOnlyAllowed")}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                onClick={() => {
-                  setShowExcessPaymentModalNormal(false);
-                  setExcessPaymentModalNormalData(null);
-                }}
-                className="rounded-lg bg-red-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-red-700 transition-colors"
-              >
-                {t("orders.iUnderstand")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Excess Payment Warning Modal for Normal Orders - Replaced by OrderWarningModals */}
+      {/* Removed old modal code - now using OrderWarningModals component */}
 
       {/* Image/PDF Viewer Modal */}
       {viewerModal && (
@@ -8525,677 +5078,55 @@ export default function OrdersPage() {
       />
 
       {/* Import Orders Modal */}
-      {importModalOpen && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">
-                {t("orders.importOrders") || "Import Orders"}
-              </h2>
-              <button
-                onClick={() => {
-                  setImportModalOpen(false);
-                }}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label={t("common.close")}
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="mb-4">
-              <p className="text-sm text-slate-600 mb-4">
-                {t("orders.importDescription") ||
-                  "Select an Excel file (.xlsx) to import orders. The 'Orders' sheet must include: Order ID, Customer, Handler, Currency Pair, Amount Buy, Buy Account, Amount Sell, Sell Account, Rate, Status (completed), Order Type (online/otc). Optional: Tags, Profit Amount, Profit Currency, Profit Account, Service Charges Amount, Service Charges Currency, Service Charges Account."}
-              </p>
-              <div className="flex items-center gap-3">
-                <label className="flex-1">
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleImportFile}
-                    disabled={isImporting}
-                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleDownloadTemplate}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 whitespace-nowrap"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  {t("orders.downloadTemplate") || "Download Template"}
-                </button>
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setImportModalOpen(false);
-                }}
-                disabled={isImporting}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              >
-                {t("common.cancel")}
-              </button>
-            </div>
-            {isImporting && (
-              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-600">
-                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                {t("orders.importing") || "Importing..."}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <ImportOrdersModal
+        isOpen={importModalOpen}
+        isImporting={isImporting}
+        onClose={() => setImportModalOpen(false)}
+        onFileChange={handleImportFile}
+        onDownloadTemplate={handleDownloadTemplate}
+      />
 
-      {/* OTC Order Modal */}
-      {isOtcOrderModalOpen && (
-        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
-          <div
-            className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">
-                {isOtcCompleted ? "View OTC Order" : otcEditingOrderId ? "Edit OTC Order" : "Create OTC Order"}
-              </h2>
-              <button
-                onClick={closeOtcModal}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label={t("common.close")}
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            {isOtcCompleted && otcOrderDetails?.order ? (() => {
-              const order = otcOrderDetails.order;
-              const customerName = customers.find(c => c.id === order.customerId)?.name || "";
-              const handlerName = users.find(u => u.id === order.handlerId)?.name || "";
-              return (
-              /* View Mode - Completed/Cancelled Order */
-              <div className="space-y-6">
-                {/* Order Details */}
-                <div className="space-y-3 border-b border-slate-200 pb-4">
-                  <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Customer</label>
-                      <p className="mt-1 text-sm text-slate-900">{customerName}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Handler</label>
-                      <p className="mt-1 text-sm text-slate-900">{handlerName || "-"}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Currency Pair</label>
-                      <p className="mt-1 text-sm text-slate-900">{order.fromCurrency} / {order.toCurrency}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Rate</label>
-                      <p className="mt-1 text-sm text-slate-900">{order.rate}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Amount Buy</label>
-                      <p className="mt-1 text-sm text-slate-900">{order.amountBuy.toFixed(2)} {order.fromCurrency}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Amount Sell</label>
-                      <p className="mt-1 text-sm text-slate-900">{order.amountSell.toFixed(2)} {order.toCurrency}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Status</label>
-                      <p className="mt-1">
-                        <Badge tone={order.status === "completed" ? "emerald" : "rose"}>{order.status}</Badge>
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Date</label>
-                      <p className="mt-1 text-sm text-slate-900">{formatDate(order.createdAt)}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Receipts */}
-                {otcOrderDetails.receipts && otcOrderDetails.receipts.length > 0 && (
-                  <div className="space-y-3 border-b border-slate-200 pb-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Receipts ({order.fromCurrency})</h3>
-                    <div className="space-y-2">
-                      {otcOrderDetails.receipts.map((receipt, index) => (
-                        <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                          <span className="text-sm text-slate-900">{receipt.accountName || "-"}</span>
-                          <span className="text-sm font-medium text-slate-900">{receipt.amount.toFixed(2)} {order.fromCurrency}</span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-                        <span className="text-sm font-semibold text-slate-900">Total</span>
-                        <span className="text-sm font-semibold text-slate-900">
-                          {otcOrderDetails.receipts.reduce((sum, r) => sum + r.amount, 0).toFixed(2)} {order.fromCurrency}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Payments */}
-                {otcOrderDetails.payments && otcOrderDetails.payments.length > 0 && (
-                  <div className="space-y-3 border-b border-slate-200 pb-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Payments ({order.toCurrency})</h3>
-                    <div className="space-y-2">
-                      {otcOrderDetails.payments.map((payment, index) => (
-                        <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                          <span className="text-sm text-slate-900">{payment.accountName || "-"}</span>
-                          <span className="text-sm font-medium text-slate-900">{payment.amount.toFixed(2)} {order.toCurrency}</span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-                        <span className="text-sm font-semibold text-slate-900">Total</span>
-                        <span className="text-sm font-semibold text-slate-900">
-                          {otcOrderDetails.payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)} {order.toCurrency}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Profit */}
-                {order.profitAmount !== null && order.profitAmount !== undefined && order.profitAccountId && (
-                  <div className="space-y-3 border-b border-slate-200 pb-4">
-                    <h3 className="text-lg font-semibold text-blue-900">Profit</h3>
-                    <div className="p-3 bg-blue-50 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-blue-900">
-                          {accounts.find(a => a.id === order.profitAccountId)?.name || "-"} ({order.profitCurrency})
-                        </span>
-                        <span className="text-sm font-semibold text-blue-900">
-                          {order.profitAmount > 0 ? "+" : ""}{order.profitAmount.toFixed(2)} {order.profitCurrency}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Service Charges */}
-                {order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined && order.serviceChargeAccountId && (
-                  <div className="space-y-3 border-b border-slate-200 pb-4">
-                    <h3 className="text-lg font-semibold text-green-900">Service Charges</h3>
-                    <div className="p-3 bg-green-50 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-green-900">
-                          {accounts.find(a => a.id === order.serviceChargeAccountId)?.name || "-"} ({order.serviceChargeCurrency})
-                        </span>
-                        <span className={`text-sm font-semibold ${order.serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"}`}>
-                          {order.serviceChargeAmount > 0 ? "+" : ""}{order.serviceChargeAmount.toFixed(2)} {order.serviceChargeCurrency}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Close Button */}
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={closeOtcModal}
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-              );
-            })() : (
-              /* Edit Mode - Form */
-              <form className="space-y-6" onSubmit={handleOtcOrderSave}>
-              {/* Order Creation Form Section */}
-              <div className="space-y-3 border-b border-slate-200 pb-4">
-                <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
-                <div className="flex gap-2">
-                  <select
-                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
-                    value={otcForm.customerId}
-                    onChange={(e) => setOtcForm((p) => ({ ...p, customerId: e.target.value }))}
-                    required
-                  >
-                    <option value="">{t("orders.selectCustomer")}</option>
-                    {customers.map((customer) => (
-                      <option value={customer.id} key={customer.id}>{customer.name}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateCustomerModalOpen(true)}
-                    className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors whitespace-nowrap"
-                  >
-                    {t("orders.createNewCustomer")}
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <select
-                    className="rounded-lg border border-slate-200 px-3 py-2"
-                    value={otcForm.fromCurrency}
-                    onChange={(e) => setOtcForm((p) => ({ ...p, fromCurrency: e.target.value }))}
-                    required
-                  >
-                    <option value="">{t("orders.from")}</option>
-                    {currencies.filter((c) => Boolean(c.active) && c.code !== otcForm.toCurrency).map((c) => (
-                      <option key={c.id} value={c.code}>{c.code}</option>
-                    ))}
-                  </select>
-                  <select
-                    className="rounded-lg border border-slate-200 px-3 py-2"
-                    value={otcForm.toCurrency}
-                    onChange={(e) => setOtcForm((p) => ({ ...p, toCurrency: e.target.value }))}
-                    required
-                  >
-                    <option value="">{t("orders.to")}</option>
-                    {currencies.filter((c) => Boolean(c.active) && c.code !== otcForm.fromCurrency).map((c) => (
-                      <option key={c.id} value={c.code}>{c.code}</option>
-                    ))}
-                  </select>
-                </div>
-                <input
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                  placeholder={t("orders.exchangeRate")}
-                  value={otcForm.rate}
-                  onChange={(e) => setOtcForm((p) => ({ ...p, rate: e.target.value }))}
-                  required
-                  type="number"
-                  step="0.0001"
-                  onWheel={handleNumberInputWheel}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    className="rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.amountBuy")}
-                    value={otcForm.amountBuy}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setOtcForm((p) => ({ ...p, amountBuy: value }));
-                      if (value && otcForm.rate && otcForm.fromCurrency && otcForm.toCurrency) {
-                        const rate = Number(otcForm.rate);
-                        if (!isNaN(rate) && rate > 0) {
-                          const baseIsFrom = getBaseCurrency(otcForm.fromCurrency, otcForm.toCurrency);
-                          let sellAmount: string;
-                          if (baseIsFrom === true) {
-                            // Stronger/base currency (fromCurrency) → weaker (toCurrency): multiply by rate
-                            sellAmount = (Number(value) * rate).toFixed(4);
-                          } else if (baseIsFrom === false) {
-                            // Weaker (fromCurrency) → stronger/base (toCurrency): divide by rate
-                            sellAmount = (Number(value) / rate).toFixed(4);
-                          } else {
-                            // Fallback: if we can't determine, use simple multiplication
-                            sellAmount = (Number(value) * rate).toFixed(4);
-                          }
-                          setOtcForm((p) => ({ ...p, amountSell: sellAmount }));
-                        }
-                      }
-                    }}
-                    required
-                    type="number"
-                    onWheel={handleNumberInputWheel}
-                  />
-                  <input
-                    className="rounded-lg border border-slate-200 px-3 py-2"
-                    placeholder={t("orders.amountSell")}
-                    value={otcForm.amountSell}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setOtcForm((p) => ({ ...p, amountSell: value }));
-                      if (value && otcForm.rate && otcForm.fromCurrency && otcForm.toCurrency) {
-                        const rate = Number(otcForm.rate);
-                        if (!isNaN(rate) && rate > 0) {
-                          const baseIsFrom = getBaseCurrency(otcForm.fromCurrency, otcForm.toCurrency);
-                          let buyAmount: string;
-                          if (baseIsFrom === true) {
-                            // Stronger/base currency (fromCurrency) → weaker (toCurrency): divide to get base amount
-                            buyAmount = (Number(value) / rate).toFixed(4);
-                          } else if (baseIsFrom === false) {
-                            // Weaker (fromCurrency) → stronger/base (toCurrency): multiply to get base amount
-                            buyAmount = (Number(value) * rate).toFixed(4);
-                          } else {
-                            // Fallback: if we can't determine, use simple division
-                            buyAmount = (Number(value) / rate).toFixed(4);
-                          }
-                          setOtcForm((p) => ({ ...p, amountBuy: buyAmount }));
-                        }
-                      }
-                    }}
-                    required
-                    type="number"
-                    onWheel={handleNumberInputWheel}
-                  />
-                </div>
-              </div>
-
-              {/* Handler Assignment Section */}
-              <div className="space-y-3 border-b border-slate-200 pb-4">
-                <h3 className="text-lg font-semibold text-slate-900">Handler Assignment</h3>
-                <select
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                  value={otcForm.handlerId}
-                  onChange={(e) => setOtcForm((p) => ({ ...p, handlerId: e.target.value }))}
-                  required
-                >
-                  <option value="">{t("orders.selectHandler")}</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>{user.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Receipts Section */}
-              <div className="space-y-3 border-b border-slate-200 pb-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-slate-900">Receipts ({otcForm.fromCurrency})</h3>
-                  <button
-                    type="button"
-                    onClick={() => setOtcReceipts([...otcReceipts, { amount: "", accountId: "" }])}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-                  >
-                    Add Receipt
-                  </button>
-                </div>
-                {otcReceipts.map((receipt, index) => (
-                  <div key={index} className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg">
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Amount"
-                      value={receipt.amount}
-                      onChange={(e) => {
-                        const newReceipts = [...otcReceipts];
-                        newReceipts[index] = { ...newReceipts[index], amount: e.target.value };
-                        setOtcReceipts(newReceipts);
-                      }}
-                      className="rounded-lg border border-slate-200 px-3 py-2"
-                      required
-                      onWheel={handleNumberInputWheel}
-                    />
-                    <div className="flex gap-2">
-                      <select
-                        className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
-                        value={receipt.accountId}
-                        onChange={(e) => {
-                          const newReceipts = [...otcReceipts];
-                          newReceipts[index] = { ...newReceipts[index], accountId: e.target.value };
-                          setOtcReceipts(newReceipts);
-                        }}
-                        required
-                      >
-                        <option value="">Select Account ({otcForm.fromCurrency})</option>
-                        {accounts.filter((a) => a.currencyCode === otcForm.fromCurrency).map((acc) => (
-                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance.toFixed(2)} {acc.currencyCode})</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setOtcReceipts(otcReceipts.filter((_, i) => i !== index))}
-                        className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                <div className="text-sm text-slate-600">
-                  Total: {otcReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0).toFixed(2)} {otcForm.fromCurrency}
-                </div>
-              </div>
-
-              {/* Payments Section */}
-              <div className="space-y-3 border-b border-slate-200 pb-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-slate-900">Payments ({otcForm.toCurrency})</h3>
-                  <button
-                    type="button"
-                    onClick={() => setOtcPayments([...otcPayments, { amount: "", accountId: "" }])}
-                    className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
-                  >
-                    Add Payment
-                  </button>
-                </div>
-                {otcPayments.map((payment, index) => (
-                  <div key={index} className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg">
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Amount"
-                      value={payment.amount}
-                      onChange={(e) => {
-                        const newPayments = [...otcPayments];
-                        newPayments[index] = { ...newPayments[index], amount: e.target.value };
-                        setOtcPayments(newPayments);
-                      }}
-                      className="rounded-lg border border-slate-200 px-3 py-2"
-                      required
-                      onWheel={handleNumberInputWheel}
-                    />
-                    <div className="flex gap-2">
-                      <select
-                        className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
-                        value={payment.accountId}
-                        onChange={(e) => {
-                          const newPayments = [...otcPayments];
-                          newPayments[index] = { ...newPayments[index], accountId: e.target.value };
-                          setOtcPayments(newPayments);
-                        }}
-                        required
-                      >
-                        <option value="">Select Account ({otcForm.toCurrency})</option>
-                        {accounts.filter((a) => a.currencyCode === otcForm.toCurrency).map((acc) => (
-                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance.toFixed(2)} {acc.currencyCode})</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setOtcPayments(otcPayments.filter((_, i) => i !== index))}
-                        className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                <div className="text-sm text-slate-600">
-                  Total: {otcPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0).toFixed(2)} {otcForm.toCurrency}
-                </div>
-              </div>
-
-              {/* Profit Section */}
-              <div className="space-y-3 border-b border-slate-200 pb-4">
-                {!showOtcProfitSection ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowOtcProfitSection(true)}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-                  >
-                    Add Profit
-                  </button>
-                ) : (
-                  <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-blue-900">Profit</h3>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowOtcProfitSection(false);
-                          setOtcProfitAmount("");
-                          setOtcProfitCurrency("");
-                          setOtcProfitAccountId("");
-                        }}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Amount"
-                        value={otcProfitAmount}
-                        onChange={(e) => setOtcProfitAmount(e.target.value)}
-                        className="rounded-lg border border-blue-300 px-3 py-2"
-                        onWheel={handleNumberInputWheel}
-                      />
-                      <select
-                        value={otcProfitCurrency}
-                        onChange={(e) => {
-                          setOtcProfitCurrency(e.target.value);
-                          setOtcProfitAccountId("");
-                        }}
-                        className="rounded-lg border border-blue-300 px-3 py-2"
-                      >
-                        <option value="">Select Currency</option>
-                        {otcForm.fromCurrency && <option value={otcForm.fromCurrency}>{otcForm.fromCurrency}</option>}
-                        {otcForm.toCurrency && <option value={otcForm.toCurrency}>{otcForm.toCurrency}</option>}
-                      </select>
-                    </div>
-                    {otcProfitCurrency && (
-                      <select
-                        className="w-full mt-3 rounded-lg border border-blue-300 px-3 py-2"
-                        value={otcProfitAccountId}
-                        onChange={(e) => setOtcProfitAccountId(e.target.value)}
-                      >
-                        <option value="">Select Account ({otcProfitCurrency})</option>
-                        {accounts.filter((a) => a.currencyCode === otcProfitCurrency).map((acc) => (
-                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance.toFixed(2)} {acc.currencyCode})</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Service Charges Section */}
-              <div className="space-y-3 border-b border-slate-200 pb-4">
-                {!showOtcServiceChargeSection ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowOtcServiceChargeSection(true)}
-                    className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
-                  >
-                    Add Service Charges
-                  </button>
-                ) : (
-                  <div className="p-4 border border-green-200 rounded-lg bg-green-50">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-green-900">Service Charges</h3>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowOtcServiceChargeSection(false);
-                          setOtcServiceChargeAmount("");
-                          setOtcServiceChargeCurrency("");
-                          setOtcServiceChargeAccountId("");
-                        }}
-                        className="text-green-600 hover:text-green-800 text-sm"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Amount (negative if paid by us)"
-                        value={otcServiceChargeAmount}
-                        onChange={(e) => setOtcServiceChargeAmount(e.target.value)}
-                        className="rounded-lg border border-green-300 px-3 py-2"
-                        onWheel={handleNumberInputWheel}
-                      />
-                      <select
-                        value={otcServiceChargeCurrency}
-                        onChange={(e) => {
-                          setOtcServiceChargeCurrency(e.target.value);
-                          setOtcServiceChargeAccountId("");
-                        }}
-                        className="rounded-lg border border-green-300 px-3 py-2"
-                      >
-                        <option value="">Select Currency</option>
-                        {otcForm.fromCurrency && <option value={otcForm.fromCurrency}>{otcForm.fromCurrency}</option>}
-                        {otcForm.toCurrency && <option value={otcForm.toCurrency}>{otcForm.toCurrency}</option>}
-                      </select>
-                    </div>
-                    {otcServiceChargeCurrency && (
-                      <select
-                        className="w-full mt-3 rounded-lg border border-green-300 px-3 py-2"
-                        value={otcServiceChargeAccountId}
-                        onChange={(e) => setOtcServiceChargeAccountId(e.target.value)}
-                      >
-                        <option value="">Select Account ({otcServiceChargeCurrency})</option>
-                        {accounts.filter((a) => a.currencyCode === otcServiceChargeCurrency).map((acc) => (
-                          <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance.toFixed(2)} {acc.currencyCode})</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={closeOtcModal}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
-                >
-                  {isSaving ? t("common.saving") : "Save"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOtcOrderComplete}
-                  disabled={isSaving}
-                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-green-700 disabled:opacity-60 transition-colors"
-                >
-                  Complete
-                </button>
-              </div>
-            </form>
-            )}
-          </div>
-        </div>
-      )}
+      <OtcOrderModal
+        isOpen={isOtcOrderModalOpen}
+        isSaving={isSaving}
+        isOtcCompleted={isOtcCompleted}
+        otcEditingOrderId={otcEditingOrderId}
+        otcOrderDetails={otcOrderDetails}
+        customers={customers}
+        users={users}
+        currencies={currencies}
+        accounts={accounts}
+        otcForm={otcForm}
+        setOtcForm={setOtcForm}
+        otcReceipts={otcReceipts}
+        setOtcReceipts={setOtcReceipts}
+        otcPayments={otcPayments}
+        setOtcPayments={setOtcPayments}
+        showOtcProfitSection={showOtcProfitSection}
+        setShowOtcProfitSection={setShowOtcProfitSection}
+        showOtcServiceChargeSection={showOtcServiceChargeSection}
+        setShowOtcServiceChargeSection={setShowOtcServiceChargeSection}
+        otcProfitAmount={otcProfitAmount}
+        setOtcProfitAmount={setOtcProfitAmount}
+        otcProfitCurrency={otcProfitCurrency}
+        setOtcProfitCurrency={setOtcProfitCurrency}
+        otcProfitAccountId={otcProfitAccountId}
+        setOtcProfitAccountId={setOtcProfitAccountId}
+        otcServiceChargeAmount={otcServiceChargeAmount}
+        setOtcServiceChargeAmount={setOtcServiceChargeAmount}
+        otcServiceChargeCurrency={otcServiceChargeCurrency}
+        setOtcServiceChargeCurrency={setOtcServiceChargeCurrency}
+        otcServiceChargeAccountId={otcServiceChargeAccountId}
+        setOtcServiceChargeAccountId={setOtcServiceChargeAccountId}
+        handleNumberInputWheel={handleNumberInputWheel}
+        getBaseCurrency={getBaseCurrency}
+        onSave={handleOtcOrderSave}
+        onComplete={handleOtcOrderComplete}
+        onClose={closeOtcModal}
+        setIsCreateCustomerModalOpen={setIsCreateCustomerModalOpen}
+        t={t}
+      />
     </div>
   );
 }
+
