@@ -1,0 +1,163 @@
+import { useState, useCallback } from "react";
+import * as XLSX from "xlsx";
+import { processImportFile } from "../../utils/expenses/expenseImport";
+import { exportExpensesToExcel } from "../../utils/expenses/expenseExport";
+
+interface UseExpensesImportExportParams {
+  exportQueryParams: any;
+  accounts: any[];
+  tags: any[];
+  addExpense: any;
+  setAlertModal: (modal: { isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }) => void;
+  setIsImporting: (isImporting: boolean) => void;
+  setImportModalOpen: (isOpen: boolean) => void;
+  t: (key: string) => string;
+}
+
+export function useExpensesImportExport({
+  exportQueryParams,
+  accounts,
+  tags,
+  addExpense,
+  setAlertModal,
+  setIsImporting,
+  setImportModalOpen,
+  t,
+}: UseExpensesImportExportParams) {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportExpenses = useCallback(async () => {
+    try {
+      setIsExporting(true);
+      const result = await exportExpensesToExcel(exportQueryParams, t);
+      setAlertModal({
+        isOpen: true,
+        message: (t("expenses.exportSuccess") || "Successfully exported {{count}} expenses to {{fileName}}")
+          .replace("{{count}}", result.count.toString())
+          .replace("{{fileName}}", result.fileName),
+        type: "success",
+      });
+    } catch (error) {
+      setAlertModal({
+        isOpen: true,
+        message: t("expenses.exportError") || "Failed to export expenses. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [exportQueryParams, t, setAlertModal]);
+
+  const handleDownloadTemplate = useCallback(() => {
+    // Create template data with example rows
+    const templateData = [
+      {
+        "Expense ID": "EXT-1001",
+        "Account": "Main USD",
+        "Amount": 100.50,
+        "Description": "Office supplies",
+        "Tags": "Office, Monthly"
+      },
+      {
+        "Expense ID": "EXT-1002",
+        "Account": "Main HKD",
+        "Amount": 500,
+        "Description": "Travel expenses",
+        "Tags": "Travel"
+      }
+    ];
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    const templateSheet = XLSX.utils.json_to_sheet(templateData);
+    XLSX.utils.book_append_sheet(wb, templateSheet, "Expenses");
+
+    // Write file
+    XLSX.writeFile(wb, "expenses_import_template.xlsx");
+  }, []);
+
+  const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsImporting(true);
+
+      // Process import file
+      const { expenses: validatedExpenses, errors: validationErrors } = await processImportFile(
+        file,
+        accounts,
+        tags
+      );
+
+      // Import validated expenses
+      let successCount = 0;
+      let errorCount = validationErrors.length;
+      const errors = [...validationErrors];
+
+      for (const expenseData of validatedExpenses) {
+        try {
+          // Mark as imported for transaction history
+          await addExpense({ ...expenseData, isImported: true }).unwrap();
+          successCount++;
+        } catch (error: any) {
+          errors.push(`Expense ${expenseData.accountId}: ${error.message || "Unknown error"}`);
+          errorCount++;
+        }
+      }
+
+      // Show results
+      let message = (t("expenses.importSuccess") || "Successfully imported {{count}} expenses").replace("{{count}}", successCount.toString());
+      if (errorCount > 0) {
+        message += `. ${errorCount} expenses failed to import.`;
+        if (errors.length > 0) {
+          message += `\n\nErrors:\n${errors.slice(0, 10).join("\n")}`;
+          if (errors.length > 10) {
+            message += `\n... and ${errors.length - 10} more errors`;
+          }
+        }
+      }
+
+      setAlertModal({
+        isOpen: true,
+        message,
+        type: errorCount > 0 ? "warning" : "success",
+      });
+
+      setImportModalOpen(false);
+      // Reset file input
+      e.target.value = "";
+    } catch (error: any) {
+      const errorMessage = error.message || "Unknown error";
+      if (errorMessage.includes("Expenses sheet not found")) {
+        setAlertModal({
+          isOpen: true,
+          message: t("expenses.expensesSheetNotFound") || "Expenses sheet not found in the file",
+          type: "error",
+        });
+      } else if (errorMessage.includes("No expenses found")) {
+        setAlertModal({
+          isOpen: true,
+          message: t("expenses.noExpensesInFile") || "No expenses found in the file",
+          type: "error",
+        });
+      } else {
+        setAlertModal({
+          isOpen: true,
+          message: t("expenses.importError") || `Failed to import expenses: ${errorMessage}`,
+          type: "error",
+        });
+      }
+    } finally {
+      setIsImporting(false);
+    }
+  }, [accounts, tags, addExpense, t, setIsImporting, setAlertModal, setImportModalOpen]);
+
+  return {
+    isExporting,
+    handleExportExpenses,
+    handleDownloadTemplate,
+    handleImportFile,
+  };
+}
+

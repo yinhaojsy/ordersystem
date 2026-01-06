@@ -103,6 +103,104 @@ export const listExpenses = (req, res) => {
   res.json(expensesWithUrls);
 };
 
+export const exportExpenses = (req, res) => {
+  // Extract query parameters (same as listExpenses but without pagination)
+  const {
+    dateFrom,
+    dateTo,
+    accountId,
+    currencyCode,
+    createdBy,
+    tagId,
+    tagIds,
+  } = req.query;
+  
+  // Build WHERE conditions (same logic as listExpenses)
+  const conditions = ['e.deletedAt IS NULL'];
+  const params = {};
+  
+  if (dateFrom) {
+    conditions.push('DATE(e.createdAt) >= DATE(@dateFrom)');
+    params.dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    conditions.push('DATE(e.createdAt) <= DATE(@dateTo)');
+    params.dateTo = dateTo;
+  }
+  if (accountId) {
+    conditions.push('e.accountId = @accountId');
+    params.accountId = parseInt(accountId, 10);
+  }
+  if (currencyCode) {
+    conditions.push('e.currencyCode = @currencyCode');
+    params.currencyCode = currencyCode;
+  }
+  if (createdBy) {
+    conditions.push('e.createdBy = @createdBy');
+    params.createdBy = parseInt(createdBy, 10);
+  }
+  
+  // Handle tag filtering (support both single tagId and multiple tagIds)
+  const parsedTagIds = [];
+  if (tagIds) {
+    const parts = String(tagIds).split(',').map((v) => parseInt(v, 10)).filter((v) => !isNaN(v));
+    parsedTagIds.push(...parts);
+  } else if (tagId) {
+    const single = parseInt(tagId, 10);
+    if (!isNaN(single)) parsedTagIds.push(single);
+  }
+  if (parsedTagIds.length > 0) {
+    const placeholders = parsedTagIds.map((_, i) => `@tagId${i}`).join(',');
+    conditions.push(`EXISTS (
+      SELECT 1 FROM expense_tag_assignments eta 
+      WHERE eta.expenseId = e.id AND eta.tagId IN (${placeholders})
+    )`);
+    parsedTagIds.forEach((id, i) => {
+      params[`tagId${i}`] = id;
+    });
+  }
+  
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  
+  // Build query without pagination
+  let query = `SELECT 
+        e.*,
+        acc.name as accountName,
+        creator.name as createdByName,
+        updater.name as updatedByName
+       FROM expenses e
+       LEFT JOIN accounts acc ON acc.id = e.accountId
+       LEFT JOIN users creator ON creator.id = e.createdBy
+       LEFT JOIN users updater ON updater.id = e.updatedBy
+       ${whereClause}
+       ORDER BY e.createdAt DESC;`;
+  
+  const rows = db.prepare(query).all(params);
+  
+  // Convert file paths to URLs for response (if not base64) and add tags
+  const expensesWithUrls = rows.map(expense => {
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN expense_tag_assignments eta ON eta.tagId = t.id
+         WHERE eta.expenseId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(expense.id);
+    
+    return {
+      ...expense,
+      imagePath: expense.imagePath && !expense.imagePath.startsWith('data:') 
+        ? getFileUrl(expense.imagePath) 
+        : expense.imagePath,
+      tags: tags.length > 0 ? tags : [],
+    };
+  });
+  
+  res.json(expensesWithUrls);
+};
+
 export const createExpense = (req, res, next) => {
   try {
     // Multer automatically parses FormData fields into req.body
@@ -176,9 +274,10 @@ export const createExpense = (req, res, next) => {
       db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(expenseAmount, accountIdNum);
 
       // Create transaction record for the account
+      const isImported = req.body?.isImported === true || req.body?.isImported === "true";
       const expenseDescription = description 
-        ? `Expense: ${description}`
-        : "Expense";
+        ? (isImported ? `Expense: ${description} (Imported)` : `Expense: ${description}`)
+        : (isImported ? "Expense (Imported)" : "Expense");
 
       db.prepare(
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)

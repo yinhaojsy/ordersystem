@@ -683,6 +683,82 @@ export const createOrder = (req, res, next) => {
       )
       .all(orderId);
     
+    // If order is created with status "completed" and has accounts, update account balances
+    // This handles imported orders that are already completed
+    // Query the actual order from database to get the real status and account IDs
+    const actualOrder = db.prepare("SELECT status, buyAccountId, sellAccountId FROM orders WHERE id = ?;").get(orderId);
+    const finalStatus = actualOrder?.status || orderData.status || "pending";
+    const actualBuyAccountId = actualOrder?.buyAccountId || orderData.buyAccountId;
+    const actualSellAccountId = actualOrder?.sellAccountId || orderData.sellAccountId;
+    
+    console.log(`[createOrder] Order ${orderId} created - Status: ${finalStatus}, buyAccountId: ${actualBuyAccountId}, sellAccountId: ${actualSellAccountId}`);
+    
+    if (finalStatus === "completed") {
+      // Update account balances for buy/sell accounts
+      if (actualBuyAccountId || actualSellAccountId) {
+        try {
+          console.log(`[createOrder] Calling updateAccountBalancesOnCompletion for order ${orderId} (imported)`);
+          updateAccountBalancesOnCompletion(orderId, true);
+          console.log(`[createOrder] Successfully updated account balances for order ${orderId}`);
+        } catch (error) {
+          console.error(`[createOrder] Error updating account balances for order ${orderId}:`, error);
+          // Don't fail the order creation, but log the error
+        }
+      } else {
+        console.log(`[createOrder] Order ${orderId} is completed but has no accounts set, skipping balance update`);
+      }
+      
+      // Handle profit account balance if provided
+      if (orderData.profitAmount !== null && orderData.profitAmount !== undefined && orderData.profitAccountId) {
+        const profitAmount = Number(orderData.profitAmount);
+        if (!isNaN(profitAmount) && profitAmount > 0) {
+          db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(profitAmount, orderData.profitAccountId);
+          db.prepare(
+            `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+             VALUES (?, 'add', ?, ?, ?);`
+          ).run(
+            orderData.profitAccountId,
+            profitAmount,
+            `Order #${orderId} - Profit (Imported)`,
+            new Date().toISOString()
+          );
+        }
+      }
+      
+      // Handle service charge account balance if provided
+      if (orderData.serviceChargeAmount !== null && orderData.serviceChargeAmount !== undefined && orderData.serviceChargeAccountId) {
+        const serviceChargeAmount = Number(orderData.serviceChargeAmount);
+        if (!isNaN(serviceChargeAmount) && serviceChargeAmount !== 0) {
+          if (serviceChargeAmount > 0) {
+            // Positive service charge: add to account (we receive it)
+            db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(serviceChargeAmount, orderData.serviceChargeAccountId);
+            db.prepare(
+              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+               VALUES (?, 'add', ?, ?, ?);`
+            ).run(
+              orderData.serviceChargeAccountId,
+              serviceChargeAmount,
+              `Order #${orderId} - Service charge (Imported)`,
+              new Date().toISOString()
+            );
+          } else {
+            // Negative service charge: subtract from account (we pay it)
+            const absAmount = Math.abs(serviceChargeAmount);
+            db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(absAmount, orderData.serviceChargeAccountId);
+            db.prepare(
+              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+               VALUES (?, 'withdraw', ?, ?, ?);`
+            ).run(
+              orderData.serviceChargeAccountId,
+              absAmount,
+              `Order #${orderId} - Service charge paid by us (Imported)`,
+              new Date().toISOString()
+            );
+          }
+        }
+      }
+    }
+    
     res.status(201).json({
       ...row,
       tags: tags.length > 0 ? tags : [],
@@ -784,17 +860,20 @@ export const updateOrder = (req, res, next) => {
 
       // If profit was previously set, reverse the old transaction
       if (oldProfitAmount !== null && oldProfitAmount !== undefined && oldProfitAccountId) {
-        // Reverse: subtract the old profit amount
-        db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(oldProfitAmount, oldProfitAccountId);
-        db.prepare(
-          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-           VALUES (?, 'withdraw', ?, ?, ?);`
-        ).run(
-          oldProfitAccountId,
-          oldProfitAmount,
-          `Order #${id} - Reversal of profit (Order updated)`,
-          new Date().toISOString()
-        );
+        const oldAmount = Number(oldProfitAmount);
+        if (!isNaN(oldAmount) && oldAmount > 0) {
+          // Reverse the old profit transaction
+          db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(oldAmount, oldProfitAccountId);
+          db.prepare(
+            `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+             VALUES (?, 'withdraw', ?, ?, ?);`
+          ).run(
+            oldProfitAccountId,
+            oldAmount,
+            `Order #${id} - Reversal of profit (Order updated)`,
+            new Date().toISOString()
+          );
+        }
       }
 
       // If new profit is set, add it to the account
@@ -979,7 +1058,21 @@ export const updateOrderStatus = (req, res, next) => {
     if (!status) {
       return res.status(400).json({ message: "Status is required" });
     }
+    
+    // Get the current status before updating
+    const currentOrder = db.prepare("SELECT status, buyAccountId, sellAccountId FROM orders WHERE id = ?;").get(id);
+    if (!currentOrder) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    
+    // Update the status
     db.prepare(`UPDATE orders SET status = @status WHERE id = @id;`).run({ id, status });
+    
+    // If status is being changed to "completed" and accounts are set, update account balances
+    if (status === "completed" && currentOrder.status !== "completed" && (currentOrder.buyAccountId || currentOrder.sellAccountId)) {
+      updateAccountBalancesOnCompletion(id, false);
+    }
+    
     const row = db
       .prepare(
         `SELECT o.*, c.name as customerName FROM orders o
@@ -1240,6 +1333,33 @@ export const getOrderDetails = (req, res, next) => {
       )
       .all(id);
 
+    // Get profit transactions for this order
+    const profitTransactions = db
+      .prepare(
+        `SELECT at.*, a.name as accountName, a.currencyCode
+         FROM account_transactions at
+         LEFT JOIN accounts a ON a.id = at.accountId
+         WHERE at.description LIKE ? AND at.type = 'add'
+         ORDER BY at.createdAt ASC;`
+      )
+      .all(`Order #${id} - Profit%`);
+
+    // Get service charge transactions for this order
+    const serviceChargeTransactions = db
+      .prepare(
+        `SELECT at.*, a.name as accountName, a.currencyCode,
+                CASE 
+                  WHEN at.type = 'add' THEN at.amount
+                  WHEN at.type = 'withdraw' THEN -at.amount
+                  ELSE 0
+                END as signedAmount
+         FROM account_transactions at
+         LEFT JOIN accounts a ON a.id = at.accountId
+         WHERE (at.description LIKE ? OR at.description LIKE ?)
+         ORDER BY at.createdAt ASC;`
+      )
+      .all(`Order #${id} - Service Charge%`, `Order #${id} - Service Charge Paid by Us%`);
+
     res.json({
       order: {
         ...order,
@@ -1254,6 +1374,8 @@ export const getOrderDetails = (req, res, next) => {
         walletAddresses: b.walletAddresses ? JSON.parse(b.walletAddresses) : null,
       })),
       payments: paymentsWithUrls,
+      profitTransactions: profitTransactions || [],
+      serviceChargeTransactions: serviceChargeTransactions || [],
       totalReceiptAmount,
       totalPaymentAmount,
       receiptBalance: receiptBalanceCalc,
@@ -1592,18 +1714,24 @@ export const addBeneficiary = (req, res, next) => {
 };
 
 // Helper function to update account balances when order is completed
-const updateAccountBalancesOnCompletion = (orderId) => {
+const updateAccountBalancesOnCompletion = (orderId, isImported = false) => {
   // buyAccountId = receipt account (where we receive customer payment in fromCurrency)
   // sellAccountId = payment account (where we pay customer from in toCurrency)
   const orderWithAccounts = db
     .prepare("SELECT buyAccountId, sellAccountId, amountBuy, amountSell FROM orders WHERE id = ?;")
     .get(orderId);
   
-  console.log(`Order ${orderId} completion - Accounts:`, {
-    buyAccountId: orderWithAccounts?.buyAccountId,
-    sellAccountId: orderWithAccounts?.sellAccountId,
-    amountBuy: orderWithAccounts?.amountBuy,
-    amountSell: orderWithAccounts?.amountSell,
+  if (!orderWithAccounts) {
+    console.error(`[updateAccountBalancesOnCompletion] Order ${orderId} not found`);
+    return;
+  }
+  
+  console.log(`[updateAccountBalancesOnCompletion] Order ${orderId} completion - Accounts:`, {
+    buyAccountId: orderWithAccounts.buyAccountId,
+    sellAccountId: orderWithAccounts.sellAccountId,
+    amountBuy: orderWithAccounts.amountBuy,
+    amountSell: orderWithAccounts.amountSell,
+    isImported,
   });
   
   if (orderWithAccounts.buyAccountId) {
@@ -1614,13 +1742,16 @@ const updateAccountBalancesOnCompletion = (orderId) => {
         orderWithAccounts.amountBuy,
         orderWithAccounts.buyAccountId
       );
+      const description = isImported 
+        ? `Order #${orderId} - Receipt from customer (Imported)`
+        : `Order #${orderId} - Receipt from customer`;
       db.prepare(
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
          VALUES (?, 'add', ?, ?, ?);`
       ).run(
         orderWithAccounts.buyAccountId,
         orderWithAccounts.amountBuy,
-        `Order #${orderId} - Receipt from customer`,
+        description,
         new Date().toISOString()
       );
     }
@@ -1647,13 +1778,16 @@ const updateAccountBalancesOnCompletion = (orderId) => {
       const updatedAccount = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(orderWithAccounts.sellAccountId);
       console.log(`Updated balance:`, updatedAccount?.balance);
       
+      const description = isImported 
+        ? `Order #${orderId} - Payment to customer (Imported)`
+        : `Order #${orderId} - Payment to customer`;
       db.prepare(
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
          VALUES (?, 'withdraw', ?, ?, ?);`
       ).run(
         orderWithAccounts.sellAccountId,
         amountToDeduct,
-        `Order #${orderId} - Payment to customer`,
+        description,
         new Date().toISOString()
       );
     } else {
@@ -2406,6 +2540,45 @@ export const confirmPayment = (req, res, next) => {
   } catch (error) {
     console.error("Error confirming payment:", error);
     next(error);
+  }
+};
+
+export const getDashboardStats = (req, res) => {
+  try {
+    // Get total orders count
+    const totalOrdersResult = db.prepare("SELECT COUNT(*) as total FROM orders;").get();
+    const totalOrders = Number(totalOrdersResult?.total || 0);
+
+    // Get pending orders count (pending + under_process)
+    const pendingOrdersResult = db.prepare(
+      "SELECT COUNT(*) as total FROM orders WHERE status IN ('pending', 'under_process');"
+    ).get();
+    const pendingOrders = Number(pendingOrdersResult?.total || 0);
+
+    // Get completed orders count
+    const completedOrdersResult = db.prepare(
+      "SELECT COUNT(*) as total FROM orders WHERE status = 'completed';"
+    ).get();
+    const completedOrders = Number(completedOrdersResult?.total || 0);
+
+    // Get cancelled orders count
+    const cancelledOrdersResult = db.prepare(
+      "SELECT COUNT(*) as total FROM orders WHERE status = 'cancelled';"
+    ).get();
+    const cancelledOrders = Number(cancelledOrdersResult?.total || 0);
+
+    const result = {
+      totalOrders,
+      pendingOrders,
+      completedOrders,
+      cancelledOrders,
+    };
+
+    console.log("Dashboard stats result:", result);
+    res.json(result);
+  } catch (error) {
+    console.error("Error getting dashboard stats:", error);
+    res.status(500).json({ message: "Error getting dashboard statistics", error: error.message });
   }
 };
 

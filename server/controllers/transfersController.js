@@ -110,6 +110,118 @@ export const listTransfers = (req, res) => {
   res.json(transfers);
 };
 
+export const exportTransfers = (req, res) => {
+  // Extract query parameters (same as listTransfers but without pagination)
+  const {
+    dateFrom,
+    dateTo,
+    fromAccountId,
+    toAccountId,
+    currencyCode,
+    createdBy,
+    tagId,
+    tagIds,
+  } = req.query;
+  
+  // Build WHERE conditions (same logic as listTransfers)
+  const conditions = [];
+  const params = {};
+  
+  if (dateFrom) {
+    conditions.push('DATE(t.createdAt) >= DATE(@dateFrom)');
+    params.dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    conditions.push('DATE(t.createdAt) <= DATE(@dateTo)');
+    params.dateTo = dateTo;
+  }
+  if (fromAccountId) {
+    conditions.push('t.fromAccountId = @fromAccountId');
+    params.fromAccountId = parseInt(fromAccountId, 10);
+  }
+  if (toAccountId) {
+    conditions.push('t.toAccountId = @toAccountId');
+    params.toAccountId = parseInt(toAccountId, 10);
+  }
+  if (currencyCode) {
+    conditions.push('t.currencyCode = @currencyCode');
+    params.currencyCode = currencyCode;
+  }
+  if (createdBy) {
+    conditions.push('t.createdBy = @createdBy');
+    params.createdBy = parseInt(createdBy, 10);
+  }
+  
+  // Handle tag filtering (support both single tagId and multiple tagIds)
+  const parsedTagIds = [];
+  if (tagIds) {
+    const parts = String(tagIds).split(',').map((v) => parseInt(v, 10)).filter((v) => !isNaN(v));
+    parsedTagIds.push(...parts);
+  } else if (tagId) {
+    const single = parseInt(tagId, 10);
+    if (!isNaN(single)) parsedTagIds.push(single);
+  }
+  if (parsedTagIds.length > 0) {
+    const placeholders = parsedTagIds.map((_, i) => `@tagId${i}`).join(',');
+    conditions.push(`EXISTS (
+      SELECT 1 FROM transfer_tag_assignments tta 
+      WHERE tta.transferId = t.id AND tta.tagId IN (${placeholders})
+    )`);
+    parsedTagIds.forEach((id, i) => {
+      params[`tagId${i}`] = id;
+    });
+  }
+  
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  
+  // Build query without pagination
+  let query = `SELECT 
+        t.id,
+        t.fromAccountId,
+        t.toAccountId,
+        t.amount,
+        t.currencyCode,
+        t.description,
+        t.transactionFee,
+        t.createdBy,
+        t.createdAt,
+        t.updatedBy,
+        t.updatedAt,
+        fromAcc.name as fromAccountName,
+        toAcc.name as toAccountName,
+        creator.name as createdByName,
+        updater.name as updatedByName
+       FROM internal_transfers t
+       LEFT JOIN accounts fromAcc ON fromAcc.id = t.fromAccountId
+       LEFT JOIN accounts toAcc ON toAcc.id = t.toAccountId
+       LEFT JOIN users creator ON creator.id = t.createdBy
+       LEFT JOIN users updater ON updater.id = t.updatedBy
+       ${whereClause}
+       ORDER BY t.createdAt DESC;`;
+  
+  const rows = db.prepare(query).all(params);
+  
+  // Add tags to each transfer
+  const transfers = rows.map(transfer => {
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN transfer_tag_assignments tta ON tta.tagId = t.id
+         WHERE tta.transferId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(transfer.id);
+    
+    return {
+      ...transfer,
+      tags: tags.length > 0 ? tags : [],
+    };
+  });
+  
+  res.json(transfers);
+};
+
 export const createTransfer = (req, res, next) => {
   try {
     const { fromAccountId, toAccountId, amount, description, transactionFee, createdBy, tagIds } = req.body || {};
@@ -170,13 +282,16 @@ export const createTransfer = (req, res, next) => {
       }
 
       // Create transaction records for both accounts
+      const isImported = req.body?.isImported === true || req.body?.isImported === "true";
+      const importedSuffix = isImported ? " (Imported)" : "";
+      
       const transferDescription = description 
-        ? `Internal transfer to ${toAccount.name}: ${description}`
-        : `Internal transfer to ${toAccount.name}`;
+        ? `Internal transfer to ${toAccount.name}: ${description}${importedSuffix}`
+        : `Internal transfer to ${toAccount.name}${importedSuffix}`;
       
       const receiveDescription = description
-        ? `Internal transfer from ${fromAccount.name}: ${description}`
-        : `Internal transfer from ${fromAccount.name}`;
+        ? `Internal transfer from ${fromAccount.name}: ${description}${importedSuffix}`
+        : `Internal transfer from ${fromAccount.name}${importedSuffix}`;
 
       db.prepare(
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -201,8 +316,8 @@ export const createTransfer = (req, res, next) => {
       // Record transaction fee deduction on To Account if fee exists
       if (feeAmount > 0) {
         const feeDescription = description
-          ? `Transaction fee for transfer from ${fromAccount.name}: ${description}`
-          : `Transaction fee for transfer from ${fromAccount.name}`;
+          ? `Transaction fee for transfer from ${fromAccount.name}: ${description}${importedSuffix}`
+          : `Transaction fee for transfer from ${fromAccount.name}${importedSuffix}`;
         
         db.prepare(
           `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
