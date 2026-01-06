@@ -52,7 +52,7 @@ export default function TagsPage() {
     if (!form.name || !form.color) {
       setAlertModal({
         isOpen: true,
-        message: t("tags.nameAndColorRequired") || "Name and color are required",
+        message: t("tags.nameAndColorRequired"),
         type: "error",
       });
       return;
@@ -63,13 +63,13 @@ export default function TagsPage() {
       setForm({ name: "", color: "#3b82f6" });
       setAlertModal({
         isOpen: true,
-        message: t("tags.tagCreated") || "Tag created successfully",
+        message: t("tags.tagCreated"),
         type: "success",
       });
     } catch (error: any) {
       setAlertModal({
         isOpen: true,
-        message: error?.data?.message || t("tags.createError") || "Failed to create tag",
+        message: error?.data?.message || t("tags.createError"),
         type: "error",
       });
     }
@@ -96,7 +96,7 @@ export default function TagsPage() {
     if (!editForm.name || !editForm.color) {
       setAlertModal({
         isOpen: true,
-        message: t("tags.nameAndColorRequired") || "Name and color are required",
+        message: t("tags.nameAndColorRequired"),
         type: "error",
       });
       return;
@@ -107,13 +107,13 @@ export default function TagsPage() {
       cancelEdit();
       setAlertModal({
         isOpen: true,
-        message: t("tags.tagUpdated") || "Tag updated successfully",
+        message: t("tags.tagUpdated"),
         type: "success",
       });
     } catch (error: any) {
       setAlertModal({
         isOpen: true,
-        message: error?.data?.message || t("tags.updateError") || "Failed to update tag",
+        message: error?.data?.message || t("tags.updateError"),
         type: "error",
       });
     }
@@ -125,7 +125,7 @@ export default function TagsPage() {
 
     setConfirmModal({
       isOpen: true,
-      message: t("tags.confirmDelete") || `Are you sure you want to delete the tag "${tag.name}"?`,
+      message: t("tags.confirmDelete").replace("{{tagName}}", tag.name),
       tagId: id,
     });
   };
@@ -136,14 +136,14 @@ export default function TagsPage() {
       setConfirmModal({ isOpen: false, message: "", tagId: null });
       setAlertModal({
         isOpen: true,
-        message: result?.message || t("tags.tagDeleted") || "Tag deleted successfully. All tag assignments have been removed.",
+        message: result?.message || t("tags.tagDeleted"),
         type: "success",
       });
     } catch (error: any) {
       setConfirmModal({ isOpen: false, message: "", tagId: null });
       setAlertModal({
         isOpen: true,
-        message: error?.data?.message || t("tags.deleteError") || "Failed to delete tag",
+        message: error?.data?.message || t("tags.deleteError"),
         type: "error",
       });
     }
@@ -151,25 +151,25 @@ export default function TagsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionCard title={t("tags.title") || "Tags"}>
+      <SectionCard title={t("tags.title")}>
         <form onSubmit={handleSubmit} className="space-y-4 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                {t("tags.name") || "Name"}
+                {t("tags.name")}
               </label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder={t("tags.namePlaceholder") || "Tag name"}
+                placeholder={t("tags.namePlaceholder")}
                 required
               />
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                {t("tags.color") || "Color"}
+                {t("tags.color")}
               </label>
               <div className="flex gap-2">
                 <input
@@ -194,7 +194,7 @@ export default function TagsPage() {
                 disabled={isCreating}
                 className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreating ? t("tags.creating") || "Creating..." : t("tags.create") || "Create Tag"}
+                {isCreating ? t("tags.creating") : t("tags.create")}
               </button>
             </div>
           </div>
@@ -202,11 +202,11 @@ export default function TagsPage() {
 
         {isLoading ? (
           <div className="text-center py-8 text-slate-500">
-            {t("tags.loading") || "Loading tags..."}
+            {t("tags.loading")}
           </div>
         ) : tags.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
-            {t("tags.noTags") || "No tags yet. Create your first tag above."}
+            {t("tags.noTags")}
           </div>
         ) : (
           <div className="space-y-2">
@@ -254,14 +254,14 @@ export default function TagsPage() {
                         disabled={isUpdating}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                       >
-                        {t("tags.save") || "Save"}
+                        {t("tags.save")}
                       </button>
                       <button
                         type="button"
                         onClick={cancelEdit}
                         className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
                       >
-                        {t("tags.cancel") || "Cancel"}
+                        {t("tags.cancel")}
                       </button>
                     </div>
                   </form>
@@ -280,13 +280,13 @@ export default function TagsPage() {
                         onClick={() => startEdit(tag.id)}
                         className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
                       >
-                        {t("tags.edit") || "Edit"}
+                        {t("tags.edit")}
                       </button>
                       <button
                         onClick={() => handleDeleteClick(tag.id)}
                         className="px-3 py-1 text-sm bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200"
                       >
-                        {t("tags.delete") || "Delete"}
+                        {t("tags.delete")}
                       </button>
                     </div>
                   </>

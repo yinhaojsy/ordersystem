@@ -31,7 +31,8 @@
     "users": "用户",
     "roles": "角色",
     "orders": "订单",
-    "profit": "利润计算"
+    "profit": "利润计算",
+    "tags": "标签"
   },
   "sections": {
     "dashboard": "仪表板",
@@ -698,5 +699,27 @@
     "unsavedChanges": "您有未保存的更改",
     "changesSaved": "所有更改已成功保存",
     "errorSaving": "保存更改时出错"
+  },
+  "tags": {
+    "title": "标签",
+    "name": "名称",
+    "color": "颜色",
+    "namePlaceholder": "标签名称",
+    "create": "创建标签",
+    "creating": "创建中...",
+    "edit": "编辑",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "loading": "加载标签中...",
+    "noTags": "暂无标签。请在上方创建您的第一个标签。",
+    "nameAndColorRequired": "名称和颜色是必需的",
+    "tagCreated": "标签创建成功",
+    "tagUpdated": "标签更新成功",
+    "tagDeleted": "标签删除成功。所有标签分配已被移除。",
+    "createError": "创建标签失败",
+    "updateError": "更新标签失败",
+    "deleteError": "删除标签失败",
+    "confirmDelete": "您确定要删除标签 \"{{tagName}}\" 吗？"
   }
 }

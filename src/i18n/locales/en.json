@@ -30,7 +30,8 @@
     "users": "Users",
     "roles": "Roles",
     "orders": "Orders",
-    "profit": "Profit Calculation"
+    "profit": "Profit Calculation",
+    "tags": "Tags"
   },
   "sections": {
     "dashboard": "Dashboard",
@@ -707,5 +708,27 @@
     "unsavedChanges": "You have unsaved changes",
     "changesSaved": "All changes saved successfully",
     "errorSaving": "Error saving changes"
+  },
+  "tags": {
+    "title": "Tags",
+    "name": "Name",
+    "color": "Color",
+    "namePlaceholder": "Tag name",
+    "create": "Create Tag",
+    "creating": "Creating...",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "loading": "Loading tags...",
+    "noTags": "No tags yet. Create your first tag above.",
+    "nameAndColorRequired": "Name and color are required",
+    "tagCreated": "Tag created successfully",
+    "tagUpdated": "Tag updated successfully",
+    "tagDeleted": "Tag deleted successfully. All tag assignments have been removed.",
+    "createError": "Failed to create tag",
+    "updateError": "Failed to update tag",
+    "deleteError": "Failed to delete tag",
+    "confirmDelete": "Are you sure you want to delete the tag \"{{tagName}}\"?"
   }
 }
