@@ -12,6 +12,11 @@ export const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
+// Add connection error handling
+db.on('error', (error) => {
+  console.error('Database error:', error);
+});
+
 const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit"];
 
 const ensureSchema = () => {
@@ -712,9 +717,15 @@ const migrateDatabase = () => {
 };
 
 export const initDatabase = () => {
-  ensureSchema();
-  migrateDatabase();
-  seedData();
+  try {
+    ensureSchema();
+    migrateDatabase();
+    seedData();
+    console.log('Database initialization completed');
+  } catch (error) {
+    console.error('Database initialization error:', error);
+    throw error; // Re-throw to be caught by app.js
+  }
 };
 
 export const DB_CONSTANTS = {

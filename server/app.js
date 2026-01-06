@@ -6,7 +6,16 @@ import apiRouter from "./routes/api.js";
 import { initDatabase } from "./db.js";
 import { getUploadsDir } from "./utils/fileStorage.js";
 
-initDatabase();
+// Wrap database initialization in try-catch
+try {
+  initDatabase();
+  console.log('Database initialized successfully');
+} catch (error) {
+  console.error('Failed to initialize database:', error);
+  // Don't exit immediately - let the server start and log the error
+  // Railway will restart if needed
+  process.exit(1);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
