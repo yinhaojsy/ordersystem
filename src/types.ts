@@ -278,6 +278,8 @@ export interface ExpenseInput {
   imagePath?: string;
   createdBy?: number;
   tagIds?: number[];
+  currencyCode?: string;
+  createdAt?: string;
 }
 
 export interface ExpenseChange {

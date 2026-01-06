@@ -1,11 +1,14 @@
 import * as XLSX from "xlsx";
-import type { Expense, Account, Tag } from "../../types";
+import type { Expense, Account, Tag, User } from "../../types";
 
 export interface ImportExpenseData {
   accountId: number;
   amount: number;
   description?: string;
   tagIds: number[];
+  currencyCode?: string;
+  createdAt?: string;
+  createdBy?: number;
 }
 
 export interface ImportValidationResult {
@@ -21,7 +24,9 @@ export function validateAndParseExpenseRow(
   row: any,
   rowNumber: number,
   accountNameToAccount: Map<string, Account>,
+  accountNameMap: Map<string, string>,
   tagNameToId: Map<string, number>,
+  userNameToId: Map<string, number>,
   existingExpenseIds: Set<string>,
   seenExpenseIds: Set<string>
 ): ImportValidationResult {
@@ -43,14 +48,52 @@ export function validateAndParseExpenseRow(
   }
 
   // Parse account (required)
-  const accountName = String(row["Account"] || row["account"] || "").trim();
-  if (!accountName) {
+  const accountNameRaw = String(row["Account"] || row["account"] || "").trim();
+  if (!accountNameRaw) {
     errors.push(`Row ${rowNumber}: Account is required`);
     return { success: false, errors };
   }
-  const account = accountNameToAccount.get(accountName.toLowerCase());
+  
+  // Try multiple normalization strategies to find the account
+  let account: Account | undefined = undefined;
+  
+  // Strategy 1: Normalize with Unicode NFC, lowercase, and normalize whitespace
+  const normalized1 = accountNameRaw.toLowerCase().replace(/\s+/g, ' ').normalize('NFC');
+  account = accountNameToAccount.get(normalized1);
+  
+  // Strategy 2: Without Unicode normalization (in case of encoding differences)
   if (!account) {
-    errors.push(`Row ${rowNumber}: Account "${accountName}" not found`);
+    const normalized2 = accountNameRaw.toLowerCase().replace(/\s+/g, ' ');
+    account = accountNameToAccount.get(normalized2);
+  }
+  
+  // Strategy 3: Remove all whitespace (in case of invisible characters)
+  if (!account) {
+    const normalized3 = accountNameRaw.toLowerCase().replace(/\s/g, '').normalize('NFC');
+    for (const [key, acc] of accountNameToAccount.entries()) {
+      if (key.replace(/\s/g, '') === normalized3) {
+        account = acc;
+        break;
+      }
+    }
+  }
+  
+  // Strategy 4: Try exact case-insensitive match (fallback)
+  if (!account) {
+    const normalized4 = accountNameRaw.toLowerCase();
+    for (const [key, acc] of accountNameToAccount.entries()) {
+      if (key === normalized4 || acc.name.toLowerCase() === normalized4) {
+        account = acc;
+        break;
+      }
+    }
+  }
+  
+  if (!account) {
+    // Provide helpful error message with available accounts (show original names, not normalized)
+    const availableAccountNames = Array.from(accountNameMap.values()).slice(0, 10);
+    const availableAccountsStr = availableAccountNames.join(', ');
+    errors.push(`Row ${rowNumber}: Account "${accountNameRaw}" not found. Available accounts: ${availableAccountsStr}${accountNameMap.size > 10 ? '...' : ''}`);
     return { success: false, errors };
   }
 
@@ -59,6 +102,90 @@ export function validateAndParseExpenseRow(
   if (!amount || amount <= 0) {
     errors.push(`Row ${rowNumber}: Amount must be a positive number`);
     return { success: false, errors };
+  }
+
+  // Parse currency (optional, but validate if provided)
+  const currencyCodeRaw = String(row["Currency"] || row["currency"] || row["currencyCode"] || "").trim();
+  const currencyCode = currencyCodeRaw && currencyCodeRaw !== "-" ? currencyCodeRaw : undefined;
+  if (currencyCode && currencyCode !== account.currencyCode) {
+    errors.push(`Row ${rowNumber}: Currency "${currencyCode}" does not match account currency "${account.currencyCode}"`);
+    return { success: false, errors };
+  }
+
+  // Parse date (optional)
+  // Note: Export uses toLocaleDateString() which typically gives dd/mm/yyyy format
+  // So we prioritize DD/MM/YYYY parsing to match the export format
+  let createdAt: string | undefined = undefined;
+  const dateRaw = row["Date"] || row["date"] || row["createdAt"];
+  const dateStr = dateRaw !== undefined && dateRaw !== null ? String(dateRaw).trim() : "";
+  if (dateStr && dateStr !== "-") {
+    try {
+      let dateValue: Date;
+      
+      // Handle Excel date serial numbers (days since 1900-01-01)
+      if (typeof dateRaw === 'number' && dateRaw > 0 && dateRaw < 1000000) {
+        // Excel date serial number
+        const excelEpoch = new Date(1899, 11, 30); // Excel epoch is 1899-12-30
+        dateValue = new Date(excelEpoch.getTime() + dateRaw * 24 * 60 * 60 * 1000);
+      } else if (dateRaw instanceof Date) {
+        dateValue = dateRaw;
+      } else {
+        // Try parsing as string - prioritize DD/MM/YYYY to match export format
+        const parts = dateStr.split(/[\/\-\.]/);
+        if (parts.length === 3) {
+          const part1 = parseInt(parts[0], 10);
+          const part2 = parseInt(parts[1], 10);
+          const part3 = parseInt(parts[2], 10);
+          
+          // Determine format: prioritize DD/MM/YYYY (matches export format)
+          // If part1 > 12, it must be DD/MM/YYYY
+          // If part1 <= 12 and part2 > 12, it must be MM/DD/YYYY
+          // Otherwise, try DD/MM/YYYY first (since export uses that format)
+          if (part1 > 12) {
+            // Definitely DD/MM/YYYY (day > 12)
+            dateValue = new Date(part3, part2 - 1, part1);
+          } else if (part2 > 12) {
+            // Definitely MM/DD/YYYY (month > 12 in second position)
+            dateValue = new Date(part3, part1 - 1, part2);
+          } else {
+            // Ambiguous: could be either format
+            // Prioritize DD/MM/YYYY to match export format (e.g., 07/01/2026 = July 1, 2026)
+            // Try DD/MM/YYYY first
+            dateValue = new Date(part3, part2 - 1, part1);
+            // Validate: if the resulting date is invalid or doesn't make sense, try MM/DD/YYYY
+            if (isNaN(dateValue.getTime()) || dateValue.getFullYear() !== part3) {
+              dateValue = new Date(part3, part1 - 1, part2);
+            }
+          }
+        } else {
+          // Try standard Date parsing as fallback
+          dateValue = new Date(dateStr);
+        }
+      }
+      
+      if (!isNaN(dateValue.getTime())) {
+        createdAt = dateValue.toISOString();
+      } else {
+        errors.push(`Row ${rowNumber}: Invalid date format "${dateStr}"`);
+        return { success: false, errors };
+      }
+    } catch (e) {
+      errors.push(`Row ${rowNumber}: Invalid date format "${dateStr}"`);
+      return { success: false, errors };
+    }
+  }
+
+  // Parse created by (optional)
+  let createdBy: number | undefined = undefined;
+  const createdByNameRaw = String(row["Created By"] || row["createdBy"] || "").trim();
+  const createdByName = createdByNameRaw && createdByNameRaw !== "-" ? createdByNameRaw : "";
+  if (createdByName) {
+    const userId = userNameToId.get(createdByName.toLowerCase());
+    if (!userId) {
+      errors.push(`Row ${rowNumber}: User "${createdByName}" not found`);
+      return { success: false, errors };
+    }
+    createdBy = userId;
   }
 
   // Parse description (optional)
@@ -91,6 +218,9 @@ export function validateAndParseExpenseRow(
     amount,
     description,
     tagIds,
+    currencyCode: currencyCode || account.currencyCode,
+    createdAt,
+    createdBy,
   };
 
   return { success: true, errors: [], expenseData };
@@ -102,7 +232,8 @@ export function validateAndParseExpenseRow(
 export async function processImportFile(
   file: File,
   accounts: Account[],
-  tags: Tag[]
+  tags: Tag[],
+  users: User[] = []
 ): Promise<{ expenses: ImportExpenseData[]; errors: string[] }> {
   // Read Excel file
   const data = await file.arrayBuffer();
@@ -121,8 +252,16 @@ export async function processImportFile(
   }
 
   // Build maps for validation
-  const accountNameToAccount = new Map(accounts.map((a) => [a.name.toLowerCase(), a]));
+  // Normalize account names: trim, lowercase, and normalize whitespace
+  const normalizeAccountName = (name: string) => 
+    name.trim().toLowerCase().replace(/\s+/g, ' ').normalize('NFC');
+  const accountNameToAccount = new Map(
+    accounts.map((a) => [normalizeAccountName(a.name), a])
+  );
+  // Also create a map with original names for better error messages
+  const accountNameMap = new Map(accounts.map((a) => [normalizeAccountName(a.name), a.name]));
   const tagNameToId = new Map(tags.map((t) => [t.name.toLowerCase(), t.id]));
+  const userNameToId = new Map(users.map((u) => [u.name.toLowerCase(), u.id]));
 
   // Fetch existing expenses to prevent importing duplicates by Expense ID
   const existingExpensesResponse = await fetch("/api/expenses/export");
@@ -145,7 +284,9 @@ export async function processImportFile(
       row,
       rowNumber,
       accountNameToAccount,
+      accountNameMap,
       tagNameToId,
+      userNameToId,
       existingExpenseIds,
       seenExpenseIds
     );

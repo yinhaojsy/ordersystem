@@ -7,6 +7,7 @@ interface UseExpensesImportExportParams {
   exportQueryParams: any;
   accounts: any[];
   tags: any[];
+  users?: any[];
   addExpense: any;
   setAlertModal: (modal: { isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }) => void;
   setIsImporting: (isImporting: boolean) => void;
@@ -18,6 +19,7 @@ export function useExpensesImportExport({
   exportQueryParams,
   accounts,
   tags,
+  users = [],
   addExpense,
   setAlertModal,
   setIsImporting,
@@ -53,16 +55,22 @@ export function useExpensesImportExport({
     const templateData = [
       {
         "Expense ID": "EXT-1001",
+        "Date": new Date().toLocaleDateString(),
         "Account": "Main USD",
         "Amount": 100.50,
+        "Currency": "USD",
         "Description": "Office supplies",
+        "Created By": "Admin User",
         "Tags": "Office, Monthly"
       },
       {
         "Expense ID": "EXT-1002",
+        "Date": new Date().toLocaleDateString(),
         "Account": "Main HKD",
         "Amount": 500,
+        "Currency": "HKD",
         "Description": "Travel expenses",
+        "Created By": "Admin User",
         "Tags": "Travel"
       }
     ];
@@ -87,7 +95,8 @@ export function useExpensesImportExport({
       const { expenses: validatedExpenses, errors: validationErrors } = await processImportFile(
         file,
         accounts,
-        tags
+        tags,
+        users
       );
 
       // Import validated expenses
@@ -151,7 +160,7 @@ export function useExpensesImportExport({
     } finally {
       setIsImporting(false);
     }
-  }, [accounts, tags, addExpense, t, setIsImporting, setAlertModal, setImportModalOpen]);
+  }, [accounts, tags, users, addExpense, t, setIsImporting, setAlertModal, setImportModalOpen]);
 
   return {
     isExporting,

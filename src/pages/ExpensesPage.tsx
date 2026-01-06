@@ -138,6 +138,7 @@ export default function ExpensesPage() {
     exportQueryParams: queryParams,
     accounts,
     tags,
+    users,
     addExpense: createExpense,
     setAlertModal,
     setIsImporting,

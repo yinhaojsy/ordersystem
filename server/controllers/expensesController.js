@@ -244,6 +244,27 @@ export const createExpense = (req, res, next) => {
       return res.status(404).json({ message: "Account not found" });
     }
 
+    // Handle currencyCode for imports (optional, but validate if provided)
+    let finalCurrencyCode = account.currencyCode;
+    if (req.body?.currencyCode) {
+      const providedCurrencyCode = String(req.body.currencyCode).trim();
+      if (providedCurrencyCode !== account.currencyCode) {
+        return res.status(400).json({ 
+          message: `Currency "${providedCurrencyCode}" does not match account currency "${account.currencyCode}"` 
+        });
+      }
+      finalCurrencyCode = providedCurrencyCode;
+    }
+
+    // Handle createdAt for imports (optional)
+    let finalCreatedAt = new Date().toISOString();
+    if (req.body?.createdAt) {
+      const providedDate = new Date(req.body.createdAt);
+      if (!isNaN(providedDate.getTime())) {
+        finalCreatedAt = providedDate.toISOString();
+      }
+    }
+
     // Handle file upload - support both file and base64 (for backward compatibility)
     let imagePath = null;
     
@@ -286,7 +307,7 @@ export const createExpense = (req, res, next) => {
         accountIdNum,
         expenseAmount,
         expenseDescription,
-        new Date().toISOString()
+        finalCreatedAt
       );
 
       // Create expense record
@@ -297,11 +318,11 @@ export const createExpense = (req, res, next) => {
       const result = stmt.run({
         accountId: accountIdNum,
         amount: expenseAmount,
-        currencyCode: account.currencyCode,
+        currencyCode: finalCurrencyCode,
         description: description || null,
         imagePath: imagePath || null,
         createdBy: createdBy || null,
-        createdAt: new Date().toISOString(),
+        createdAt: finalCreatedAt,
       });
 
       expenseId = result.lastInsertRowid;
@@ -324,7 +345,7 @@ export const createExpense = (req, res, next) => {
       ).run(
         expenseId,
         createdBy || null,
-        new Date().toISOString(),
+        finalCreatedAt,
         accountIdNum,
         account.name,
         expenseAmount,
@@ -705,22 +726,43 @@ export const deleteExpense = (req, res, next) => {
 
     // Perform hard delete in a transaction
     const transaction = db.transaction(() => {
+      // Ensure accountId is an integer
+      const accountId = typeof expense.accountId === 'number' ? expense.accountId : parseInt(expense.accountId, 10);
+      const expenseAmount = typeof expense.amount === 'number' ? expense.amount : parseFloat(expense.amount);
+      
+      // Validate accountId and amount
+      if (isNaN(accountId) || accountId <= 0) {
+        throw new Error(`Invalid accountId: ${expense.accountId}`);
+      }
+      if (isNaN(expenseAmount) || expenseAmount <= 0) {
+        throw new Error(`Invalid expense amount: ${expense.amount}`);
+      }
+      
+      // Verify account exists before reversing
+      const account = db.prepare("SELECT id FROM accounts WHERE id = ?").get(accountId);
+      if (!account) {
+        throw new Error(`Account ${accountId} not found`);
+      }
+      
       // Reverse the expense (add back the amount to account)
-      db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(expense.amount, expense.accountId);
+      db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(expenseAmount, accountId);
 
       // Create reversal transaction record
       const expenseDescription = expense.description 
         ? `Expense: ${expense.description}`
         : "Expense";
       
+      // Use the expense's original createdAt if available, otherwise use current time
+      const reversalCreatedAt = expense.createdAt || new Date().toISOString();
+      
       db.prepare(
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
          VALUES (?, 'add', ?, ?, ?);`
       ).run(
-        expense.accountId,
-        expense.amount,
+        accountId,
+        expenseAmount,
         `Reversal: ${expenseDescription} (Deleted)`,
-        new Date().toISOString()
+        reversalCreatedAt
       );
 
       // Hard delete the expense (this will cascade delete expense_changes due to FK constraint)
