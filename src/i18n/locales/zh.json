@@ -478,7 +478,20 @@
     "errorDeleting": "删除转账时出错",
     "columns": "列",
     "showColumns": "显示列",
-    "transferId": "转账ID"
+    "transferId": "转账ID",
+    "export": "导出到Excel",
+    "exporting": "导出中...",
+    "exportSuccess": "成功导出 {{count}} 条转账到 {{fileName}}",
+    "exportError": "导出转账失败，请重试。",
+    "import": "导入转账",
+    "importTransfers": "导入转账",
+    "importing": "导入中...",
+    "importDescription": "选择Excel文件（.xlsx）导入转账。'Transfers'工作表必须包含：转出账户、转入账户、金额、描述。可选：转账ID、转账费、标签。注意：转出账户和转入账户必须使用相同货币。",
+    "importSuccess": "成功导入 {{count}} 条转账",
+    "importError": "导入转账失败",
+    "transfersSheetNotFound": "文件中未找到Transfers工作表",
+    "noTransfersInFile": "文件中未找到转账",
+    "downloadTemplate": "下载模板"
   },
   "expenses": {
     "title": "开支",
@@ -530,7 +543,20 @@
     "removeFavorite": "从收藏中移除",
     "columns": "列",
     "showColumns": "显示列",
-    "expenseId": "开支ID"
+    "expenseId": "开支ID",
+    "export": "导出到Excel",
+    "exporting": "导出中...",
+    "exportSuccess": "成功导出 {{count}} 条开支到 {{fileName}}",
+    "exportError": "导出开支失败，请重试。",
+    "import": "导入开支",
+    "importExpenses": "导入开支",
+    "importing": "导入中...",
+    "importDescription": "选择Excel文件（.xlsx）导入开支。'Expenses'工作表必须包含：账户、金额。可选：开支ID、描述、标签。",
+    "importSuccess": "成功导入 {{count}} 条开支",
+    "importError": "导入开支失败",
+    "expensesSheetNotFound": "文件中未找到Expenses工作表",
+    "noExpensesInFile": "文件中未找到开支",
+    "downloadTemplate": "下载模板"
   },
   "profit": {
     "calculationSelection": "利润计算",

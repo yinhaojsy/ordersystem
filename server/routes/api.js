@@ -68,6 +68,7 @@ import {
 } from "../controllers/accountsController.js";
 import {
   listTransfers,
+  exportTransfers,
   createTransfer,
   updateTransfer,
   deleteTransfer,
@@ -75,6 +76,7 @@ import {
 } from "../controllers/transfersController.js";
 import {
   listExpenses,
+  exportExpenses,
   createExpense,
   updateExpense,
   deleteExpense,
@@ -171,12 +173,14 @@ router.post("/accounts/:id/withdraw-funds", withdrawFunds);
 router.get("/accounts/:id/transactions", getAccountTransactions);
 
 router.get("/transfers", listTransfers);
+router.get("/transfers/export", exportTransfers);
 router.post("/transfers", createTransfer);
 router.get("/transfers/:id/changes", getTransferChanges);
 router.put("/transfers/:id", updateTransfer);
 router.delete("/transfers/:id", deleteTransfer);
 
 router.get("/expenses", listExpenses);
+router.get("/expenses/export", exportExpenses);
 router.post("/expenses", upload.single("file"), createExpense);
 router.get("/expenses/:id/changes", getExpenseChanges);
 router.put("/expenses/:id", upload.single("file"), updateExpense);

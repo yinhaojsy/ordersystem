@@ -6,9 +6,11 @@ import ConfirmModal from "../components/common/ConfirmModal";
 import { ColumnDropdown } from "../components/common/ColumnDropdown";
 import { TagSelectionModal } from "../components/common/TagSelectionModal";
 import { ExpensesFilters } from "../components/expenses/ExpensesFilters";
+import { ImportExpensesModal } from "../components/expenses/ImportExpensesModal";
 import Badge from "../components/common/Badge";
 import { useExpensesTable } from "../hooks/expenses/useExpensesTable";
 import { useExpensesFilters } from "../hooks/expenses/useExpensesFilters";
+import { useExpensesImportExport } from "../hooks/expenses/useExpensesImportExport";
 import { useBatchDelete } from "../hooks/useBatchDelete";
 import {
   useGetExpensesQuery,
@@ -123,6 +125,25 @@ export default function ExpensesPage() {
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const [imageDragOver, setImageDragOver] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  
+  // Import/Export functionality
+  const {
+    isExporting,
+    handleExportExpenses,
+    handleDownloadTemplate,
+    handleImportFile,
+  } = useExpensesImportExport({
+    exportQueryParams: queryParams,
+    accounts,
+    tags,
+    addExpense: createExpense,
+    setAlertModal,
+    setIsImporting,
+    setImportModalOpen: setIsImportModalOpen,
+    t,
+  });
   
   // Column management via hook
   const {
@@ -847,6 +868,25 @@ export default function ExpensesPage() {
                   : t("expenses.batchDelete")}
               </button>
             )}
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+              {t("expenses.import") || "Import Expenses"}
+            </button>
             <ColumnDropdown
               isOpen={isColumnDropdownOpen}
               onToggle={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
@@ -877,6 +917,8 @@ export default function ExpensesPage() {
           onDatePresetChange={handleDatePresetChange}
           onFilterChange={updateFilter}
           onClearFilters={handleClearFilters}
+          onExport={handleExportExpenses}
+          isExporting={isExporting}
           isTagFilterOpen={isTagFilterOpen}
           setIsTagFilterOpen={setIsTagFilterOpen}
           tagFilterHighlight={tagFilterHighlight}
@@ -1587,6 +1629,15 @@ export default function ExpensesPage() {
         applyingText={t("expenses.applying") || "Applying..."}
         savingText={t("common.saving")}
         t={t}
+      />
+
+      {/* Import Expenses Modal */}
+      <ImportExpensesModal
+        isOpen={isImportModalOpen}
+        isImporting={isImporting}
+        onClose={() => setIsImportModalOpen(false)}
+        onFileChange={handleImportFile}
+        onDownloadTemplate={handleDownloadTemplate}
       />
     </div>
   );

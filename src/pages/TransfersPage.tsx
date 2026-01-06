@@ -6,9 +6,11 @@ import ConfirmModal from "../components/common/ConfirmModal";
 import { ColumnDropdown } from "../components/common/ColumnDropdown";
 import { TagSelectionModal } from "../components/common/TagSelectionModal";
 import { TransfersFilters } from "../components/transfers/TransfersFilters";
+import { ImportTransfersModal } from "../components/transfers/ImportTransfersModal";
 import Badge from "../components/common/Badge";
 import { useTransfersTable } from "../hooks/transfers/useTransfersTable";
 import { useTransfersFilters } from "../hooks/transfers/useTransfersFilters";
+import { useTransfersImportExport } from "../hooks/transfers/useTransfersImportExport";
 import { useBatchDelete } from "../hooks/useBatchDelete";
 import {
   useGetTransfersQuery,
@@ -140,6 +142,25 @@ export default function TransfersPage() {
   const [fromAccountSearchQuery, setFromAccountSearchQuery] = useState("");
   const [isFromAccountDropdownOpen, setIsFromAccountDropdownOpen] = useState(false);
   const fromAccountDropdownRef = useRef<HTMLDivElement>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  // Import/Export functionality
+  const {
+    isExporting,
+    handleExportTransfers,
+    handleDownloadTemplate,
+    handleImportFile,
+  } = useTransfersImportExport({
+    exportQueryParams: queryParams,
+    accounts,
+    tags,
+    addTransfer: createTransfer,
+    setAlertModal,
+    setIsImporting,
+    setImportModalOpen: setIsImportModalOpen,
+    t,
+  });
 
   const { data: transferChanges = [], isLoading: isLoadingChanges } = 
     useGetTransferChangesQuery(viewAuditTrailTransferId || 0, { skip: !viewAuditTrailTransferId });
@@ -654,6 +675,25 @@ export default function TransfersPage() {
                     : t("transfers.batchDelete")}
               </button>
             )}
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+              {t("transfers.import") || "Import Transfers"}
+            </button>
             <ColumnDropdown
               isOpen={isColumnDropdownOpen}
               onToggle={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
@@ -684,6 +724,8 @@ export default function TransfersPage() {
           onDatePresetChange={handleDatePresetChange}
           onFilterChange={updateFilter}
           onClearFilters={handleClearFilters}
+          onExport={handleExportTransfers}
+          isExporting={isExporting}
           isTagFilterOpen={isTagFilterOpen}
           setIsTagFilterOpen={setIsTagFilterOpen}
           tagFilterHighlight={tagFilterHighlight}
@@ -1247,6 +1289,15 @@ export default function TransfersPage() {
         applyingText={t("transfers.applying") || "Applying..."}
         savingText={t("common.saving")}
         t={t}
+      />
+
+      {/* Import Transfers Modal */}
+      <ImportTransfersModal
+        isOpen={isImportModalOpen}
+        isImporting={isImporting}
+        onClose={() => setIsImportModalOpen(false)}
+        onFileChange={handleImportFile}
+        onDownloadTemplate={handleDownloadTemplate}
       />
     </div>
   );

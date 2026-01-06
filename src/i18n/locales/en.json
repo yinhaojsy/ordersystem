@@ -485,7 +485,20 @@
     "errorDeleting": "Error deleting transfer",
     "columns": "Columns",
     "showColumns": "Show Columns",
-    "transferId": "Transfer ID"
+    "transferId": "Transfer ID",
+    "export": "Export to Excel",
+    "exporting": "Exporting...",
+    "exportSuccess": "Successfully exported {{count}} transfers to {{fileName}}",
+    "exportError": "Failed to export transfers. Please try again.",
+    "import": "Import Transfers",
+    "importTransfers": "Import Transfers",
+    "importing": "Importing...",
+    "importDescription": "Select an Excel file (.xlsx) to import transfers. The 'Transfers' sheet must include: From Account, To Account, Amount, Description. Optional: Transfer ID, Transaction Fee, Tags. Note: From Account and To Account must have the same currency.",
+    "importSuccess": "Successfully imported {{count}} transfers",
+    "importError": "Failed to import transfers",
+    "transfersSheetNotFound": "Transfers sheet not found in the file",
+    "noTransfersInFile": "No transfers found in the file",
+    "downloadTemplate": "Download Template"
   },
   "expenses": {
     "title": "Expenses",
@@ -539,7 +552,20 @@
     "description": "Description",
     "columns": "Columns",
     "showColumns": "Show Columns",
-    "expenseId": "Expense ID"
+    "expenseId": "Expense ID",
+    "export": "Export to Excel",
+    "exporting": "Exporting...",
+    "exportSuccess": "Successfully exported {{count}} expenses to {{fileName}}",
+    "exportError": "Failed to export expenses. Please try again.",
+    "import": "Import Expenses",
+    "importExpenses": "Import Expenses",
+    "importing": "Importing...",
+    "importDescription": "Select an Excel file (.xlsx) to import expenses. The 'Expenses' sheet must include: Account, Amount. Optional: Expense ID, Description, Tags.",
+    "importSuccess": "Successfully imported {{count}} expenses",
+    "importError": "Failed to import expenses",
+    "expensesSheetNotFound": "Expenses sheet not found in the file",
+    "noExpensesInFile": "No expenses found in the file",
+    "downloadTemplate": "Download Template"
   },
   "profit": {
     "calculationSelection": "Profit Calculation",
