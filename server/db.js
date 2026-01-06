@@ -12,11 +12,6 @@ export const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
-// Add connection error handling
-db.on('error', (error) => {
-  console.error('Database error:', error);
-});
-
 const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit"];
 
 const ensureSchema = () => {
