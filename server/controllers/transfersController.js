@@ -252,6 +252,27 @@ export const createTransfer = (req, res, next) => {
       });
     }
 
+    // Handle currencyCode for imports (optional, but validate if provided)
+    let finalCurrencyCode = fromAccount.currencyCode;
+    if (req.body?.currencyCode) {
+      const providedCurrencyCode = String(req.body.currencyCode).trim();
+      if (providedCurrencyCode !== fromAccount.currencyCode || providedCurrencyCode !== toAccount.currencyCode) {
+        return res.status(400).json({ 
+          message: `Currency "${providedCurrencyCode}" does not match account currencies "${fromAccount.currencyCode}"` 
+        });
+      }
+      finalCurrencyCode = providedCurrencyCode;
+    }
+
+    // Handle createdAt for imports (optional)
+    let finalCreatedAt = new Date().toISOString();
+    if (req.body?.createdAt) {
+      const providedDate = new Date(req.body.createdAt);
+      if (!isNaN(providedDate.getTime())) {
+        finalCreatedAt = providedDate.toISOString();
+      }
+    }
+
     const transferAmount = Number(amount);
     if (isNaN(transferAmount) || transferAmount <= 0) {
       return res.status(400).json({ message: "Amount must be a positive number" });
@@ -274,6 +295,24 @@ export const createTransfer = (req, res, next) => {
 
     // Perform transfer in a transaction
     const transaction = db.transaction(() => {
+      // Create transfer record first to get the transfer ID
+      const stmt = db.prepare(
+        `INSERT INTO internal_transfers (fromAccountId, toAccountId, amount, currencyCode, description, transactionFee, createdBy, createdAt)
+         VALUES (@fromAccountId, @toAccountId, @amount, @currencyCode, @description, @transactionFee, @createdBy, @createdAt);`
+      );
+      const result = stmt.run({
+        fromAccountId,
+        toAccountId,
+        amount: transferAmount,
+        currencyCode: finalCurrencyCode,
+        description: description || null,
+        transactionFee: feeAmount > 0 ? feeAmount : null,
+        createdBy: createdBy || null,
+        createdAt: finalCreatedAt,
+      });
+
+      const transferId = result.lastInsertRowid;
+
       // Update balances (deduct only amount from fromAccount, add amount then deduct fee from toAccount)
       db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(transferAmount, fromAccountId);
       db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(transferAmount, toAccountId);
@@ -281,17 +320,17 @@ export const createTransfer = (req, res, next) => {
         db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(feeAmount, toAccountId);
       }
 
-      // Create transaction records for both accounts
+      // Create transaction records for both accounts with transfer ID
       const isImported = req.body?.isImported === true || req.body?.isImported === "true";
       const importedSuffix = isImported ? " (Imported)" : "";
       
       const transferDescription = description 
-        ? `Internal transfer to ${toAccount.name}: ${description}${importedSuffix}`
-        : `Internal transfer to ${toAccount.name}${importedSuffix}`;
+        ? `Transfer #${transferId} - ${description}${importedSuffix}`
+        : `Transfer #${transferId}${importedSuffix}`;
       
       const receiveDescription = description
-        ? `Internal transfer from ${fromAccount.name}: ${description}${importedSuffix}`
-        : `Internal transfer from ${fromAccount.name}${importedSuffix}`;
+        ? `Transfer #${transferId} - ${description}${importedSuffix}`
+        : `Transfer #${transferId}${importedSuffix}`;
 
       db.prepare(
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -300,7 +339,7 @@ export const createTransfer = (req, res, next) => {
         fromAccountId,
         transferAmount,
         transferDescription,
-        new Date().toISOString()
+        finalCreatedAt
       );
 
       db.prepare(
@@ -310,14 +349,14 @@ export const createTransfer = (req, res, next) => {
         toAccountId,
         transferAmount,
         receiveDescription,
-        new Date().toISOString()
+        finalCreatedAt
       );
 
       // Record transaction fee deduction on To Account if fee exists
       if (feeAmount > 0) {
         const feeDescription = description
-          ? `Transaction fee for transfer from ${fromAccount.name}: ${description}${importedSuffix}`
-          : `Transaction fee for transfer from ${fromAccount.name}${importedSuffix}`;
+          ? `Transfer #${transferId} - Transaction fee: ${description}${importedSuffix}`
+          : `Transfer #${transferId} - Transaction fee${importedSuffix}`;
         
         db.prepare(
           `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -326,27 +365,9 @@ export const createTransfer = (req, res, next) => {
           toAccountId,
           feeAmount,
           feeDescription,
-          new Date().toISOString()
+          finalCreatedAt
         );
       }
-
-      // Create transfer record
-      const stmt = db.prepare(
-        `INSERT INTO internal_transfers (fromAccountId, toAccountId, amount, currencyCode, description, transactionFee, createdBy, createdAt)
-         VALUES (@fromAccountId, @toAccountId, @amount, @currencyCode, @description, @transactionFee, @createdBy, @createdAt);`
-      );
-      const result = stmt.run({
-        fromAccountId,
-        toAccountId,
-        amount: transferAmount,
-        currencyCode: fromAccount.currencyCode,
-        description: description || null,
-        transactionFee: feeAmount > 0 ? feeAmount : null,
-        createdBy: createdBy || null,
-        createdAt: new Date().toISOString(),
-      });
-
-      const transferId = result.lastInsertRowid;
 
       // Log the initial creation as a change
       db.prepare(
@@ -506,13 +527,10 @@ export const updateTransfer = (req, res, next) => {
           );
         }
 
-        // Create reversal transactions
-        const oldFromAccount = db.prepare("SELECT name FROM accounts WHERE id = ?;").get(existingTransfer.fromAccountId);
-        const oldToAccount = db.prepare("SELECT name FROM accounts WHERE id = ?;").get(existingTransfer.toAccountId);
-        
+        // Create reversal transactions with transfer ID
         const oldDescription = existingTransfer.description 
-          ? `Internal transfer to ${oldToAccount.name}: ${existingTransfer.description}`
-          : `Internal transfer to ${oldToAccount.name}`;
+          ? `Transfer #${id} - ${existingTransfer.description}`
+          : `Transfer #${id}`;
 
         db.prepare(
           `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -520,13 +538,9 @@ export const updateTransfer = (req, res, next) => {
         ).run(
           existingTransfer.fromAccountId,
           existingTransfer.amount,
-          `Reversal: ${oldDescription}`,
+          `Reversal: ${oldDescription} (Order updated)`,
           new Date().toISOString()
         );
-
-        const oldReceiveDescription = existingTransfer.description
-          ? `Internal transfer from ${oldFromAccount.name}: ${existingTransfer.description}`
-          : `Internal transfer from ${oldFromAccount.name}`;
 
         db.prepare(
           `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -534,15 +548,15 @@ export const updateTransfer = (req, res, next) => {
         ).run(
           existingTransfer.toAccountId,
           existingTransfer.amount,
-          `Reversal: ${oldReceiveDescription}`,
+          `Reversal: ${oldDescription} (Order updated)`,
           new Date().toISOString()
         );
 
         // Reverse the fee deduction on old To Account if fee existed
         if (oldFeeAmount > 0) {
           const oldFeeDescription = existingTransfer.description
-            ? `Transaction fee for transfer from ${oldFromAccount.name}: ${existingTransfer.description}`
-            : `Transaction fee for transfer from ${oldFromAccount.name}`;
+            ? `Transfer #${id} - Transaction fee: ${existingTransfer.description}`
+            : `Transfer #${id} - Transaction fee`;
           
           db.prepare(
             `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -550,7 +564,7 @@ export const updateTransfer = (req, res, next) => {
           ).run(
             existingTransfer.toAccountId,
             oldFeeAmount,
-            `Reversal: ${oldFeeDescription}`,
+            `Reversal: ${oldFeeDescription} (Order updated)`,
             new Date().toISOString()
           );
         }
@@ -571,10 +585,10 @@ export const updateTransfer = (req, res, next) => {
           );
         }
 
-        // Create new transactions
+        // Create new transactions with transfer ID
         const newDescription = finalDescription
-          ? `Internal transfer to ${toAccount.name}: ${finalDescription}`
-          : `Internal transfer to ${toAccount.name}`;
+          ? `Transfer #${id} - ${finalDescription}`
+          : `Transfer #${id}`;
 
         db.prepare(
           `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -586,25 +600,21 @@ export const updateTransfer = (req, res, next) => {
           new Date().toISOString()
         );
 
-        const newReceiveDescription = finalDescription
-          ? `Internal transfer from ${fromAccount.name}: ${finalDescription}`
-          : `Internal transfer from ${fromAccount.name}`;
-
         db.prepare(
           `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
            VALUES (?, 'add', ?, ?, ?);`
         ).run(
           finalToAccountId,
           finalAmount,
-          newReceiveDescription,
+          newDescription,
           new Date().toISOString()
         );
 
         // Record transaction fee deduction on new To Account if fee exists
         if (feeAmount > 0) {
           const feeDescription = finalDescription
-            ? `Transaction fee for transfer from ${fromAccount.name}: ${finalDescription}`
-            : `Transaction fee for transfer from ${fromAccount.name}`;
+            ? `Transfer #${id} - Transaction fee: ${finalDescription}`
+            : `Transfer #${id} - Transaction fee`;
           
           db.prepare(
             `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -790,24 +800,23 @@ export const deleteTransfer = (req, res, next) => {
         db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(feeAmount, transfer.toAccountId);
       }
 
-      // Create reversal transaction records
+      // Create reversal transaction records with transfer ID
       const transferDescription = transfer.description 
-        ? `Internal transfer to ${toAccount.name}: ${transfer.description}`
-        : `Internal transfer to ${toAccount.name}`;
+        ? `Transfer #${id} - ${transfer.description}`
+        : `Transfer #${id}`;
       
-      const receiveDescription = transfer.description
-        ? `Internal transfer from ${fromAccount.name}: ${transfer.description}`
-        : `Internal transfer from ${fromAccount.name}`;
-
       // Reversal for fromAccount (add back the amount)
+      // Use current time to ensure reversal appears at top of transaction history
+      const reversalCreatedAt = new Date().toISOString();
+      
       db.prepare(
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
          VALUES (?, 'add', ?, ?, ?);`
       ).run(
         transfer.fromAccountId,
         transferAmount,
-        `Reversal: ${transferDescription}`,
-        new Date().toISOString()
+        `Reversal: ${transferDescription} (Deleted)`,
+        reversalCreatedAt
       );
 
       // Reversal for toAccount (deduct back the amount)
@@ -817,15 +826,15 @@ export const deleteTransfer = (req, res, next) => {
       ).run(
         transfer.toAccountId,
         transferAmount,
-        `Reversal: ${receiveDescription}`,
-        new Date().toISOString()
+        `Reversal: ${transferDescription} (Deleted)`,
+        reversalCreatedAt
       );
 
       // Reversal for fee on toAccount (add back the fee)
       if (feeAmount > 0) {
         const feeDescription = transfer.description
-          ? `Transaction fee for transfer from ${fromAccount.name}: ${transfer.description}`
-          : `Transaction fee for transfer from ${fromAccount.name}`;
+          ? `Transfer #${id} - Transaction fee: ${transfer.description}`
+          : `Transfer #${id} - Transaction fee`;
         
         db.prepare(
           `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
@@ -833,8 +842,8 @@ export const deleteTransfer = (req, res, next) => {
         ).run(
           transfer.toAccountId,
           feeAmount,
-          `Reversal: ${feeDescription}`,
-          new Date().toISOString()
+          `Reversal: ${feeDescription} (Deleted)`,
+          reversalCreatedAt
         );
       }
 

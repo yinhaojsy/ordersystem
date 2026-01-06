@@ -7,6 +7,7 @@ interface UseTransfersImportExportParams {
   exportQueryParams: any;
   accounts: any[];
   tags: any[];
+  users?: any[];
   addTransfer: any;
   setAlertModal: (modal: { isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }) => void;
   setIsImporting: (isImporting: boolean) => void;
@@ -18,6 +19,7 @@ export function useTransfersImportExport({
   exportQueryParams,
   accounts,
   tags,
+  users = [],
   addTransfer,
   setAlertModal,
   setIsImporting,
@@ -56,8 +58,10 @@ export function useTransfersImportExport({
         "From Account": "Main USD",
         "To Account": "Secondary USD",
         "Amount": 1000,
-        "Description": "Transfer to secondary account",
+        "Currency": "USD",
         "Transaction Fee": 5,
+        "Description": "Transfer to secondary account",
+        "Created By": "Admin User",
         "Tags": "Internal, Monthly"
       },
       {
@@ -65,8 +69,10 @@ export function useTransfersImportExport({
         "From Account": "Main HKD",
         "To Account": "Secondary HKD",
         "Amount": 5000,
-        "Description": "Fund allocation",
+        "Currency": "HKD",
         "Transaction Fee": "",
+        "Description": "Fund allocation",
+        "Created By": "Admin User",
         "Tags": ""
       }
     ];
@@ -91,7 +97,8 @@ export function useTransfersImportExport({
       const { transfers: validatedTransfers, errors: validationErrors } = await processImportFile(
         file,
         accounts,
-        tags
+        tags,
+        users
       );
 
       // Import validated transfers
@@ -155,7 +162,7 @@ export function useTransfersImportExport({
     } finally {
       setIsImporting(false);
     }
-  }, [accounts, tags, addTransfer, t, setIsImporting, setAlertModal, setImportModalOpen]);
+  }, [accounts, tags, users, addTransfer, t, setIsImporting, setAlertModal, setImportModalOpen]);
 
   return {
     isExporting,

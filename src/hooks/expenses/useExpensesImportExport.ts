@@ -55,7 +55,6 @@ export function useExpensesImportExport({
     const templateData = [
       {
         "Expense ID": "EXT-1001",
-        "Date": new Date().toLocaleDateString(),
         "Account": "Main USD",
         "Amount": 100.50,
         "Currency": "USD",
@@ -65,7 +64,6 @@ export function useExpensesImportExport({
       },
       {
         "Expense ID": "EXT-1002",
-        "Date": new Date().toLocaleDateString(),
         "Account": "Main HKD",
         "Amount": 500,
         "Currency": "HKD",

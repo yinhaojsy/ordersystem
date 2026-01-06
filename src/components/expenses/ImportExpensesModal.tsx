@@ -28,7 +28,7 @@ export function ImportExpensesModal({
       onDownloadTemplate={onDownloadTemplate}
       title={t("expenses.importExpenses") || "Import Expenses"}
       description={t("expenses.importDescription") ||
-        "Select an Excel file (.xlsx) to import expenses. The 'Expenses' sheet must include: Account, Amount. Optional: Expense ID, Date, Currency, Created By, Description, Tags."}
+        "Select an Excel file (.xlsx) to import expenses. The 'Expenses' sheet must include: Account, Amount. Optional: Expense ID, Currency, Created By, Description, Tags. Note: Date will be set to current time when imported."}
       templateButtonText={t("expenses.downloadTemplate") || "Download Template"}
       importingText={t("expenses.importing") || "Importing..."}
       cancelText={t("common.cancel")}

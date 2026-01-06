@@ -249,6 +249,8 @@ export interface TransferInput {
   transactionFee?: number;
   createdBy?: number;
   tagIds?: number[];
+  currencyCode?: string;
+  createdAt?: string;
 }
 
 export interface Expense {

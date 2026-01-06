@@ -155,6 +155,7 @@ export default function TransfersPage() {
     exportQueryParams: queryParams,
     accounts,
     tags,
+    users,
     addTransfer: createTransfer,
     setAlertModal,
     setIsImporting,

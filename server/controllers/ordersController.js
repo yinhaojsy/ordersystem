@@ -1090,8 +1090,8 @@ export const deleteOrder = (req, res, next) => {
   try {
     const { id } = req.params;
     
-    // Check if order exists and get profit/service charge data
-    const order = db.prepare("SELECT id, profitAmount, profitAccountId, serviceChargeAmount, serviceChargeAccountId FROM orders WHERE id = ?;").get(id);
+    // Check if order exists and get profit/service charge data, and account info
+    const order = db.prepare("SELECT id, profitAmount, profitAccountId, serviceChargeAmount, serviceChargeAccountId, buyAccountId, sellAccountId, amountBuy, amountSell, status FROM orders WHERE id = ?;").get(id);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
@@ -1100,6 +1100,11 @@ export const deleteOrder = (req, res, next) => {
     const receipts = db.prepare("SELECT accountId, amount, imagePath, status FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(id);
     // Get all confirmed payments with accountId and amount for reversing balances (only reverse confirmed ones)
     const payments = db.prepare("SELECT accountId, amount, imagePath, status FROM order_payments WHERE orderId = ? AND status = 'confirmed';").all(id);
+    
+    // For imported/completed orders, also check for direct account transactions
+    // These are created when orders are imported or completed without receipts/payments
+    const isCompleted = order.status === 'completed';
+    const hasDirectTransactions = isCompleted && (order.buyAccountId || order.sellAccountId);
     
     // Get all receipts and payments for file deletion (including drafts)
     const allReceipts = db.prepare("SELECT imagePath FROM order_receipts WHERE orderId = ?;").all(id);
@@ -1150,6 +1155,60 @@ export const deleteOrder = (req, res, next) => {
         );
       }
     });
+    
+    // For imported/completed orders with direct transactions (no receipts/payments)
+    // Reverse transactions created by updateAccountBalancesOnCompletion
+    if (hasDirectTransactions) {
+      // Reverse buy account transaction (receipt was added, so subtract)
+      if (order.buyAccountId && order.amountBuy) {
+        const buyAccountId = order.buyAccountId;
+        const amountBuy = Number(order.amountBuy);
+        
+        // Check if there's already a reversal from receipts (avoid double reversal)
+        const hasReceiptReversal = receipts.some(r => r.accountId === buyAccountId);
+        
+        if (!hasReceiptReversal && !isNaN(amountBuy) && amountBuy > 0) {
+          // Subtract the amount from account balance (reverse the receipt)
+          db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(amountBuy, buyAccountId);
+          
+          // Create reverse transaction in transaction history
+          db.prepare(
+            `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+             VALUES (?, 'withdraw', ?, ?, ?);`
+          ).run(
+            buyAccountId,
+            amountBuy,
+            `Order #${id} - Reversal of receipt from customer (Order deleted)`,
+            new Date().toISOString()
+          );
+        }
+      }
+      
+      // Reverse sell account transaction (payment was subtracted, so add back)
+      if (order.sellAccountId && order.amountSell) {
+        const sellAccountId = order.sellAccountId;
+        const amountSell = Number(order.amountSell);
+        
+        // Check if there's already a reversal from payments (avoid double reversal)
+        const hasPaymentReversal = payments.some(p => p.accountId === sellAccountId);
+        
+        if (!hasPaymentReversal && !isNaN(amountSell) && amountSell > 0) {
+          // Add the amount back to account balance (reverse the payment)
+          db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(amountSell, sellAccountId);
+          
+          // Create reverse transaction in transaction history
+          db.prepare(
+            `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+             VALUES (?, 'add', ?, ?, ?);`
+          ).run(
+            sellAccountId,
+            amountSell,
+            `Order #${id} - Reversal of payment to customer (Order deleted)`,
+            new Date().toISOString()
+          );
+        }
+      }
+    }
     
     // Reverse profit transaction if it exists
     if (order.profitAmount !== null && order.profitAmount !== undefined && order.profitAccountId) {

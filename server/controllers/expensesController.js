@@ -291,26 +291,7 @@ export const createExpense = (req, res, next) => {
     // Perform expense creation in a transaction
     let expenseId;
     const transaction = db.transaction(() => {
-      // Deduct amount from account balance (allow negative)
-      db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(expenseAmount, accountIdNum);
-
-      // Create transaction record for the account
-      const isImported = req.body?.isImported === true || req.body?.isImported === "true";
-      const expenseDescription = description 
-        ? (isImported ? `Expense: ${description} (Imported)` : `Expense: ${description}`)
-        : (isImported ? "Expense (Imported)" : "Expense");
-
-      db.prepare(
-        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-         VALUES (?, 'withdraw', ?, ?, ?);`
-      ).run(
-        accountIdNum,
-        expenseAmount,
-        expenseDescription,
-        finalCreatedAt
-      );
-
-      // Create expense record
+      // Create expense record first to get the expense ID
       const stmt = db.prepare(
         `INSERT INTO expenses (accountId, amount, currencyCode, description, imagePath, createdBy, createdAt)
          VALUES (@accountId, @amount, @currencyCode, @description, @imagePath, @createdBy, @createdAt);`
@@ -326,6 +307,25 @@ export const createExpense = (req, res, next) => {
       });
 
       expenseId = result.lastInsertRowid;
+
+      // Deduct amount from account balance (allow negative)
+      db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(expenseAmount, accountIdNum);
+
+      // Create transaction record for the account with expense ID
+      const isImported = req.body?.isImported === true || req.body?.isImported === "true";
+      const expenseDescription = description 
+        ? (isImported ? `Expense #${expenseId} - ${description} (Imported)` : `Expense #${expenseId} - ${description}`)
+        : (isImported ? `Expense #${expenseId} (Imported)` : `Expense #${expenseId}`);
+
+      db.prepare(
+        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+         VALUES (?, 'withdraw', ?, ?, ?);`
+      ).run(
+        accountIdNum,
+        expenseAmount,
+        expenseDescription,
+        finalCreatedAt
+      );
 
       // If we have a base64 image, convert it to file now that we have the expense ID
       if (imagePath && imagePath.startsWith('data:')) {
@@ -512,8 +512,8 @@ export const updateExpense = (req, res, next) => {
       // Handle account or amount changes - need to reverse old transaction and create new one
       if (accountChanged || amountChanged) {
         const oldDescription = existingExpense.description 
-          ? `Expense: ${existingExpense.description}`
-          : "Expense";
+          ? `Expense #${id} - ${existingExpense.description}`
+          : `Expense #${id}`;
         
         // Reverse old transaction (add back the old amount to old account)
         db.prepare(
@@ -522,13 +522,13 @@ export const updateExpense = (req, res, next) => {
         ).run(
           existingExpense.accountId,
           existingExpense.amount,
-          `Reversal: ${oldDescription}`,
+          `Reversal: ${oldDescription} (Order updated)`,
           new Date().toISOString()
         );
 
         // Create new transaction (deduct new amount from new account)
         const newDescription = description !== undefined 
-          ? (description ? `Expense: ${description}` : "Expense")
+          ? (description ? `Expense #${id} - ${description}` : `Expense #${id}`)
           : oldDescription;
         
         db.prepare(
@@ -556,8 +556,8 @@ export const updateExpense = (req, res, next) => {
       } else if (description !== undefined && description !== existingExpense.description) {
         // Only description changed, update the latest transaction
         const expenseDescription = description 
-          ? `Expense: ${description}`
-          : "Expense";
+          ? `Expense #${id} - ${description}`
+          : `Expense #${id}`;
         
         // Update the most recent transaction for this expense
         const latestTransaction = db
@@ -566,7 +566,7 @@ export const updateExpense = (req, res, next) => {
              WHERE accountId = ? AND description LIKE ? 
              ORDER BY createdAt DESC LIMIT 1;`
           )
-          .get(existingExpense.accountId, `Expense%`);
+          .get(existingExpense.accountId, `Expense #${id}%`);
         
         if (latestTransaction) {
           db.prepare("UPDATE account_transactions SET description = ? WHERE id = ?;")
@@ -749,8 +749,8 @@ export const deleteExpense = (req, res, next) => {
 
       // Create reversal transaction record
       const expenseDescription = expense.description 
-        ? `Expense: ${expense.description}`
-        : "Expense";
+        ? `Expense #${id} - ${expense.description}`
+        : `Expense #${id}`;
       
       // Always use current time for reversal to ensure it appears as the latest transaction
       const reversalCreatedAt = new Date().toISOString();

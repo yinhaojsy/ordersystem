@@ -7,7 +7,6 @@ export interface ImportExpenseData {
   description?: string;
   tagIds: number[];
   currencyCode?: string;
-  createdAt?: string;
   createdBy?: number;
 }
 
@@ -112,69 +111,6 @@ export function validateAndParseExpenseRow(
     return { success: false, errors };
   }
 
-  // Parse date (optional)
-  // Note: Export uses toLocaleDateString() which typically gives dd/mm/yyyy format
-  // So we prioritize DD/MM/YYYY parsing to match the export format
-  let createdAt: string | undefined = undefined;
-  const dateRaw = row["Date"] || row["date"] || row["createdAt"];
-  const dateStr = dateRaw !== undefined && dateRaw !== null ? String(dateRaw).trim() : "";
-  if (dateStr && dateStr !== "-") {
-    try {
-      let dateValue: Date;
-      
-      // Handle Excel date serial numbers (days since 1900-01-01)
-      if (typeof dateRaw === 'number' && dateRaw > 0 && dateRaw < 1000000) {
-        // Excel date serial number
-        const excelEpoch = new Date(1899, 11, 30); // Excel epoch is 1899-12-30
-        dateValue = new Date(excelEpoch.getTime() + dateRaw * 24 * 60 * 60 * 1000);
-      } else if (dateRaw instanceof Date) {
-        dateValue = dateRaw;
-      } else {
-        // Try parsing as string - prioritize DD/MM/YYYY to match export format
-        const parts = dateStr.split(/[\/\-\.]/);
-        if (parts.length === 3) {
-          const part1 = parseInt(parts[0], 10);
-          const part2 = parseInt(parts[1], 10);
-          const part3 = parseInt(parts[2], 10);
-          
-          // Determine format: prioritize DD/MM/YYYY (matches export format)
-          // If part1 > 12, it must be DD/MM/YYYY
-          // If part1 <= 12 and part2 > 12, it must be MM/DD/YYYY
-          // Otherwise, try DD/MM/YYYY first (since export uses that format)
-          if (part1 > 12) {
-            // Definitely DD/MM/YYYY (day > 12)
-            dateValue = new Date(part3, part2 - 1, part1);
-          } else if (part2 > 12) {
-            // Definitely MM/DD/YYYY (month > 12 in second position)
-            dateValue = new Date(part3, part1 - 1, part2);
-          } else {
-            // Ambiguous: could be either format
-            // Prioritize DD/MM/YYYY to match export format (e.g., 07/01/2026 = July 1, 2026)
-            // Try DD/MM/YYYY first
-            dateValue = new Date(part3, part2 - 1, part1);
-            // Validate: if the resulting date is invalid or doesn't make sense, try MM/DD/YYYY
-            if (isNaN(dateValue.getTime()) || dateValue.getFullYear() !== part3) {
-              dateValue = new Date(part3, part1 - 1, part2);
-            }
-          }
-        } else {
-          // Try standard Date parsing as fallback
-          dateValue = new Date(dateStr);
-        }
-      }
-      
-      if (!isNaN(dateValue.getTime())) {
-        createdAt = dateValue.toISOString();
-      } else {
-        errors.push(`Row ${rowNumber}: Invalid date format "${dateStr}"`);
-        return { success: false, errors };
-      }
-    } catch (e) {
-      errors.push(`Row ${rowNumber}: Invalid date format "${dateStr}"`);
-      return { success: false, errors };
-    }
-  }
-
   // Parse created by (optional)
   let createdBy: number | undefined = undefined;
   const createdByNameRaw = String(row["Created By"] || row["createdBy"] || "").trim();
@@ -213,13 +149,13 @@ export function validateAndParseExpenseRow(
   }
 
   // Build expense data
+  // Note: createdAt is not included - backend will use current time automatically
   const expenseData: ImportExpenseData = {
     accountId: account.id,
     amount,
     description,
     tagIds,
     currencyCode: currencyCode || account.currencyCode,
-    createdAt,
     createdBy,
   };
 
