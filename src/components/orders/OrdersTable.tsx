@@ -2,14 +2,16 @@ import React, { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { OrdersTableRow } from "./OrdersTableRow";
 import { OrdersPagination } from "./OrdersPagination";
-import { OrdersColumnDropdown } from "./OrdersColumnDropdown";
-import { useOrdersTable } from "../../hooks/orders/useOrdersTable";
 import { getStatusTone } from "../../utils/orders/orderFormatters";
 import type { Order, Account } from "../../types";
 
 interface OrdersTableProps {
   orders: Order[];
   accounts: Account[];
+  // Column management
+  columnOrder: string[];
+  visibleColumns: Set<string>;
+  getColumnLabel: (key: string) => string;
   // Selection
   showCheckbox: boolean;
   selectedOrderIds: number[];
@@ -42,6 +44,9 @@ interface OrdersTableProps {
 export function OrdersTable({
   orders,
   accounts,
+  columnOrder,
+  visibleColumns,
+  getColumnLabel,
   showCheckbox,
   selectedOrderIds,
   onSelectOrder,
@@ -65,22 +70,6 @@ export function OrdersTable({
   onPageChange,
 }: OrdersTableProps) {
   const { t } = useTranslation();
-  const {
-    availableColumns,
-    columnOrder,
-    visibleColumns,
-    getColumnLabel,
-    isColumnDropdownOpen,
-    setIsColumnDropdownOpen,
-    columnDropdownRef,
-    draggedColumnIndex,
-    dragOverIndex,
-    handleColumnDragStart,
-    handleColumnDragOver,
-    handleColumnDragEnd,
-    handleColumnDragLeave,
-    toggleColumnVisibility,
-  } = useOrdersTable();
 
   const handleMenuRef = useCallback((orderId: number) => (el: HTMLDivElement | null) => {
     menuRefs.current[orderId] = el;
