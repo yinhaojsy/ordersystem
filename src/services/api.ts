@@ -818,8 +818,30 @@ export const api = createApi({
       query: (id) => `accounts/${id}/transactions`,
       providesTags: (_res, _err, id) => [{ type: "Account", id }],
     }),
-    getTransfers: builder.query<Transfer[], void>({
-      query: () => "transfers",
+    getTransfers: builder.query<
+      Transfer[],
+      {
+        dateFrom?: string;
+        dateTo?: string;
+        fromAccountId?: number;
+        toAccountId?: number;
+        currencyCode?: string;
+        createdBy?: number;
+        tagIds?: string;
+      }
+    >({
+      query: (params = {}) => {
+        const queryParams = new URLSearchParams();
+        if (params.dateFrom) queryParams.append("dateFrom", params.dateFrom);
+        if (params.dateTo) queryParams.append("dateTo", params.dateTo);
+        if (params.fromAccountId !== undefined && params.fromAccountId !== null) queryParams.append("fromAccountId", params.fromAccountId.toString());
+        if (params.toAccountId !== undefined && params.toAccountId !== null) queryParams.append("toAccountId", params.toAccountId.toString());
+        if (params.currencyCode) queryParams.append("currencyCode", params.currencyCode);
+        if (params.createdBy !== undefined && params.createdBy !== null) queryParams.append("createdBy", params.createdBy.toString());
+        if (params.tagIds) queryParams.append("tagIds", params.tagIds);
+        const queryString = queryParams.toString();
+        return `transfers${queryString ? `?${queryString}` : ""}`;
+      },
       providesTags: (result) =>
         result
           ? [
@@ -917,8 +939,28 @@ export const api = createApi({
       query: (id) => `transfers/${id}/changes`,
       providesTags: (_res, _err, id) => [{ type: "Transfer", id, variant: "CHANGES" }],
     }),
-    getExpenses: builder.query<Expense[], void>({
-      query: () => "expenses",
+    getExpenses: builder.query<
+      Expense[],
+      {
+        dateFrom?: string;
+        dateTo?: string;
+        accountId?: number;
+        currencyCode?: string;
+        createdBy?: number;
+        tagIds?: string;
+      }
+    >({
+      query: (params = {}) => {
+        const queryParams = new URLSearchParams();
+        if (params.dateFrom) queryParams.append("dateFrom", params.dateFrom);
+        if (params.dateTo) queryParams.append("dateTo", params.dateTo);
+        if (params.accountId !== undefined && params.accountId !== null) queryParams.append("accountId", params.accountId.toString());
+        if (params.currencyCode) queryParams.append("currencyCode", params.currencyCode);
+        if (params.createdBy !== undefined && params.createdBy !== null) queryParams.append("createdBy", params.createdBy.toString());
+        if (params.tagIds) queryParams.append("tagIds", params.tagIds);
+        const queryString = queryParams.toString();
+        return `expenses${queryString ? `?${queryString}` : ""}`;
+      },
       providesTags: (result) =>
         result
           ? [

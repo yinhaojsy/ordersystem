@@ -8,7 +8,62 @@ import {
 } from "../utils/fileStorage.js";
 
 export const listExpenses = (req, res) => {
-  const { tagId } = req.query;
+  const {
+    dateFrom,
+    dateTo,
+    accountId,
+    currencyCode,
+    createdBy,
+    tagId,
+    tagIds,
+  } = req.query;
+  
+  // Build WHERE conditions
+  const conditions = ['e.deletedAt IS NULL'];
+  const params = {};
+  
+  if (dateFrom) {
+    conditions.push('DATE(e.createdAt) >= DATE(@dateFrom)');
+    params.dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    conditions.push('DATE(e.createdAt) <= DATE(@dateTo)');
+    params.dateTo = dateTo;
+  }
+  if (accountId) {
+    conditions.push('e.accountId = @accountId');
+    params.accountId = parseInt(accountId, 10);
+  }
+  if (currencyCode) {
+    conditions.push('e.currencyCode = @currencyCode');
+    params.currencyCode = currencyCode;
+  }
+  if (createdBy) {
+    conditions.push('e.createdBy = @createdBy');
+    params.createdBy = parseInt(createdBy, 10);
+  }
+  
+  // Handle tag filtering (support both single tagId and multiple tagIds)
+  const parsedTagIds = [];
+  if (tagIds) {
+    const parts = String(tagIds).split(',').map((v) => parseInt(v, 10)).filter((v) => !isNaN(v));
+    parsedTagIds.push(...parts);
+  } else if (tagId) {
+    const single = parseInt(tagId, 10);
+    if (!isNaN(single)) parsedTagIds.push(single);
+  }
+  if (parsedTagIds.length > 0) {
+    const placeholders = parsedTagIds.map((_, i) => `@tagId${i}`).join(',');
+    conditions.push(`EXISTS (
+      SELECT 1 FROM expense_tag_assignments eta 
+      WHERE eta.expenseId = e.id AND eta.tagId IN (${placeholders})
+    )`);
+    parsedTagIds.forEach((id, i) => {
+      params[`tagId${i}`] = id;
+    });
+  }
+  
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   
   let query = `SELECT 
         e.*,
@@ -19,18 +74,10 @@ export const listExpenses = (req, res) => {
        LEFT JOIN accounts acc ON acc.id = e.accountId
        LEFT JOIN users creator ON creator.id = e.createdBy
        LEFT JOIN users updater ON updater.id = e.updatedBy
-       WHERE e.deletedAt IS NULL`;
+       ${whereClause}
+       ORDER BY e.createdAt DESC;`;
   
-  if (tagId) {
-    query += ` AND EXISTS (
-      SELECT 1 FROM expense_tag_assignments eta 
-      WHERE eta.expenseId = e.id AND eta.tagId = ${parseInt(tagId, 10)}
-    )`;
-  }
-  
-  query += ` ORDER BY e.createdAt DESC;`;
-  
-  const rows = db.prepare(query).all();
+  const rows = db.prepare(query).all(params);
   
   // Convert file paths to URLs for response (if not base64) and add tags
   const expensesWithUrls = rows.map(expense => {

@@ -1,8 +1,15 @@
-import { useState, type FormEvent, useRef, useEffect, useMemo } from "react";
+import { useState, type FormEvent, useRef, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
+import { ColumnDropdown } from "../components/common/ColumnDropdown";
+import { TagSelectionModal } from "../components/common/TagSelectionModal";
+import { ExpensesFilters } from "../components/expenses/ExpensesFilters";
+import Badge from "../components/common/Badge";
+import { useExpensesTable } from "../hooks/expenses/useExpensesTable";
+import { useExpensesFilters } from "../hooks/expenses/useExpensesFilters";
+import { useBatchDelete } from "../hooks/useBatchDelete";
 import {
   useGetExpensesQuery,
   useCreateExpenseMutation,
@@ -10,6 +17,11 @@ import {
   useDeleteExpenseMutation,
   useGetAccountsQuery,
   useGetExpenseChangesQuery,
+  useGetTagsQuery,
+  useGetUsersQuery,
+  useGetCurrenciesQuery,
+  useBatchAssignTagsMutation,
+  useBatchUnassignTagsMutation,
 } from "../services/api";
 import { useAppSelector } from "../app/hooks";
 import { formatDate, formatDateTime } from "../utils/format";
@@ -27,11 +39,32 @@ const formatCurrency = (amount: number, currencyCode: string) => {
 export default function ExpensesPage() {
   const { t } = useTranslation();
   const authUser = useAppSelector((s) => s.auth.user);
-  const { data: expenses = [], isLoading } = useGetExpensesQuery();
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+
+  // Filter state and handlers
+  const {
+    filters,
+    updateFilter,
+    handleDatePresetChange,
+    handleClearFilters,
+    queryParams,
+    isTagFilterOpen,
+    setIsTagFilterOpen,
+    tagFilterHighlight,
+    setTagFilterHighlight,
+    tagFilterListRef,
+  } = useExpensesFilters();
+
+  const { data: expenses = [], isLoading, refetch: refetchExpenses } = useGetExpensesQuery(queryParams);
   const { data: accounts = [] } = useGetAccountsQuery();
+  const { data: tags = [] } = useGetTagsQuery();
+  const { data: users = [] } = useGetUsersQuery();
+  const { data: currencies = [] } = useGetCurrenciesQuery();
   const [createExpense, { isLoading: isCreating }] = useCreateExpenseMutation();
   const [updateExpense, { isLoading: isUpdating }] = useUpdateExpenseMutation();
   const [deleteExpense, { isLoading: isDeleting }] = useDeleteExpenseMutation();
+  const [batchAssignTags, { isLoading: isTagging }] = useBatchAssignTagsMutation();
+  const [batchUnassignTags, { isLoading: isUntagging }] = useBatchUnassignTagsMutation();
 
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
     isOpen: false,
@@ -39,17 +72,50 @@ export default function ExpensesPage() {
     type: "error",
   });
 
-  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; expenseId: number | null; isBulk?: boolean }>({
-    isOpen: false,
-    message: "",
-    expenseId: null,
-    isBulk: false,
+  // Batch delete hook
+  const {
+    isBatchDeleteMode,
+    selectedIds: selectedExpenseIds,
+    setSelectedIds: setSelectedExpenseIds,
+    setIsBatchDeleteMode,
+    handleDeleteClick,
+    handleDelete,
+    handleBulkDelete,
+    toggleBatchDeleteMode,
+    exitBatchDeleteMode,
+    confirmModal: batchDeleteConfirmModal,
+    setConfirmModal: setBatchDeleteConfirmModal,
+  } = useBatchDelete({
+    deleteSingle: (id: number) => deleteExpense({ id, deletedBy: authUser?.id }),
+    confirmMessage: t("expenses.confirmDelete") || "Are you sure you want to delete this expense?",
+    confirmBulkMessage: t("expenses.confirmDeleteSelected") || "Are you sure you want to delete the selected expenses?",
+    errorMessage: t("expenses.errorDeleting"),
+    t,
+    setAlertModal,
   });
+
+  // Adapter for confirm modal to match existing structure
+  const confirmModal = {
+    isOpen: batchDeleteConfirmModal.isOpen,
+    message: batchDeleteConfirmModal.message,
+    expenseId: batchDeleteConfirmModal.entityId,
+    isBulk: batchDeleteConfirmModal.isBulk,
+  };
+  const setConfirmModal = (modal: { isOpen: boolean; message: string; expenseId: number | null; isBulk?: boolean }) => {
+    setBatchDeleteConfirmModal({
+      isOpen: modal.isOpen,
+      message: modal.message,
+      entityId: modal.expenseId,
+      isBulk: modal.isBulk || false,
+    });
+  };
+
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
-  const [selectedExpenseIds, setSelectedExpenseIds] = useState<number[]>([]);
-  const [isBatchDeleteMode, setIsBatchDeleteMode] = useState(false);
+  const [isBatchTagMode, setIsBatchTagMode] = useState(false);
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [viewImageExpenseId, setViewImageExpenseId] = useState<number | null>(null);
   const [viewAuditTrailExpenseId, setViewAuditTrailExpenseId] = useState<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -58,70 +124,23 @@ export default function ExpensesPage() {
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const [imageDragOver, setImageDragOver] = useState(false);
   
-  // Column visibility state
-  const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
-  const columnDropdownRef = useRef<HTMLDivElement | null>(null);
-  
-  // Define all available column keys (used for initialization)
-  const columnKeys = ["id", "date", "description", "account", "amount", "currency", "proof", "createdBy", "updatedBy", "updatedAt"];
-  
-  // Define all available columns (with translated labels) - this is the master list
-  const getAvailableColumns = () => [
-    { key: "id", label: t("expenses.expenseId") },
-    { key: "date", label: t("expenses.date") },
-    { key: "description", label: t("expenses.description") },
-    { key: "account", label: t("expenses.account") },
-    { key: "amount", label: t("expenses.amount") },
-    { key: "currency", label: t("expenses.currency") },
-    { key: "proof", label: t("expenses.proof") },
-    { key: "createdBy", label: t("expenses.createdBy") },
-    { key: "updatedBy", label: t("expenses.updatedBy") },
-    { key: "updatedAt", label: t("expenses.updatedAt") },
-  ];
-  
-  // Initialize column order from localStorage or default order
-  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
-    const saved = localStorage.getItem("expensesPage_columnOrder");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.every((item): item is string => typeof item === "string")) {
-          const savedSet = new Set(parsed);
-          const defaultSet = new Set(columnKeys);
-          if (savedSet.size === defaultSet.size && [...savedSet].every(key => defaultSet.has(key))) {
-            return parsed;
-          }
-        }
-      } catch {
-        // If parsing fails, use default order
-      }
-    }
-    return [...columnKeys];
-  });
-  
-  // Get ordered columns based on columnOrder
-  const availableColumns = columnOrder.map(key => {
-    const column = getAvailableColumns().find(col => col.key === key);
-    return column || { key, label: key };
-  }).filter(col => col);
-  
-  // Initialize column visibility from localStorage or default to all visible
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem("expensesPage_visibleColumns");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return new Set(parsed);
-      } catch {
-        return new Set(columnKeys);
-      }
-    }
-    return new Set(columnKeys);
-  });
-  
-  // Drag and drop state
-  const [draggedColumnIndex, setDraggedColumnIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // Column management via hook
+  const {
+    availableColumns,
+    columnOrder,
+    visibleColumns,
+    getColumnLabel,
+    toggleColumnVisibility,
+    isColumnDropdownOpen,
+    setIsColumnDropdownOpen,
+    columnDropdownRef,
+    draggedColumnIndex,
+    dragOverIndex,
+    handleColumnDragStart,
+    handleColumnDragOver,
+    handleColumnDragEnd,
+    handleColumnDragLeave,
+  } = useExpensesTable();
 
   const { data: expenseChanges = [], isLoading: isLoadingChanges } = 
     useGetExpenseChangesQuery(viewAuditTrailExpenseId || 0, { skip: !viewAuditTrailExpenseId });
@@ -367,66 +386,6 @@ export default function ExpensesPage() {
     }
   };
 
-  const handleDeleteClick = (expenseId: number) => {
-    setConfirmModal({
-      isOpen: true,
-      message: t("expenses.confirmDelete") || "Are you sure you want to delete this expense?",
-      expenseId: expenseId,
-      isBulk: false,
-    });
-  };
-
-  const handleDelete = async (expenseId: number) => {
-    try {
-      await deleteExpense({
-        id: expenseId,
-        deletedBy: authUser?.id,
-      }).unwrap();
-      setConfirmModal({ isOpen: false, message: "", expenseId: null, isBulk: false });
-    } catch (error: any) {
-      let message = error?.data?.message || t("expenses.errorDeleting");
-      
-      if (error?.data) {
-        if (typeof error.data === 'string') {
-          message = error.data;
-        } else if (error.data.message) {
-          message = error.data.message;
-        }
-      }
-      
-      setConfirmModal({ isOpen: false, message: "", expenseId: null, isBulk: false });
-      setAlertModal({ isOpen: true, message, type: "error" });
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    try {
-      await Promise.all(
-        selectedExpenseIds.map((id) =>
-          deleteExpense({
-            id,
-            deletedBy: authUser?.id,
-          }).unwrap()
-        )
-      );
-      setSelectedExpenseIds([]);
-      setIsBatchDeleteMode(false);
-      setConfirmModal({ isOpen: false, message: "", expenseId: null, isBulk: false });
-    } catch (error: any) {
-      let message = error?.data?.message || t("expenses.errorDeleting");
-      
-      if (error?.data) {
-        if (typeof error.data === 'string') {
-          message = error.data;
-        } else if (error.data.message) {
-          message = error.data.message;
-        }
-      }
-      
-      setConfirmModal({ isOpen: false, message: "", expenseId: null, isBulk: false });
-      setAlertModal({ isOpen: true, message, type: "error" });
-    }
-  };
 
   const selectedAccount = accounts.find((a) => a.id === Number(form.accountId));
   
@@ -531,75 +490,171 @@ export default function ExpensesPage() {
     }
   }, [viewAuditTrailExpenseId]);
 
-  // Save column visibility to localStorage
-  useEffect(() => {
-    localStorage.setItem("expensesPage_visibleColumns", JSON.stringify(Array.from(visibleColumns)));
-  }, [visibleColumns]);
-
-  // Save column order to localStorage
-  useEffect(() => {
-    localStorage.setItem("expensesPage_columnOrder", JSON.stringify(columnOrder));
-  }, [columnOrder]);
-
-  // Handle click outside column dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (isColumnDropdownOpen && columnDropdownRef.current && !columnDropdownRef.current.contains(event.target as Node)) {
-        setIsColumnDropdownOpen(false);
-      }
-    };
-
-    if (isColumnDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
+  // Tag selection handlers
+  const handleTagSelectionChange = useCallback((tagId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedTagIds((prev) => [...prev, tagId]);
+    } else {
+      setSelectedTagIds((prev) => prev.filter((id) => id !== tagId));
     }
-  }, [isColumnDropdownOpen]);
+  }, []);
 
-  // Drag and drop handlers for column reordering
-  const handleColumnDragStart = (index: number) => {
-    setDraggedColumnIndex(index);
-  };
-
-  const handleColumnDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    setDragOverIndex(index);
-  };
-
-  const handleColumnDragEnd = () => {
-    if (draggedColumnIndex !== null && dragOverIndex !== null && draggedColumnIndex !== dragOverIndex) {
-      const newOrder = [...columnOrder];
-      const [removed] = newOrder.splice(draggedColumnIndex, 1);
-      newOrder.splice(dragOverIndex, 0, removed);
-      setColumnOrder(newOrder);
+  const handleApplyTags = useCallback(async () => {
+    if (selectedTagIds.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        message: t("expenses.selectAtLeastOneTag") || "Please select at least one tag",
+        type: "error",
+      });
+      return;
     }
-    setDraggedColumnIndex(null);
-    setDragOverIndex(null);
-  };
+    try {
+      await batchAssignTags({
+        entityType: "expense",
+        entityIds: selectedExpenseIds,
+        tagIds: selectedTagIds,
+      }).unwrap();
+      
+      setIsTagModalOpen(false);
+      setSelectedTagIds([]);
+      setSelectedExpenseIds([]);
+      setIsBatchTagMode(false);
+      
+      setAlertModal({
+        isOpen: true,
+        message: t("expenses.tagsApplied") || "Tags applied successfully",
+        type: "success",
+      });
+      
+      setTimeout(async () => {
+        try {
+          await refetchExpenses();
+        } catch (err) {
+          console.error("Error refetching expenses:", err);
+        }
+      }, 100);
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: error?.data?.message || t("expenses.tagError") || "Failed to apply tags",
+        type: "error",
+      });
+    }
+  }, [selectedTagIds, selectedExpenseIds, batchAssignTags, t, refetchExpenses]);
 
-  const handleColumnDragLeave = () => {
-    setDragOverIndex(null);
-  };
+  const handleRemoveTags = useCallback(async () => {
+    if (selectedTagIds.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        message: t("expenses.selectAtLeastOneTag") || "Please select at least one tag",
+        type: "error",
+      });
+      return;
+    }
+    try {
+      await batchUnassignTags({
+        entityType: "expense",
+        entityIds: selectedExpenseIds,
+        tagIds: selectedTagIds,
+      }).unwrap();
 
-  // Helper function to get column label
-  const getColumnLabel = (key: string): string => {
-    const column = getAvailableColumns().find(col => col.key === key);
-    return column?.label || key;
-  };
+      setIsTagModalOpen(false);
+      setSelectedTagIds([]);
+      setSelectedExpenseIds([]);
+      setIsBatchTagMode(false);
 
-  // Toggle column visibility
-  const toggleColumnVisibility = (columnKey: string) => {
-    setVisibleColumns((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(columnKey)) {
-        newSet.delete(columnKey);
-      } else {
-        newSet.add(columnKey);
+      setAlertModal({
+        isOpen: true,
+        message: t("expenses.tagsRemovedSuccess") || "Tags removed successfully",
+        type: "success",
+      });
+
+      setTimeout(async () => {
+        try {
+          await refetchExpenses();
+        } catch (err) {
+          console.error("Error refetching expenses:", err);
+        }
+      }, 100);
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message:
+          error?.data?.message ||
+          error?.message ||
+          t("expenses.failedToRemoveTags") ||
+          "Failed to remove tags",
+        type: "error",
+      });
+    }
+  }, [selectedTagIds, selectedExpenseIds, batchUnassignTags, t, refetchExpenses]);
+
+  const handleCloseTagModal = useCallback(() => {
+    setIsTagModalOpen(false);
+    setSelectedTagIds([]);
+  }, []);
+
+  // Tag filter helpers
+  const selectedTagNames = useMemo(
+    () =>
+      filters.tagIds
+        .map((id) => tags.find((t) => t.id === id)?.name)
+        .filter((name): name is string => Boolean(name)),
+    [filters.tagIds, tags],
+  );
+
+  const tagFilterLabel = useMemo(() => {
+    if (filters.tagIds.length === 0) {
+      return t("expenses.allTags") || "All Tags";
+    }
+    if (filters.tagIds.length === 1) {
+      return selectedTagNames[0] || "";
+    }
+    return `${filters.tagIds.length} ${t("expenses.tagsSelected") || "tags selected"}`;
+  }, [filters.tagIds.length, selectedTagNames, t]);
+
+  const handleTagFilterKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!isTagFilterOpen) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setIsTagFilterOpen(true);
+        return;
       }
-      return newSet;
-    });
-  };
+    }
+
+    if (e.key === "Escape") {
+      setIsTagFilterOpen(false);
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setTagFilterHighlight((prev) => {
+        if (prev < tags.length - 1) return prev + 1;
+        return prev;
+      });
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setTagFilterHighlight((prev) => {
+        if (prev > 0) return prev - 1;
+        return prev;
+      });
+      return;
+    }
+
+    if (e.key === "Enter" && isTagFilterOpen) {
+      e.preventDefault();
+      if (tagFilterHighlight >= 0 && tagFilterHighlight < tags.length) {
+        const tag = tags[tagFilterHighlight];
+        const exists = filters.tagIds.includes(tag.id);
+        const next = exists ? filters.tagIds.filter((id) => id !== tag.id) : [...filters.tagIds, tag.id];
+        updateFilter('tagIds', next);
+      }
+    }
+  }, [isTagFilterOpen, tags, tagFilterHighlight, filters.tagIds, updateFilter, setIsTagFilterOpen, setTagFilterHighlight]);
 
   // Helper function to render cell content for a column
   const renderCellContent = (columnKey: string, expense: typeof expenses[0]) => {
@@ -657,6 +712,22 @@ export default function ExpensesPage() {
             ) : (
               "-"
             )}
+          </td>
+        );
+      case "tags":
+        return (
+          <td key={columnKey} className="py-2">
+            <div className="flex flex-wrap gap-1">
+              {expense.tags && Array.isArray(expense.tags) && expense.tags.length > 0 ? (
+                expense.tags.map((tag: { id: number; name: string; color: string }) => (
+                  <Badge key={tag.id} tone="slate" backgroundColor={tag.color}>
+                    {tag.name}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-slate-400 text-xs">-</span>
+              )}
+            </div>
           </td>
         );
       case "createdBy":
@@ -726,138 +797,105 @@ export default function ExpensesPage() {
             >
               {t("expenses.createExpense")}
             </button>
+            <button
+              onClick={async () => {
+                if (!isBatchTagMode) {
+                  // Enable batch tag mode
+                  setIsBatchTagMode(true);
+                  setIsBatchDeleteMode(false); // Exit batch delete mode if active
+                  setSelectedExpenseIds([]);
+                } else {
+                  // If no expenses selected, exit batch tag mode
+                  if (!selectedExpenseIds.length) {
+                    setIsBatchTagMode(false);
+                    setSelectedExpenseIds([]);
+                    return;
+                  }
+                  // Open tag selection modal
+                  setIsTagModalOpen(true);
+                }
+              }}
+              disabled={isTagging || isUntagging}
+              className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+            >
+              {isTagging || isUntagging
+                ? t("expenses.tagging") || "Tagging..."
+                : isBatchTagMode
+                  ? (selectedExpenseIds.length > 0 ? t("expenses.addTags") || "Add Tags" : t("common.cancel"))
+                  : t("expenses.addTag") || "Add Tag"}
+            </button>
             {hasActionPermission(authUser, "deleteExpense") && (
               <button
                 onClick={async () => {
                   if (!isBatchDeleteMode) {
                     // Enable batch delete mode
                     setIsBatchDeleteMode(true);
+                    setIsBatchTagMode(false); // Exit batch tag mode if active
+                    setSelectedExpenseIds([]);
                   } else {
-                    // If no expenses selected, exit batch delete mode
-                    if (!selectedExpenseIds.length) {
-                      setIsBatchDeleteMode(false);
-                      setSelectedExpenseIds([]);
-                      return;
-                    }
-                    // Delete selected expenses
-                    setConfirmModal({
-                      isOpen: true,
-                      message: t("expenses.confirmDeleteSelected") || "Are you sure you want to delete the selected expenses?",
-                      expenseId: -1,
-                      isBulk: true,
-                    });
+                    // Toggle will handle the confirmation modal
+                    toggleBatchDeleteMode();
                   }
                 }}
                 disabled={isDeleting}
                 className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
               >
-              {isDeleting
-                ? t("common.deleting")
-                : isBatchDeleteMode
-                ? (selectedExpenseIds.length > 0 ? t("expenses.deleteSelected") : t("common.cancel"))
-                : t("expenses.batchDelete")}
+                {isDeleting
+                  ? t("common.deleting")
+                  : isBatchDeleteMode
+                  ? (selectedExpenseIds.length > 0 ? t("expenses.deleteSelected") : t("common.cancel"))
+                  : t("expenses.batchDelete")}
               </button>
             )}
-            <div className="relative" ref={columnDropdownRef}>
-              <button
-                onClick={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
-                aria-label={t("expenses.columns") || "Columns"}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                </svg>
-                {t("expenses.columns") || "Columns"}
-                <svg
-                  className={`w-4 h-4 transition-transform ${isColumnDropdownOpen ? "rotate-180" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-              {isColumnDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-slate-200 z-50 py-2">
-                  <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200">
-                    {t("expenses.showColumns") || "Show Columns"}
-                  </div>
-                  {availableColumns.map((column, index) => (
-                    <div
-                      key={column.key}
-                      onDragOver={(e) => handleColumnDragOver(e, index)}
-                      onDragLeave={handleColumnDragLeave}
-                      className={`flex items-center gap-2 px-4 py-2 hover:bg-slate-50 ${
-                        dragOverIndex === index ? 'bg-blue-50 border-t-2 border-blue-500' : ''
-                      } ${draggedColumnIndex === index ? 'opacity-50' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleColumns.has(column.key)}
-                        onChange={() => toggleColumnVisibility(column.key)}
-                        onClick={(e) => e.stopPropagation()}
-                        onDragStart={(e) => e.preventDefault()}
-                        className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 flex-shrink-0"
-                      />
-                      <span 
-                        className="text-sm text-slate-700 flex-1"
-                        onDragStart={(e) => e.preventDefault()}
-                      >
-                        {column.label}
-                      </span>
-                      <div
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = 'move';
-                          e.dataTransfer.setData('text/plain', index.toString());
-                          handleColumnDragStart(index);
-                        }}
-                        onDragEnd={handleColumnDragEnd}
-                        className="cursor-move flex-shrink-0 text-slate-400 hover:text-slate-600 select-none"
-                        style={{ userSelect: 'none' }}
-                      >
-                        <svg
-                          className="w-4 h-4 pointer-events-none"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 8h16M4 16h16"
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ColumnDropdown
+              isOpen={isColumnDropdownOpen}
+              onToggle={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
+              availableColumns={availableColumns}
+              visibleColumns={visibleColumns}
+              onToggleColumn={toggleColumnVisibility}
+              draggedColumnIndex={draggedColumnIndex}
+              dragOverIndex={dragOverIndex}
+              onDragStart={handleColumnDragStart}
+              onDragOver={handleColumnDragOver}
+              onDragEnd={handleColumnDragEnd}
+              onDragLeave={handleColumnDragLeave}
+              dropdownRef={columnDropdownRef}
+              t={t}
+              translationKeys={{
+                columns: "expenses.columns",
+                showColumns: "expenses.showColumns",
+              }}
+            />
           </div>
         }
       >
+        {/* Filter Section */}
+        <ExpensesFilters
+          filters={filters}
+          isExpanded={isFilterExpanded}
+          onToggleExpanded={() => setIsFilterExpanded(!isFilterExpanded)}
+          onDatePresetChange={handleDatePresetChange}
+          onFilterChange={updateFilter}
+          onClearFilters={handleClearFilters}
+          isTagFilterOpen={isTagFilterOpen}
+          setIsTagFilterOpen={setIsTagFilterOpen}
+          tagFilterHighlight={tagFilterHighlight}
+          setTagFilterHighlight={setTagFilterHighlight}
+          tagFilterListRef={tagFilterListRef}
+          onTagFilterKeyDown={handleTagFilterKeyDown}
+          users={users}
+          accounts={accounts}
+          currencies={currencies}
+          tags={tags}
+          selectedTagNames={selectedTagNames}
+          tagFilterLabel={tagFilterLabel}
+        />
+
         <div className="overflow-x-auto min-h-[60vh]">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                {isBatchDeleteMode && (
+                {(isBatchDeleteMode || isBatchTagMode) && (
                   <th className="py-2 w-8">
                     <input
                       type="checkbox"
@@ -879,13 +917,13 @@ export default function ExpensesPage() {
                     <th key={columnKey} className="py-2">{getColumnLabel(columnKey)}</th>
                   )
                 )}
-                {!isBatchDeleteMode && <th className="py-2">{t("expenses.actions")}</th>}
+                {!isBatchDeleteMode && !isBatchTagMode && <th className="py-2">{t("expenses.actions")}</th>}
               </tr>
             </thead>
             <tbody>
               {expenses.map((expense) => (
                 <tr key={expense.id} className="border-b border-slate-100">
-                  {isBatchDeleteMode && (
+                  {(isBatchDeleteMode || isBatchTagMode) && (
                     <td className="py-2">
                       <input
                         type="checkbox"
@@ -893,14 +931,14 @@ export default function ExpensesPage() {
                         checked={selectedExpenseIds.includes(expense.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedExpenseIds((prev) =>
+                            setSelectedExpenseIds((prev: number[]) =>
                               prev.includes(expense.id)
                                 ? prev
                                 : [...prev, expense.id]
                             );
                           } else {
-                            setSelectedExpenseIds((prev) =>
-                              prev.filter((id) => id !== expense.id)
+                            setSelectedExpenseIds((prev: number[]) =>
+                              prev.filter((id: number) => id !== expense.id)
                             );
                           }
                         }}
@@ -910,7 +948,7 @@ export default function ExpensesPage() {
                   {columnOrder.map((columnKey) => 
                     visibleColumns.has(columnKey) ? renderCellContent(columnKey, expense) : null
                   )}
-                  {!isBatchDeleteMode && (
+                  {!isBatchDeleteMode && !isBatchTagMode && (
                     <td className="py-2">
                       <div className="flex gap-2">
                         <button
@@ -945,7 +983,7 @@ export default function ExpensesPage() {
                   <td
                     className="py-4 text-sm text-slate-500"
                     // This line sets the "colSpan" attribute of the <td> element to either 11 or 10 depending on whether batch delete mode is enabled (isBatchDeleteMode). If batch delete mode is active, the cell will span 11 columns; otherwise, it will span 10 columns.
-                    colSpan={isBatchDeleteMode ? 11 : 10}
+                    colSpan={(isBatchDeleteMode || isBatchTagMode) ? 11 : 10}
                   >
                     {t("expenses.noExpenses")}
                   </td>
@@ -1520,7 +1558,7 @@ export default function ExpensesPage() {
         onConfirm={() => {
           if (confirmModal.isBulk) {
             handleBulkDelete();
-          } else if (confirmModal.expenseId && confirmModal.expenseId > 0) {
+          } else if (confirmModal.expenseId !== null && confirmModal.expenseId > 0) {
             handleDelete(confirmModal.expenseId);
           }
         }}
@@ -1528,6 +1566,27 @@ export default function ExpensesPage() {
         confirmText={t("common.delete")}
         cancelText={t("common.cancel")}
         type="warning"
+      />
+
+      <TagSelectionModal
+        isOpen={isTagModalOpen}
+        onClose={handleCloseTagModal}
+        tags={tags}
+        selectedTagIds={selectedTagIds}
+        onTagSelectionChange={handleTagSelectionChange}
+        onApply={handleApplyTags}
+        onRemove={handleRemoveTags}
+        isApplying={isTagging}
+        isRemoving={isUntagging}
+        title={t("expenses.selectTags") || "Select Tags"}
+        noTagsMessage={t("expenses.noTagsAvailable") || "No tags available. Create tags in the Tags page."}
+        selectAtLeastOneMessage={t("expenses.selectAtLeastOneTag") || "Please select at least one tag"}
+        applyButtonText={t("expenses.apply") || "Apply"}
+        removeButtonText={t("expenses.remove") || "Remove"}
+        cancelButtonText={t("common.cancel")}
+        applyingText={t("expenses.applying") || "Applying..."}
+        savingText={t("common.saving")}
+        t={t}
       />
     </div>
   );

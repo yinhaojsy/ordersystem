@@ -1,8 +1,15 @@
-import { useState, type FormEvent, useRef, useEffect, useMemo } from "react";
+import { useState, type FormEvent, useRef, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
+import { ColumnDropdown } from "../components/common/ColumnDropdown";
+import { TagSelectionModal } from "../components/common/TagSelectionModal";
+import { TransfersFilters } from "../components/transfers/TransfersFilters";
+import Badge from "../components/common/Badge";
+import { useTransfersTable } from "../hooks/transfers/useTransfersTable";
+import { useTransfersFilters } from "../hooks/transfers/useTransfersFilters";
+import { useBatchDelete } from "../hooks/useBatchDelete";
 import {
   useGetTransfersQuery,
   useCreateTransferMutation,
@@ -10,6 +17,11 @@ import {
   useDeleteTransferMutation,
   useGetAccountsQuery,
   useGetTransferChangesQuery,
+  useGetTagsQuery,
+  useGetUsersQuery,
+  useGetCurrenciesQuery,
+  useBatchAssignTagsMutation,
+  useBatchUnassignTagsMutation,
 } from "../services/api";
 import { useAppSelector } from "../app/hooks";
 import { formatDate, formatDateTime } from "../utils/format";
@@ -27,11 +39,32 @@ const formatCurrency = (amount: number, currencyCode: string) => {
 export default function TransfersPage() {
   const { t } = useTranslation();
   const authUser = useAppSelector((s) => s.auth.user);
-  const { data: transfers = [], isLoading } = useGetTransfersQuery();
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+
+  // Filter state and handlers
+  const {
+    filters,
+    updateFilter,
+    handleDatePresetChange,
+    handleClearFilters,
+    queryParams,
+    isTagFilterOpen,
+    setIsTagFilterOpen,
+    tagFilterHighlight,
+    setTagFilterHighlight,
+    tagFilterListRef,
+  } = useTransfersFilters();
+
+  const { data: transfers = [], isLoading, refetch: refetchTransfers } = useGetTransfersQuery(queryParams);
   const { data: accounts = [] } = useGetAccountsQuery();
+  const { data: tags = [] } = useGetTagsQuery();
+  const { data: users = [] } = useGetUsersQuery();
+  const { data: currencies = [] } = useGetCurrenciesQuery();
   const [createTransfer, { isLoading: isCreating }] = useCreateTransferMutation();
   const [updateTransfer, { isLoading: isUpdating }] = useUpdateTransferMutation();
   const [deleteTransfer, { isLoading: isDeleting }] = useDeleteTransferMutation();
+  const [batchAssignTags, { isLoading: isTagging }] = useBatchAssignTagsMutation();
+  const [batchUnassignTags, { isLoading: isUntagging }] = useBatchUnassignTagsMutation();
 
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
     isOpen: false,
@@ -39,82 +72,69 @@ export default function TransfersPage() {
     type: "error",
   });
 
-  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; transferId: number | null; isBulk?: boolean }>({
-    isOpen: false,
-    message: "",
-    transferId: null,
-    isBulk: false,
+  // Batch delete hook
+  const {
+    isBatchDeleteMode,
+    selectedIds: selectedTransferIds,
+    setSelectedIds: setSelectedTransferIds,
+    setIsBatchDeleteMode,
+    handleDeleteClick,
+    handleDelete,
+    handleBulkDelete,
+    toggleBatchDeleteMode,
+    exitBatchDeleteMode,
+    confirmModal: batchDeleteConfirmModal,
+    setConfirmModal: setBatchDeleteConfirmModal,
+  } = useBatchDelete({
+    deleteSingle: (id: number) => deleteTransfer(id),
+    confirmMessage: t("transfers.confirmDelete") || "Are you sure you want to delete this transfer?",
+    confirmBulkMessage: t("transfers.confirmDeleteSelected") || "Are you sure you want to delete the selected transfers?",
+    errorMessage: t("transfers.errorDeleting"),
+    t,
+    setAlertModal,
   });
+
+  // Adapter for confirm modal to match existing structure
+  const confirmModal = {
+    isOpen: batchDeleteConfirmModal.isOpen,
+    message: batchDeleteConfirmModal.message,
+    transferId: batchDeleteConfirmModal.entityId,
+    isBulk: batchDeleteConfirmModal.isBulk,
+  };
+  const setConfirmModal = (modal: { isOpen: boolean; message: string; transferId: number | null; isBulk?: boolean }) => {
+    setBatchDeleteConfirmModal({
+      isOpen: modal.isOpen,
+      message: modal.message,
+      entityId: modal.transferId,
+      isBulk: modal.isBulk || false,
+    });
+  };
+
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTransferId, setEditingTransferId] = useState<number | null>(null);
-  const [selectedTransferIds, setSelectedTransferIds] = useState<number[]>([]);
-  const [isBatchDeleteMode, setIsBatchDeleteMode] = useState(false);
+  const [isBatchTagMode, setIsBatchTagMode] = useState(false);
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [viewAuditTrailTransferId, setViewAuditTrailTransferId] = useState<number | null>(null);
   
-  // Column visibility state
-  const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
-  const columnDropdownRef = useRef<HTMLDivElement | null>(null);
-  
-  // Define all available column keys (used for initialization)
-  const columnKeys = ["id", "date", "description", "fromAccount", "toAccount", "amount", "transactionFee", "currency", "createdBy"];
-  
-  // Define all available columns (with translated labels) - this is the master list
-  const getAvailableColumns = () => [
-    { key: "id", label: t("transfers.transferId") },
-    { key: "date", label: t("transfers.date") },
-    { key: "description", label: t("transfers.description") },
-    { key: "fromAccount", label: t("transfers.fromAccount") },
-    { key: "toAccount", label: t("transfers.toAccount") },
-    { key: "amount", label: t("transfers.amount") },
-    { key: "transactionFee", label: t("transfers.transactionFee") },
-    { key: "currency", label: t("transfers.currency") },
-    { key: "createdBy", label: t("transfers.createdBy") },
-  ];
-  
-  // Initialize column order from localStorage or default order
-  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
-    const saved = localStorage.getItem("transfersPage_columnOrder");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.every((item): item is string => typeof item === "string")) {
-          const savedSet = new Set(parsed);
-          const defaultSet = new Set(columnKeys);
-          if (savedSet.size === defaultSet.size && [...savedSet].every(key => defaultSet.has(key))) {
-            return parsed;
-          }
-        }
-      } catch {
-        // If parsing fails, use default order
-      }
-    }
-    return [...columnKeys];
-  });
-  
-  // Get ordered columns based on columnOrder
-  const availableColumns = columnOrder.map(key => {
-    const column = getAvailableColumns().find(col => col.key === key);
-    return column || { key, label: key };
-  }).filter(col => col);
-  
-  // Initialize column visibility from localStorage or default to all visible
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem("transfersPage_visibleColumns");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return new Set(parsed);
-      } catch {
-        return new Set(columnKeys);
-      }
-    }
-    return new Set(columnKeys);
-  });
-  
-  // Drag and drop state
-  const [draggedColumnIndex, setDraggedColumnIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // Column management via hook
+  const {
+    availableColumns,
+    columnOrder,
+    visibleColumns,
+    getColumnLabel,
+    toggleColumnVisibility,
+    isColumnDropdownOpen,
+    setIsColumnDropdownOpen,
+    columnDropdownRef,
+    draggedColumnIndex,
+    dragOverIndex,
+    handleColumnDragStart,
+    handleColumnDragOver,
+    handleColumnDragEnd,
+    handleColumnDragLeave,
+  } = useTransfersTable();
   
   // Searchable dropdown states
   const [fromAccountSearchQuery, setFromAccountSearchQuery] = useState("");
@@ -223,64 +243,6 @@ export default function TransfersPage() {
     }
   };
 
-  const handleDeleteClick = (transferId: number) => {
-    setConfirmModal({
-      isOpen: true,
-      message: t("transfers.confirmDelete") || "Are you sure you want to delete this transfer?",
-      transferId: transferId,
-    });
-  };
-
-  const handleDelete = async (transferId: number) => {
-    try {
-      await deleteTransfer(transferId).unwrap();
-      setConfirmModal({ isOpen: false, message: "", transferId: null, isBulk: false });
-    } catch (error: any) {
-      let message = error?.data?.message || t("transfers.errorDeleting");
-      
-      if (error?.data) {
-        if (typeof error.data === 'string') {
-          message = error.data;
-        } else if (error.data.message) {
-          message = error.data.message;
-        }
-      }
-      
-      setConfirmModal({ isOpen: false, message: "", transferId: null, isBulk: false });
-      setAlertModal({ isOpen: true, message, type: "error" });
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    try {
-      setConfirmModal({ isOpen: false, message: "", transferId: null, isBulk: false });
-      
-      // Delete all selected transfers
-      const deletePromises = selectedTransferIds.map((id) => deleteTransfer(id).unwrap());
-      await Promise.all(deletePromises);
-      
-      // Clear selection and exit batch delete mode
-      setSelectedTransferIds([]);
-      setIsBatchDeleteMode(false);
-    } catch (error: any) {
-      let message = error?.data?.message || t("transfers.errorDeleting");
-      
-      if (error?.data) {
-        if (typeof error.data === 'string') {
-          message = error.data;
-        } else if (error.data.message) {
-          message = error.data.message;
-        }
-      }
-      
-      setConfirmModal({ isOpen: false, message: "", transferId: null, isBulk: false });
-      setAlertModal({ isOpen: true, message, type: "error" });
-      
-      // Clear selection and exit batch delete mode even on error
-      setSelectedTransferIds([]);
-      setIsBatchDeleteMode(false);
-    }
-  };
 
   // Get selected accounts for validation
   const fromAccount = accounts.find((a) => a.id === Number(form.fromAccountId));
@@ -369,75 +331,171 @@ export default function TransfersPage() {
     }
   }, [viewAuditTrailTransferId]);
 
-  // Save column visibility to localStorage
-  useEffect(() => {
-    localStorage.setItem("transfersPage_visibleColumns", JSON.stringify(Array.from(visibleColumns)));
-  }, [visibleColumns]);
-
-  // Save column order to localStorage
-  useEffect(() => {
-    localStorage.setItem("transfersPage_columnOrder", JSON.stringify(columnOrder));
-  }, [columnOrder]);
-
-  // Handle click outside column dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (isColumnDropdownOpen && columnDropdownRef.current && !columnDropdownRef.current.contains(event.target as Node)) {
-        setIsColumnDropdownOpen(false);
-      }
-    };
-
-    if (isColumnDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
+  // Tag selection handlers
+  const handleTagSelectionChange = useCallback((tagId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedTagIds((prev) => [...prev, tagId]);
+    } else {
+      setSelectedTagIds((prev) => prev.filter((id) => id !== tagId));
     }
-  }, [isColumnDropdownOpen]);
+  }, []);
 
-  // Drag and drop handlers for column reordering
-  const handleColumnDragStart = (index: number) => {
-    setDraggedColumnIndex(index);
-  };
-
-  const handleColumnDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    setDragOverIndex(index);
-  };
-
-  const handleColumnDragEnd = () => {
-    if (draggedColumnIndex !== null && dragOverIndex !== null && draggedColumnIndex !== dragOverIndex) {
-      const newOrder = [...columnOrder];
-      const [removed] = newOrder.splice(draggedColumnIndex, 1);
-      newOrder.splice(dragOverIndex, 0, removed);
-      setColumnOrder(newOrder);
+  const handleApplyTags = useCallback(async () => {
+    if (selectedTagIds.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        message: t("transfers.selectAtLeastOneTag") || "Please select at least one tag",
+        type: "error",
+      });
+      return;
     }
-    setDraggedColumnIndex(null);
-    setDragOverIndex(null);
-  };
+    try {
+      await batchAssignTags({
+        entityType: "transfer",
+        entityIds: selectedTransferIds,
+        tagIds: selectedTagIds,
+      }).unwrap();
+      
+      setIsTagModalOpen(false);
+      setSelectedTagIds([]);
+      setSelectedTransferIds([]);
+      setIsBatchTagMode(false);
+      
+      setAlertModal({
+        isOpen: true,
+        message: t("transfers.tagsApplied") || "Tags applied successfully",
+        type: "success",
+      });
+      
+      setTimeout(async () => {
+        try {
+          await refetchTransfers();
+        } catch (err) {
+          console.error("Error refetching transfers:", err);
+        }
+      }, 100);
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: error?.data?.message || t("transfers.tagError") || "Failed to apply tags",
+        type: "error",
+      });
+    }
+  }, [selectedTagIds, selectedTransferIds, batchAssignTags, t, refetchTransfers]);
 
-  const handleColumnDragLeave = () => {
-    setDragOverIndex(null);
-  };
+  const handleRemoveTags = useCallback(async () => {
+    if (selectedTagIds.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        message: t("transfers.selectAtLeastOneTag") || "Please select at least one tag",
+        type: "error",
+      });
+      return;
+    }
+    try {
+      await batchUnassignTags({
+        entityType: "transfer",
+        entityIds: selectedTransferIds,
+        tagIds: selectedTagIds,
+      }).unwrap();
 
-  // Helper function to get column label
-  const getColumnLabel = (key: string): string => {
-    const column = getAvailableColumns().find(col => col.key === key);
-    return column?.label || key;
-  };
+      setIsTagModalOpen(false);
+      setSelectedTagIds([]);
+      setSelectedTransferIds([]);
+      setIsBatchTagMode(false);
 
-  // Toggle column visibility
-  const toggleColumnVisibility = (columnKey: string) => {
-    setVisibleColumns((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(columnKey)) {
-        newSet.delete(columnKey);
-      } else {
-        newSet.add(columnKey);
+      setAlertModal({
+        isOpen: true,
+        message: t("transfers.tagsRemovedSuccess") || "Tags removed successfully",
+        type: "success",
+      });
+
+      setTimeout(async () => {
+        try {
+          await refetchTransfers();
+        } catch (err) {
+          console.error("Error refetching transfers:", err);
+        }
+      }, 100);
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message:
+          error?.data?.message ||
+          error?.message ||
+          t("transfers.failedToRemoveTags") ||
+          "Failed to remove tags",
+        type: "error",
+      });
+    }
+  }, [selectedTagIds, selectedTransferIds, batchUnassignTags, t, refetchTransfers]);
+
+  const handleCloseTagModal = useCallback(() => {
+    setIsTagModalOpen(false);
+    setSelectedTagIds([]);
+  }, []);
+
+  // Tag filter helpers
+  const selectedTagNames = useMemo(
+    () =>
+      filters.tagIds
+        .map((id) => tags.find((t) => t.id === id)?.name)
+        .filter((name): name is string => Boolean(name)),
+    [filters.tagIds, tags],
+  );
+
+  const tagFilterLabel = useMemo(() => {
+    if (filters.tagIds.length === 0) {
+      return t("transfers.allTags") || "All Tags";
+    }
+    if (filters.tagIds.length === 1) {
+      return selectedTagNames[0] || "";
+    }
+    return `${filters.tagIds.length} ${t("transfers.tagsSelected") || "tags selected"}`;
+  }, [filters.tagIds.length, selectedTagNames, t]);
+
+  const handleTagFilterKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!isTagFilterOpen) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setIsTagFilterOpen(true);
+        return;
       }
-      return newSet;
-    });
-  };
+    }
+
+    if (e.key === "Escape") {
+      setIsTagFilterOpen(false);
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setTagFilterHighlight((prev) => {
+        if (prev < tags.length - 1) return prev + 1;
+        return prev;
+      });
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setTagFilterHighlight((prev) => {
+        if (prev > 0) return prev - 1;
+        return prev;
+      });
+      return;
+    }
+
+    if (e.key === "Enter" && isTagFilterOpen) {
+      e.preventDefault();
+      if (tagFilterHighlight >= 0 && tagFilterHighlight < tags.length) {
+        const tag = tags[tagFilterHighlight];
+        const exists = filters.tagIds.includes(tag.id);
+        const next = exists ? filters.tagIds.filter((id) => id !== tag.id) : [...filters.tagIds, tag.id];
+        updateFilter('tagIds', next);
+      }
+    }
+  }, [isTagFilterOpen, tags, tagFilterHighlight, filters.tagIds, updateFilter, setIsTagFilterOpen, setTagFilterHighlight]);
 
   // Helper function to render cell content for a column
   const renderCellContent = (columnKey: string, transfer: typeof transfers[0]) => {
@@ -494,6 +552,22 @@ export default function TransfersPage() {
         );
       case "currency":
         return <td key={columnKey} className="py-2">{transfer.currencyCode}</td>;
+      case "tags":
+        return (
+          <td key={columnKey} className="py-2">
+            <div className="flex flex-wrap gap-1">
+              {transfer.tags && Array.isArray(transfer.tags) && transfer.tags.length > 0 ? (
+                transfer.tags.map((tag: { id: number; name: string; color: string }) => (
+                  <Badge key={tag.id} tone="slate" backgroundColor={tag.color}>
+                    {tag.name}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-slate-400 text-xs">-</span>
+              )}
+            </div>
+          </td>
+        );
       case "createdBy":
         return (
           <td key={columnKey} className="py-2 text-slate-600">
@@ -519,12 +593,41 @@ export default function TransfersPage() {
             >
               {t("transfers.createTransfer")}
             </button>
+            <button
+              onClick={async () => {
+                if (!isBatchTagMode) {
+                  // Enable batch tag mode
+                  setIsBatchTagMode(true);
+                  setIsBatchDeleteMode(false); // Exit batch delete mode if active
+                  setSelectedTransferIds([]);
+                } else {
+                  // If no transfers selected, exit batch tag mode
+                  if (!selectedTransferIds.length) {
+                    setIsBatchTagMode(false);
+                    setSelectedTransferIds([]);
+                    return;
+                  }
+                  // Open tag selection modal
+                  setIsTagModalOpen(true);
+                }
+              }}
+              disabled={isTagging || isUntagging}
+              className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+            >
+              {isTagging || isUntagging
+                ? t("transfers.tagging") || "Tagging..."
+                : isBatchTagMode
+                  ? (selectedTransferIds.length > 0 ? t("transfers.addTags") || "Add Tags" : t("common.cancel"))
+                  : t("transfers.addTag") || "Add Tag"}
+            </button>
             {hasActionPermission(authUser, "deleteTransfer") && (
               <button
                 onClick={async () => {
                   if (!isBatchDeleteMode) {
                     // Enable batch delete mode
                     setIsBatchDeleteMode(true);
+                    setIsBatchTagMode(false); // Exit batch tag mode if active
+                    setSelectedTransferIds([]);
                   } else {
                     // If no transfers selected, exit batch delete mode
                     if (!selectedTransferIds.length) {
@@ -551,106 +654,55 @@ export default function TransfersPage() {
                     : t("transfers.batchDelete")}
               </button>
             )}
-            <div className="relative" ref={columnDropdownRef}>
-              <button
-                onClick={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
-                aria-label={t("transfers.columns") || "Columns"}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                </svg>
-                {t("transfers.columns") || "Columns"}
-                <svg
-                  className={`w-4 h-4 transition-transform ${isColumnDropdownOpen ? "rotate-180" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-              {isColumnDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-slate-200 z-50 py-2">
-                  <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200">
-                    {t("transfers.showColumns") || "Show Columns"}
-                  </div>
-                  {availableColumns.map((column, index) => (
-                    <div
-                      key={column.key}
-                      onDragOver={(e) => handleColumnDragOver(e, index)}
-                      onDragLeave={handleColumnDragLeave}
-                      className={`flex items-center gap-2 px-4 py-2 hover:bg-slate-50 ${
-                        dragOverIndex === index ? 'bg-blue-50 border-t-2 border-blue-500' : ''
-                      } ${draggedColumnIndex === index ? 'opacity-50' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleColumns.has(column.key)}
-                        onChange={() => toggleColumnVisibility(column.key)}
-                        onClick={(e) => e.stopPropagation()}
-                        onDragStart={(e) => e.preventDefault()}
-                        className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 flex-shrink-0"
-                      />
-                      <span 
-                        className="text-sm text-slate-700 flex-1"
-                        onDragStart={(e) => e.preventDefault()}
-                      >
-                        {column.label}
-                      </span>
-                      <div
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.effectAllowed = 'move';
-                          e.dataTransfer.setData('text/plain', index.toString());
-                          handleColumnDragStart(index);
-                        }}
-                        onDragEnd={handleColumnDragEnd}
-                        className="cursor-move flex-shrink-0 text-slate-400 hover:text-slate-600 select-none"
-                        style={{ userSelect: 'none' }}
-                      >
-                        <svg
-                          className="w-4 h-4 pointer-events-none"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 8h16M4 16h16"
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ColumnDropdown
+              isOpen={isColumnDropdownOpen}
+              onToggle={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
+              availableColumns={availableColumns}
+              visibleColumns={visibleColumns}
+              onToggleColumn={toggleColumnVisibility}
+              draggedColumnIndex={draggedColumnIndex}
+              dragOverIndex={dragOverIndex}
+              onDragStart={handleColumnDragStart}
+              onDragOver={handleColumnDragOver}
+              onDragEnd={handleColumnDragEnd}
+              onDragLeave={handleColumnDragLeave}
+              dropdownRef={columnDropdownRef}
+              t={t}
+              translationKeys={{
+                columns: "transfers.columns",
+                showColumns: "transfers.showColumns",
+              }}
+            />
           </div>
         }
       >
+        {/* Filter Section */}
+        <TransfersFilters
+          filters={filters}
+          isExpanded={isFilterExpanded}
+          onToggleExpanded={() => setIsFilterExpanded(!isFilterExpanded)}
+          onDatePresetChange={handleDatePresetChange}
+          onFilterChange={updateFilter}
+          onClearFilters={handleClearFilters}
+          isTagFilterOpen={isTagFilterOpen}
+          setIsTagFilterOpen={setIsTagFilterOpen}
+          tagFilterHighlight={tagFilterHighlight}
+          setTagFilterHighlight={setTagFilterHighlight}
+          tagFilterListRef={tagFilterListRef}
+          onTagFilterKeyDown={handleTagFilterKeyDown}
+          users={users}
+          accounts={accounts}
+          currencies={currencies}
+          tags={tags}
+          selectedTagNames={selectedTagNames}
+          tagFilterLabel={tagFilterLabel}
+        />
+
         <div className="overflow-x-auto min-h-[60vh]">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                {isBatchDeleteMode && (
+                {(isBatchDeleteMode || isBatchTagMode) && (
                   <th className="py-2 w-8">
                     <input
                       type="checkbox"
@@ -672,13 +724,13 @@ export default function TransfersPage() {
                     <th key={columnKey} className="py-2">{getColumnLabel(columnKey)}</th>
                   )
                 )}
-                {!isBatchDeleteMode && <th className="py-2">{t("transfers.actions")}</th>}
+                {!isBatchDeleteMode && !isBatchTagMode && <th className="py-2">{t("transfers.actions")}</th>}
               </tr>
             </thead>
             <tbody>
               {transfers.map((transfer) => (
                 <tr key={transfer.id} className="border-b border-slate-100">
-                  {isBatchDeleteMode && (
+                  {(isBatchDeleteMode || isBatchTagMode) && (
                     <td className="py-2">
                       <input
                         type="checkbox"
@@ -686,14 +738,14 @@ export default function TransfersPage() {
                         checked={selectedTransferIds.includes(transfer.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedTransferIds((prev) =>
+                            setSelectedTransferIds((prev: number[]) =>
                               prev.includes(transfer.id)
                                 ? prev
                                 : [...prev, transfer.id],
                             );
                           } else {
-                            setSelectedTransferIds((prev) =>
-                              prev.filter((id) => id !== transfer.id),
+                            setSelectedTransferIds((prev: number[]) =>
+                              prev.filter((id: number) => id !== transfer.id),
                             );
                           }
                         }}
@@ -703,7 +755,7 @@ export default function TransfersPage() {
                   {columnOrder.map((columnKey) => 
                     visibleColumns.has(columnKey) ? renderCellContent(columnKey, transfer) : null
                   )}
-                  {!isBatchDeleteMode && (
+                  {!isBatchDeleteMode && !isBatchTagMode && (
                     <td className="py-2">
                       <div className="flex gap-2">
                         <button
@@ -733,7 +785,7 @@ export default function TransfersPage() {
               ))}
               {!transfers.length && (
                 <tr>
-                  <td className="py-4 text-sm text-slate-500" colSpan={isBatchDeleteMode ? 9 : 10}>
+                  <td className="py-4 text-sm text-slate-500" colSpan={(isBatchDeleteMode || isBatchTagMode) ? 9 : 10}>
                     {t("transfers.noTransfers")}
                   </td>
                 </tr>
@@ -1174,6 +1226,27 @@ export default function TransfersPage() {
         confirmText={t("common.delete")}
         cancelText={t("common.cancel")}
         type="warning"
+      />
+
+      <TagSelectionModal
+        isOpen={isTagModalOpen}
+        onClose={handleCloseTagModal}
+        tags={tags}
+        selectedTagIds={selectedTagIds}
+        onTagSelectionChange={handleTagSelectionChange}
+        onApply={handleApplyTags}
+        onRemove={handleRemoveTags}
+        isApplying={isTagging}
+        isRemoving={isUntagging}
+        title={t("transfers.selectTags") || "Select Tags"}
+        noTagsMessage={t("transfers.noTagsAvailable") || "No tags available. Create tags in the Tags page."}
+        selectAtLeastOneMessage={t("transfers.selectAtLeastOneTag") || "Please select at least one tag"}
+        applyButtonText={t("transfers.apply") || "Apply"}
+        removeButtonText={t("transfers.remove") || "Remove"}
+        cancelButtonText={t("common.cancel")}
+        applyingText={t("transfers.applying") || "Applying..."}
+        savingText={t("common.saving")}
+        t={t}
       />
     </div>
   );

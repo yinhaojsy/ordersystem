@@ -1,7 +1,67 @@
 import { db } from "../db.js";
 
 export const listTransfers = (req, res) => {
-  const { tagId } = req.query;
+  const {
+    dateFrom,
+    dateTo,
+    fromAccountId,
+    toAccountId,
+    currencyCode,
+    createdBy,
+    tagId,
+    tagIds,
+  } = req.query;
+  
+  // Build WHERE conditions
+  const conditions = [];
+  const params = {};
+  
+  if (dateFrom) {
+    conditions.push('DATE(t.createdAt) >= DATE(@dateFrom)');
+    params.dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    conditions.push('DATE(t.createdAt) <= DATE(@dateTo)');
+    params.dateTo = dateTo;
+  }
+  if (fromAccountId) {
+    conditions.push('t.fromAccountId = @fromAccountId');
+    params.fromAccountId = parseInt(fromAccountId, 10);
+  }
+  if (toAccountId) {
+    conditions.push('t.toAccountId = @toAccountId');
+    params.toAccountId = parseInt(toAccountId, 10);
+  }
+  if (currencyCode) {
+    conditions.push('t.currencyCode = @currencyCode');
+    params.currencyCode = currencyCode;
+  }
+  if (createdBy) {
+    conditions.push('t.createdBy = @createdBy');
+    params.createdBy = parseInt(createdBy, 10);
+  }
+  
+  // Handle tag filtering (support both single tagId and multiple tagIds)
+  const parsedTagIds = [];
+  if (tagIds) {
+    const parts = String(tagIds).split(',').map((v) => parseInt(v, 10)).filter((v) => !isNaN(v));
+    parsedTagIds.push(...parts);
+  } else if (tagId) {
+    const single = parseInt(tagId, 10);
+    if (!isNaN(single)) parsedTagIds.push(single);
+  }
+  if (parsedTagIds.length > 0) {
+    const placeholders = parsedTagIds.map((_, i) => `@tagId${i}`).join(',');
+    conditions.push(`EXISTS (
+      SELECT 1 FROM transfer_tag_assignments tta 
+      WHERE tta.transferId = t.id AND tta.tagId IN (${placeholders})
+    )`);
+    parsedTagIds.forEach((id, i) => {
+      params[`tagId${i}`] = id;
+    });
+  }
+  
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   
   let query = `SELECT 
         t.id,
@@ -23,18 +83,11 @@ export const listTransfers = (req, res) => {
        LEFT JOIN accounts fromAcc ON fromAcc.id = t.fromAccountId
        LEFT JOIN accounts toAcc ON toAcc.id = t.toAccountId
        LEFT JOIN users creator ON creator.id = t.createdBy
-       LEFT JOIN users updater ON updater.id = t.updatedBy`;
+       LEFT JOIN users updater ON updater.id = t.updatedBy
+       ${whereClause}
+       ORDER BY t.createdAt DESC;`;
   
-  if (tagId) {
-    query += ` WHERE EXISTS (
-      SELECT 1 FROM transfer_tag_assignments tta 
-      WHERE tta.transferId = t.id AND tta.tagId = ${parseInt(tagId, 10)}
-    )`;
-  }
-  
-  query += ` ORDER BY t.createdAt DESC;`;
-  
-  const rows = db.prepare(query).all();
+  const rows = db.prepare(query).all(params);
   
   // Add tags to each transfer
   const transfers = rows.map(transfer => {
