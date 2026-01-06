@@ -16,9 +16,14 @@ interface PaymentUploadSectionProps {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>, index: number, type: "receipt" | "payment") => void;
   handleNumberInputWheel: (e: React.WheelEvent<HTMLInputElement>) => void;
   setActiveUploadType: (type: "receipt" | "payment" | null) => void;
+  setShowPaymentUpload?: (show: boolean) => void;
   accounts: Account[];
   orders: Order[];
   viewModalOrderId: number | null;
+  onFormSubmit?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  onCancel?: () => void;
+  showCancelButtons?: boolean;
+  isFlexOrder?: boolean;
   t: (key: string) => string | undefined;
 }
 
@@ -36,9 +41,14 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
   onFileChange,
   handleNumberInputWheel,
   setActiveUploadType,
+  setShowPaymentUpload,
   accounts,
   orders,
   viewModalOrderId,
+  onFormSubmit,
+  onCancel,
+  showCancelButtons = false,
+  isFlexOrder = false,
   t,
 }) => {
   const currentOrder = orders.find((o) => o.id === viewModalOrderId);
@@ -48,7 +58,7 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
       {uploads.map((upload, index) => (
         <div
           key={`${uploadKey}-${index}`}
-          className={`mb-4 p-3 border-2 border-dashed rounded-lg transition-colors relative ${
+          className={`flex flex-col p-3 border-2 border-dashed rounded-lg transition-colors relative ${
             dragOver && index === uploads.length - 1
               ? "border-blue-500 bg-blue-50"
               : "border-slate-200"
@@ -75,6 +85,9 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
                 e.stopPropagation();
                 const newUploads = uploads.filter((_, i) => i !== index);
                 setUploads(newUploads);
+                if (newUploads.length === 0 && setShowPaymentUpload) {
+                  setShowPaymentUpload(false);
+                }
               }}
               className="absolute top-2 right-2 w-6 h-6 rounded-full border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-300 flex items-center justify-center text-sm font-bold z-10"
               title={t("common.delete")}
@@ -98,22 +111,22 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
           />
           <label
             htmlFor={`payment-file-input-${uploadKey}-${index}`}
-            className="block cursor-pointer"
+            className="block cursor-pointer w-full h-72"
           >
             {upload.image ? (
-              <div className="relative">
+              <div className="relative w-full h-full">
                 {upload.image.startsWith('data:image/') ? (
                   <img
                     src={upload.image}
                     alt="Payment preview"
-                    className="max-w-full max-h-48 w-auto h-auto mb-2 object-contain rounded"
+                    className="w-full h-full object-cover rounded"
                   />
                 ) : upload.image.startsWith('data:application/pdf') ? (
-                  <div className="flex items-center justify-center gap-2 p-4 bg-slate-50 border-2 border-slate-200 rounded-lg mb-2">
-                    <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 border-2 border-slate-200 rounded">
+                    <svg className="w-8 h-8 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                     </svg>
-                    <span className="text-sm text-slate-700">PDF Document</span>
+                    <span className="text-xs text-slate-600">PDF</span>
                   </div>
                 ) : null}
                 <button
@@ -136,11 +149,11 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="text-center py-8 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-400 transition-colors">
-                <svg className="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+              <div className="w-full h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-400 transition-colors">
+                <svg className="h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                   <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <p className="mt-2 text-sm text-slate-600">Click or drag to upload payment</p>
+                <p className="mt-2 text-xs text-slate-600">Click or drag to upload</p>
               </div>
             )}
           </label>
@@ -154,14 +167,14 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
               newUploads[index] = { ...newUploads[index], amount: e.target.value };
               setUploads(newUploads);
             }}
-            className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
             required={!!upload.image}
             onWheel={handleNumberInputWheel}
           />
           {(() => {
             return (
               <select
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 mb-2"
+                className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs mt-2"
                 value={upload.accountId}
                 onChange={(e) => {
                   const newUploads = [...uploads];
@@ -190,17 +203,28 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
               </select>
             );
           })()}
-          {index === uploads.length - 1 && (
-            <button
-              type="button"
-              onClick={() => {
-                const newUploads = [...uploads, { image: "", amount: "", accountId: "" }];
-                setUploads(newUploads);
-              }}
-              className="mt-2 text-sm text-blue-600 hover:underline"
-            >
-              {t("orders.addAnotherPayment") || "+ Add another payment"}
-            </button>
+          {index === uploads.length - 1 && onFormSubmit && (
+            <div className={`mt-2 ${showCancelButtons ? "flex gap-2" : ""}`}>
+              <button
+                type="button"
+                onClick={onFormSubmit}
+                className={showCancelButtons
+                  ? "px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                  : "w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
+                }
+              >
+                {t("orders.uploadPayments")}
+              </button>
+              {showCancelButtons && onCancel && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  {t("common.cancel")}
+                </button>
+              )}
+            </div>
           )}
         </div>
       ))}

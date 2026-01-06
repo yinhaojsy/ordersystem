@@ -21,14 +21,7 @@ export const PaymentDisplay: React.FC<PaymentDisplayProps> = ({
   t,
 }) => {
   return (
-    <div
-      key={payment.id}
-      className={`mb-4 p-3 border rounded-lg ${
-        payment.status === 'draft' 
-          ? 'border-yellow-300 bg-yellow-50' 
-          : 'border-slate-200'
-      }`}
-    >
+    <div className="flex flex-col">
       <div className="flex items-center justify-between mb-2">
         {payment.status === 'draft' && (
           <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
@@ -78,16 +71,16 @@ export const PaymentDisplay: React.FC<PaymentDisplayProps> = ({
         <img
           src={payment.imagePath}
           alt="Payment"
-          className="max-w-full max-h-96 w-auto h-auto mb-2 object-contain rounded cursor-pointer hover:opacity-90 transition-opacity"
+          className="w-48 h-72 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity mb-2"
           onClick={() => onViewImage(payment.imagePath, 'image', t("orders.paymentUploads") || "Payment Uploads")}
         />
       ) : getFileType(payment.imagePath) === 'pdf' ? (
         <div
-          className="flex items-center justify-center gap-2 p-8 bg-slate-50 border-2 border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors mb-2"
+          className="w-48 h-72 flex flex-col items-center justify-center bg-slate-50 border-2 border-slate-200 rounded cursor-pointer hover:bg-slate-100 transition-colors mb-2"
           onClick={() => onViewPdf(payment.imagePath)}
         >
           <svg
-            className="w-12 h-12 text-red-500"
+            className="w-8 h-8 text-red-500 mb-1"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -99,17 +92,14 @@ export const PaymentDisplay: React.FC<PaymentDisplayProps> = ({
               d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
             />
           </svg>
-          <div>
-            <p className="text-sm font-medium text-slate-700">PDF Document</p>
-            <p className="text-xs text-slate-500">Click to view</p>
-          </div>
+          <p className="text-xs text-slate-600">PDF</p>
         </div>
       ) : null}
-      <p className="text-sm text-slate-600">
+      <p className="text-xs text-slate-700 font-medium">
         {t("orders.amount")}: {payment.amount}
       </p>
       {payment.accountName && (
-        <p className="text-sm text-slate-500">
+        <p className="text-xs text-slate-500">
           {t("orders.account")}: {payment.accountName}
         </p>
       )}

@@ -159,84 +159,68 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
           {t("orders.balance")}: {receiptBalance.toFixed(2)}
         </div>
 
-        {receipts.map((receipt) => (
-          <ReceiptDisplay
-            key={receipt.id}
-            receipt={receipt}
-            onConfirm={async (receiptId) => {
-              await confirmReceipt(receiptId).unwrap();
-            }}
-            onDelete={async (receiptId) => {
-              await deleteReceipt(receiptId).unwrap();
-            }}
-            getFileType={getFileType}
-            onViewImage={(src, type, title) => setViewerModal({ isOpen: true, src, type, title })}
-            onViewPdf={openPdfInNewTab}
-            t={t}
-          />
-        ))}
+        <div className={`grid ${isFlexOrder ? "grid-cols-3" : "grid-cols-4"} gap-4`}>
+          {receipts.map((receipt) => (
+            <ReceiptDisplay
+              key={receipt.id}
+              receipt={receipt}
+              onConfirm={async (receiptId) => {
+                await confirmReceipt(receiptId).unwrap();
+              }}
+              onDelete={async (receiptId) => {
+                await deleteReceipt(receiptId).unwrap();
+              }}
+              getFileType={getFileType}
+              onViewImage={(src, type, title) => setViewerModal({ isOpen: true, src, type, title })}
+              onViewPdf={openPdfInNewTab}
+              t={t}
+            />
+          ))}
+          {!isDisabled && showReceiptUpload && (
+            <ReceiptUploadSection
+              uploads={receiptUploads}
+              setUploads={setReceiptUploads}
+              uploadKey={receiptUploadKey}
+              dragOver={receiptDragOver}
+              setDragOver={setReceiptDragOver}
+              fileInputRefs={receiptFileInputRefs}
+              onImageUpload={handleImageUpload}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onFileChange={handleFileChange}
+              handleNumberInputWheel={handleNumberInputWheel}
+              setActiveUploadType={setActiveUploadType}
+              setShowReceiptUpload={setShowReceiptUpload}
+              accounts={accounts}
+              orders={orders}
+              viewModalOrderId={viewModalOrderId}
+              onFormSubmit={async (e) => {
+                e.preventDefault();
+                const formEvent = e as unknown as React.FormEvent;
+                await handleAddReceipt(formEvent);
+              }}
+              onCancel={handleCancelReceipt}
+              showCancelButtons={showCancelButtons}
+              isFlexOrder={isFlexOrder}
+              t={t}
+            />
+          )}
+        </div>
 
-        {!isDisabled && (
-          <>
-            {!showReceiptUpload && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowReceiptUpload(true);
-                  if (receiptUploads.length === 0) {
-                    setReceiptUploads([{ image: "", amount: "", accountId: "" }]);
-                  }
-                }}
-                className="mt-4 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                {t("orders.addReceipt") || "ADD RECEIPT"}
-              </button>
-            )}
-            {showReceiptUpload && (
-              <form onSubmit={handleAddReceipt} className="mt-4">
-                <ReceiptUploadSection
-                  uploads={receiptUploads}
-                  setUploads={setReceiptUploads}
-                  uploadKey={receiptUploadKey}
-                  dragOver={receiptDragOver}
-                  setDragOver={setReceiptDragOver}
-                  fileInputRefs={receiptFileInputRefs}
-                  onImageUpload={handleImageUpload}
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onFileChange={handleFileChange}
-                  handleNumberInputWheel={handleNumberInputWheel}
-                  setActiveUploadType={setActiveUploadType}
-                  setShowReceiptUpload={setShowReceiptUpload}
-                  accounts={accounts}
-                  orders={orders}
-                  viewModalOrderId={viewModalOrderId}
-                  t={t}
-                />
-                <div className={showCancelButtons ? "flex gap-2" : ""}>
-                  <button
-                    type="submit"
-                    className={showCancelButtons 
-                      ? "px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                      : "w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors mt-2"
-                    }
-                  >
-                    {t("orders.uploadReceipts")}
-                  </button>
-                  {showCancelButtons && (
-                    <button
-                      type="button"
-                      onClick={handleCancelReceipt}
-                      className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      {t("common.cancel")}
-                    </button>
-                  )}
-                </div>
-              </form>
-            )}
-          </>
+        {!isDisabled && !showReceiptUpload && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowReceiptUpload(true);
+              if (receiptUploads.length === 0) {
+                setReceiptUploads([{ image: "", amount: "", accountId: "" }]);
+              }
+            }}
+            className="mt-4 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            {t("orders.addReceipt") || "ADD RECEIPT"}
+          </button>
         )}
       </div>
 
@@ -275,87 +259,72 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
           {t("orders.balance")}: {paymentBalance.toFixed(2)}
         </div>
 
-        {payments.map((payment) => (
-          <PaymentDisplay
-            key={payment.id}
-            payment={payment}
-            onConfirm={async (paymentId) => {
-              await confirmPayment(paymentId).unwrap();
-            }}
-            onDelete={async (paymentId) => {
-              await deletePayment(paymentId).unwrap();
-            }}
-            getFileType={getFileType}
-            onViewImage={(src, type, title) => setViewerModal({ isOpen: true, src, type, title })}
-            onViewPdf={openPdfInNewTab}
-            t={t}
-          />
-        ))}
+        <div className={`grid ${isFlexOrder ? "grid-cols-3" : "grid-cols-4"} gap-4`}>
+          {payments.map((payment) => (
+            <PaymentDisplay
+              key={payment.id}
+              payment={payment}
+              onConfirm={async (paymentId) => {
+                await confirmPayment(paymentId).unwrap();
+              }}
+              onDelete={async (paymentId) => {
+                await deletePayment(paymentId).unwrap();
+              }}
+              getFileType={getFileType}
+              onViewImage={(src, type, title) => setViewerModal({ isOpen: true, src, type, title })}
+              onViewPdf={openPdfInNewTab}
+              t={t}
+            />
+          ))}
+          {!isDisabled && showPaymentUpload && (
+            <PaymentUploadSection
+              uploads={paymentUploads}
+              setUploads={setPaymentUploads}
+              uploadKey={paymentUploadKey}
+              dragOver={paymentDragOver}
+              setDragOver={setPaymentDragOver}
+              fileInputRefs={paymentFileInputRefs}
+              onImageUpload={handleImageUpload}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onFileChange={handleFileChange}
+              handleNumberInputWheel={handleNumberInputWheel}
+              setActiveUploadType={setActiveUploadType}
+              setShowPaymentUpload={setShowPaymentUpload}
+              accounts={accounts}
+              orders={orders}
+              viewModalOrderId={viewModalOrderId}
+              onFormSubmit={async (e) => {
+                e.preventDefault();
+                const formEvent = e as unknown as React.FormEvent;
+                await handleAddPayment(formEvent);
+              }}
+              onCancel={handleCancelPayment}
+              showCancelButtons={showCancelButtons}
+              isFlexOrder={isFlexOrder}
+              t={t}
+            />
+          )}
+        </div>
 
-        {!isDisabled && (
-          <>
-            {!showPaymentUpload && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPaymentUpload(true);
-                  if (paymentUploads.length === 0) {
-                    setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
-                  }
-                }}
-                className={`mt-4 px-4 py-2 text-sm font-medium border rounded-lg transition-colors ${
-                  isFlexOrder
-                    ? "text-green-700 bg-green-50 border-green-200 hover:bg-green-100"
-                    : "text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
-                }`}
-              >
-                {t("orders.addPayment") || "ADD PAYMENT"}
-              </button>
-            )}
-            {showPaymentUpload && (
-              <form onSubmit={handleAddPayment} className="mt-4">
-                <PaymentUploadSection
-                  uploads={paymentUploads}
-                  setUploads={setPaymentUploads}
-                  uploadKey={paymentUploadKey}
-                  dragOver={paymentDragOver}
-                  setDragOver={setPaymentDragOver}
-                  fileInputRefs={paymentFileInputRefs}
-                  onImageUpload={handleImageUpload}
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onFileChange={handleFileChange}
-                  handleNumberInputWheel={handleNumberInputWheel}
-                  setActiveUploadType={setActiveUploadType}
-                  accounts={accounts}
-                  orders={orders}
-                  viewModalOrderId={viewModalOrderId}
-                  t={t}
-                />
-                <div className={showCancelButtons ? "flex gap-2" : ""}>
-                  <button
-                    type="submit"
-                    className={showCancelButtons
-                      ? "px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                      : "w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-                    }
-                  >
-                    {t("orders.uploadPayments")}
-                  </button>
-                  {showCancelButtons && (
-                    <button
-                      type="button"
-                      onClick={handleCancelPayment}
-                      className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      {t("common.cancel")}
-                    </button>
-                  )}
-                </div>
-              </form>
-            )}
-          </>
+        {!isDisabled && !showPaymentUpload && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowPaymentUpload(true);
+              if (paymentUploads.length === 0) {
+                setPaymentUploads([{ image: "", amount: "", accountId: "" }]);
+              }
+            }}
+            className={`mt-4 px-4 py-2 text-sm font-medium border rounded-lg transition-colors ${
+              isFlexOrder
+                ? "text-green-700 bg-green-50 border-green-200 hover:bg-green-100"
+                : "text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
+            }`}
+          >
+            {t("orders.addPayment") || "ADD PAYMENT"}
+          </button>
         )}
       </div>
     </div>

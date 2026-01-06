@@ -1261,55 +1261,74 @@ export default function OrdersPage() {
                 <>
                   {/* For flex orders: Show upload section when under_process, summary when not */}
                   {isUnderProcess ? (
-                    <OnlineOrderUploadsSection
-                    orderDetails={orderDetails}
-                    accounts={accounts}
-                    orders={orders}
-                    viewModalOrderId={viewModalOrderId}
-                    receipts={orderDetails.receipts}
-                    totalReceiptAmount={orderDetails.totalReceiptAmount}
-                    receiptBalance={orderDetails.receiptBalance}
-                    showReceiptUpload={showReceiptUpload}
-                    setShowReceiptUpload={setShowReceiptUpload}
-                    receiptUploads={receiptUploads}
-                    setReceiptUploads={setReceiptUploads}
-                    receiptUploadKey={receiptUploadKey}
-                    receiptDragOver={receiptDragOver}
-                    setReceiptDragOver={setReceiptDragOver}
-                    receiptFileInputRefs={receiptFileInputRefs}
-                    handleAddReceipt={handleAddReceipt}
-                    confirmReceipt={confirmReceipt}
-                    deleteReceipt={deleteReceipt}
-                    payments={orderDetails.payments}
-                    totalPaymentAmount={orderDetails.totalPaymentAmount}
-                    paymentBalance={orderDetails.paymentBalance}
-                    excessPaymentWarning={excessPaymentWarning}
-                    showPaymentUpload={showPaymentUpload}
-                    setShowPaymentUpload={setShowPaymentUpload}
-                    paymentUploads={paymentUploads}
-                    setPaymentUploads={setPaymentUploads}
-                    paymentUploadKey={paymentUploadKey}
-                    paymentDragOver={paymentDragOver}
-                    setPaymentDragOver={setPaymentDragOver}
-                    paymentFileInputRefs={paymentFileInputRefs}
-                    handleAddPayment={handleAddPayment}
-                    confirmPayment={confirmPayment}
-                    deletePayment={deletePayment}
-                    handleImageUpload={handleImageUpload}
-                    handleDrop={handleDrop}
-                    handleDragOver={handleDragOver}
-                    handleDragLeave={handleDragLeave}
-                    handleFileChange={handleFileChange}
-                    handleNumberInputWheel={handleNumberInputWheel}
-                    setActiveUploadType={setActiveUploadType}
-                    getFileType={getFileType}
-                    setViewerModal={setViewerModal}
-                    openPdfInNewTab={openPdfInNewTab}
-                    isFlexOrder={true}
-                    showCancelButtons={false}
-                    layout="grid"
-                    t={t}
-                  />
+                    <>
+                      <div className="lg:col-span-2">
+                        <OnlineOrderUploadsSection
+                        orderDetails={orderDetails}
+                        accounts={accounts}
+                        orders={orders}
+                        viewModalOrderId={viewModalOrderId}
+                        receipts={orderDetails.receipts}
+                        totalReceiptAmount={orderDetails.totalReceiptAmount}
+                        receiptBalance={orderDetails.receiptBalance}
+                        showReceiptUpload={showReceiptUpload}
+                        setShowReceiptUpload={setShowReceiptUpload}
+                        receiptUploads={receiptUploads}
+                        setReceiptUploads={setReceiptUploads}
+                        receiptUploadKey={receiptUploadKey}
+                        receiptDragOver={receiptDragOver}
+                        setReceiptDragOver={setReceiptDragOver}
+                        receiptFileInputRefs={receiptFileInputRefs}
+                        handleAddReceipt={handleAddReceipt}
+                        confirmReceipt={confirmReceipt}
+                        deleteReceipt={deleteReceipt}
+                        payments={orderDetails.payments}
+                        totalPaymentAmount={orderDetails.totalPaymentAmount}
+                        paymentBalance={orderDetails.paymentBalance}
+                        excessPaymentWarning={excessPaymentWarning}
+                        showPaymentUpload={showPaymentUpload}
+                        setShowPaymentUpload={setShowPaymentUpload}
+                        paymentUploads={paymentUploads}
+                        setPaymentUploads={setPaymentUploads}
+                        paymentUploadKey={paymentUploadKey}
+                        paymentDragOver={paymentDragOver}
+                        setPaymentDragOver={setPaymentDragOver}
+                        paymentFileInputRefs={paymentFileInputRefs}
+                        handleAddPayment={handleAddPayment}
+                        confirmPayment={confirmPayment}
+                        deletePayment={deletePayment}
+                        handleImageUpload={handleImageUpload}
+                        handleDrop={handleDrop}
+                        handleDragOver={handleDragOver}
+                        handleDragLeave={handleDragLeave}
+                        handleFileChange={handleFileChange}
+                        handleNumberInputWheel={handleNumberInputWheel}
+                        setActiveUploadType={setActiveUploadType}
+                        getFileType={getFileType}
+                        setViewerModal={setViewerModal}
+                        openPdfInNewTab={openPdfInNewTab}
+                        isFlexOrder={true}
+                        showCancelButtons={false}
+                        layout="grid"
+                        t={t}
+                      />
+                      </div>
+                      
+                      {/* Flex Order Rate Panel - Right Side */}
+                      {orderDetails.order.status !== "completed" && 
+                       orderDetails.order.status !== "cancelled" && (
+                        <FlexOrderRatePanel
+                          orderId={viewModalOrderId}
+                          flexOrderRate={flexOrderRate}
+                          setFlexOrderRate={setFlexOrderRate}
+                          orderDetails={orderDetails}
+                          currencies={currencies}
+                          adjustFlexOrderRate={adjustFlexOrderRate}
+                          handleNumberInputWheel={handleNumberInputWheel}
+                          t={t}
+                        />
+                      )}
+                    </>
                   ) : (
                     <>
                       {/* Order Summary for Flex Orders - When not in under_process */}
