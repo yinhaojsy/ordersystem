@@ -625,34 +625,34 @@ export default function ExpensesPage() {
   );
 
   const tagFilterLabel = useMemo(() => {
-    if (filters.tagIds.length === 0) {
-      return t("expenses.allTags");
+    if (selectedTagNames.length === 0) {
+      return t("expenses.selectTag") || t("orders.selectTag") || "Select Tag";
     }
-    if (filters.tagIds.length === 1) {
-      return selectedTagNames[0] || "";
-    }
-    return `${filters.tagIds.length} ${t("expenses.tagsSelected")}`;
-  }, [filters.tagIds.length, selectedTagNames, t]);
+    return selectedTagNames.join(", ");
+  }, [selectedTagNames, t]);
 
   const handleTagFilterKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (!isTagFilterOpen) {
-      if (e.key === "Enter" || e.key === " ") {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === " ") {
         e.preventDefault();
         setIsTagFilterOpen(true);
-        return;
       }
+      return;
     }
 
     if (e.key === "Escape") {
+      e.preventDefault();
       setIsTagFilterOpen(false);
       return;
     }
 
+    if (tags.length === 0) return;
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setTagFilterHighlight((prev) => {
-        if (prev < tags.length - 1) return prev + 1;
-        return prev;
+        const next = prev < tags.length - 1 ? prev + 1 : 0;
+        return next;
       });
       return;
     }
@@ -660,13 +660,13 @@ export default function ExpensesPage() {
     if (e.key === "ArrowUp") {
       e.preventDefault();
       setTagFilterHighlight((prev) => {
-        if (prev > 0) return prev - 1;
-        return prev;
+        if (prev <= 0) return tags.length - 1;
+        return prev - 1;
       });
       return;
     }
 
-    if (e.key === "Enter" && isTagFilterOpen) {
+    if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
       if (tagFilterHighlight >= 0 && tagFilterHighlight < tags.length) {
         const tag = tags[tagFilterHighlight];
