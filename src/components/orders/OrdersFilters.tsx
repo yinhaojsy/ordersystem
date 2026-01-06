@@ -233,9 +233,9 @@ export function OrdersFilters({
               onChange={(e) => onFilterChange('orderType', (e.target.value || null) as "online" | "otc" | null)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="">{t("orders.all") || "All"}</option>
-              <option value="online">Online</option>
-              <option value="otc">OTC</option>
+              <option value="">{t("orders.all")}</option>
+              <option value="online">{t("orders.online")}</option>
+              <option value="otc">{t("orders.otc")}</option>
             </select>
           </div>
 

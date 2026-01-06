@@ -1141,7 +1141,7 @@ export default function OrdersPage() {
               }}
               className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-green-700 transition-colors"
             >
-              OTC Order
+              {t("orders.otcOrder")}
             </button>
             <button
               onClick={async () => {

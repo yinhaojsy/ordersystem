@@ -108,7 +108,7 @@ export function renderOrderCell({
       return (
         <td key={columnKey} className="py-2">
           <Badge tone={order.orderType === "otc" ? "amber" : "blue"}>
-            {order.orderType === "otc" ? "OTC" : "Online"}
+            {order.orderType === "otc" ? t("orders.otc") : t("orders.online")}
           </Badge>
         </td>
       );

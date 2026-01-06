@@ -118,8 +118,8 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
 }) => {
   const isDisabled = orderDetails.order.status === "completed" || orderDetails.order.status === "cancelled";
   const containerClassName = layout === "grid" ? "lg:col-span-2 space-y-4" : "space-y-4";
-  const receiptTitleSuffix = isFlexOrder ? " (Flex Order)" : "";
-  const paymentTitleSuffix = isFlexOrder ? " (Flex Order)" : "";
+  const receiptTitleSuffix = isFlexOrder ? ` (${t("orders.flexOrder")})` : "";
+  const paymentTitleSuffix = isFlexOrder ? ` (${t("orders.flexOrder")})` : "";
   const receiptAmountBuy = isFlexOrder 
     ? (orderDetails.order.actualAmountBuy || orderDetails.order.amountBuy)
     : orderDetails.order.amountBuy;
