@@ -204,14 +204,11 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
             );
           })()}
           {index === uploads.length - 1 && onFormSubmit && (
-            <div className={`mt-2 ${showCancelButtons ? "flex gap-2" : ""}`}>
+            <div className={showCancelButtons ? "mt-2 flex flex-col gap-2" : "mt-2"}>
               <button
                 type="button"
                 onClick={onFormSubmit}
-                className={showCancelButtons
-                  ? "px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                  : "w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-                }
+                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
               >
                 {t("orders.uploadPayments")}
               </button>
@@ -219,7 +216,7 @@ export const PaymentUploadSection: React.FC<PaymentUploadSectionProps> = ({
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors"
+                  className="w-full px-4 py-2 border border-slate-300 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   {t("common.cancel")}
                 </button>

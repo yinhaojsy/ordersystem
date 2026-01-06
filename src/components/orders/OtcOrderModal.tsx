@@ -1,4 +1,4 @@
-import React, { type Dispatch, type FormEvent, type SetStateAction } from "react";
+import React, { useEffect, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import Badge from "../common/Badge";
 import { formatDate } from "../../utils/format";
 import type { Account } from "../../types";
@@ -788,16 +788,27 @@ export default function OtcOrderModal({
 
   const heading = isOtcCompleted ? "View OTC Order" : otcEditingOrderId ? "Edit OTC Order" : "Create OTC Order";
 
+  // Close on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
     <div
       className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50"
       style={{ margin: 0, padding: 0 }}
     >
       <div
-        className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-lg max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-slate-900">{heading}</h2>
           <button
             onClick={onClose}
@@ -810,52 +821,54 @@ export default function OtcOrderModal({
           </button>
         </div>
 
-        {isOtcCompleted && otcOrderDetails?.order ? (
-          <OtcOrderView
-            accounts={accounts}
-            customers={customers}
-            users={users}
-            otcOrderDetails={otcOrderDetails}
-            onClose={onClose}
-          />
-        ) : (
-          <OtcOrderForm
-            accounts={accounts}
-            customers={customers}
-            users={users}
-            currencies={currencies}
-            otcForm={otcForm}
-            setOtcForm={setOtcForm}
-            otcReceipts={otcReceipts}
-            setOtcReceipts={setOtcReceipts}
-            otcPayments={otcPayments}
-            setOtcPayments={setOtcPayments}
-            showOtcProfitSection={showOtcProfitSection}
-            setShowOtcProfitSection={setShowOtcProfitSection}
-            showOtcServiceChargeSection={showOtcServiceChargeSection}
-            setShowOtcServiceChargeSection={setShowOtcServiceChargeSection}
-            otcProfitAmount={otcProfitAmount}
-            setOtcProfitAmount={setOtcProfitAmount}
-            otcProfitCurrency={otcProfitCurrency}
-            setOtcProfitCurrency={setOtcProfitCurrency}
-            otcProfitAccountId={otcProfitAccountId}
-            setOtcProfitAccountId={setOtcProfitAccountId}
-            otcServiceChargeAmount={otcServiceChargeAmount}
-            setOtcServiceChargeAmount={setOtcServiceChargeAmount}
-            otcServiceChargeCurrency={otcServiceChargeCurrency}
-            setOtcServiceChargeCurrency={setOtcServiceChargeCurrency}
-            otcServiceChargeAccountId={otcServiceChargeAccountId}
-            setOtcServiceChargeAccountId={setOtcServiceChargeAccountId}
-            handleNumberInputWheel={handleNumberInputWheel}
-            getBaseCurrency={getBaseCurrency}
-            onSave={onSave}
-            onComplete={onComplete}
-            onClose={onClose}
-            setIsCreateCustomerModalOpen={setIsCreateCustomerModalOpen}
-            isSaving={isSaving}
-            t={t}
-          />
-        )}
+        <div className="overflow-y-auto px-6 py-4">
+          {isOtcCompleted && otcOrderDetails?.order ? (
+            <OtcOrderView
+              accounts={accounts}
+              customers={customers}
+              users={users}
+              otcOrderDetails={otcOrderDetails}
+              onClose={onClose}
+            />
+          ) : (
+            <OtcOrderForm
+              accounts={accounts}
+              customers={customers}
+              users={users}
+              currencies={currencies}
+              otcForm={otcForm}
+              setOtcForm={setOtcForm}
+              otcReceipts={otcReceipts}
+              setOtcReceipts={setOtcReceipts}
+              otcPayments={otcPayments}
+              setOtcPayments={setOtcPayments}
+              showOtcProfitSection={showOtcProfitSection}
+              setShowOtcProfitSection={setShowOtcProfitSection}
+              showOtcServiceChargeSection={showOtcServiceChargeSection}
+              setShowOtcServiceChargeSection={setShowOtcServiceChargeSection}
+              otcProfitAmount={otcProfitAmount}
+              setOtcProfitAmount={setOtcProfitAmount}
+              otcProfitCurrency={otcProfitCurrency}
+              setOtcProfitCurrency={setOtcProfitCurrency}
+              otcProfitAccountId={otcProfitAccountId}
+              setOtcProfitAccountId={setOtcProfitAccountId}
+              otcServiceChargeAmount={otcServiceChargeAmount}
+              setOtcServiceChargeAmount={setOtcServiceChargeAmount}
+              otcServiceChargeCurrency={otcServiceChargeCurrency}
+              setOtcServiceChargeCurrency={setOtcServiceChargeCurrency}
+              otcServiceChargeAccountId={otcServiceChargeAccountId}
+              setOtcServiceChargeAccountId={setOtcServiceChargeAccountId}
+              handleNumberInputWheel={handleNumberInputWheel}
+              getBaseCurrency={getBaseCurrency}
+              onSave={onSave}
+              onComplete={onComplete}
+              onClose={onClose}
+              setIsCreateCustomerModalOpen={setIsCreateCustomerModalOpen}
+              isSaving={isSaving}
+              t={t}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

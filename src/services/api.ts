@@ -321,6 +321,7 @@ export const api = createApi({
         buyAccountId?: number;
         sellAccountId?: number;
         status?: OrderStatus;
+        orderType?: "online" | "otc";
         tagIds?: string;
         page?: number;
         limit?: number;
@@ -337,6 +338,7 @@ export const api = createApi({
         if (params.buyAccountId !== undefined) queryParams.append("buyAccountId", params.buyAccountId.toString());
         if (params.sellAccountId !== undefined) queryParams.append("sellAccountId", params.sellAccountId.toString());
         if (params.status) queryParams.append("status", params.status);
+        if (params.orderType) queryParams.append("orderType", params.orderType);
         if (params.tagIds) queryParams.append("tagIds", params.tagIds);
         if (params.page !== undefined) queryParams.append("page", params.page.toString());
         if (params.limit !== undefined) queryParams.append("limit", params.limit.toString());
@@ -363,6 +365,7 @@ export const api = createApi({
         buyAccountId?: number;
         sellAccountId?: number;
         status?: OrderStatus;
+        orderType?: "online" | "otc";
         tagIds?: string;
       }
     >({
@@ -377,6 +380,7 @@ export const api = createApi({
         if (params.buyAccountId !== undefined) queryParams.append("buyAccountId", params.buyAccountId.toString());
         if (params.sellAccountId !== undefined) queryParams.append("sellAccountId", params.sellAccountId.toString());
         if (params.status) queryParams.append("status", params.status);
+        if (params.orderType) queryParams.append("orderType", params.orderType);
         if (params.tagIds) queryParams.append("tagIds", params.tagIds);
         const queryString = queryParams.toString();
         return `orders/export${queryString ? `?${queryString}` : ""}`;

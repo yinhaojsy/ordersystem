@@ -428,6 +428,99 @@ export default function OrdersPage() {
     setExcessPaymentModalNormalData,
   } = useViewOrderModal();
   
+  const renderProfitServiceCharges = () => {
+    if (!orderDetails) return null;
+    const order = orderDetails.order;
+    const summaryClass = "lg:col-span-2 border-t pt-4 mt-4";
+    const addWrapperClass = "lg:col-span-3";
+    const canEdit = order.status !== "completed" && order.status !== "cancelled";
+
+    return (
+      <>
+        {order.profitAmount !== null &&
+          order.profitAmount !== undefined && (
+            <div className={summaryClass}>
+              <div className="p-3 border border-blue-200 rounded-lg bg-blue-50">
+                <h3 className="font-semibold text-blue-900 mb-2">
+                  {t("orders.profit") || "Profit"}
+                </h3>
+                <div className="text-sm text-slate-600 space-y-1">
+                  <div>
+                    {t("orders.profitAmount") || "Profit Amount"}:{" "}
+                    {order.profitAmount > 0 ? "+" : ""}
+                    {order.profitAmount.toFixed(2)} {order.profitCurrency || ""}
+                  </div>
+                  {order.profitAccountId && (
+                    <div className="text-slate-500">
+                      {t("orders.account") || "Account"}:{" "}
+                      {accounts.find((acc) => acc.id === order.profitAccountId)?.name ||
+                        `Account #${order.profitAccountId}`}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+        {order.serviceChargeAmount !== null &&
+          order.serviceChargeAmount !== undefined && (
+            <div className={summaryClass}>
+              <div className="p-3 border border-green-200 rounded-lg bg-green-50">
+                <h3 className="font-semibold text-green-900 mb-2">
+                  {t("orders.serviceCharges") || "Service Charges"}
+                </h3>
+                <div className="text-sm text-slate-600 space-y-1">
+                  <div>
+                    {t("orders.serviceChargeAmount") || "Service Charge Amount"}:{" "}
+                    {order.serviceChargeAmount > 0 ? "+" : ""}
+                    {order.serviceChargeAmount.toFixed(2)}{" "}
+                    {order.serviceChargeCurrency || ""}
+                  </div>
+                  {order.serviceChargeAccountId && (
+                    <div className="text-slate-500">
+                      {t("orders.account") || "Account"}:{" "}
+                      {accounts.find((acc) => acc.id === order.serviceChargeAccountId)?.name ||
+                        `Account #${order.serviceChargeAccountId}`}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+        {canEdit && (
+          <div className={addWrapperClass}>
+            <ProfitServiceChargeSection
+              orderId={viewModalOrderId}
+              order={orderDetails?.order}
+              accounts={accounts}
+              profitAmount={profitAmount}
+              setProfitAmount={setProfitAmount}
+              profitCurrency={profitCurrency}
+              setProfitCurrency={setProfitCurrency}
+              profitAccountId={profitAccountId}
+              setProfitAccountId={setProfitAccountId}
+              showProfitSection={showProfitSection}
+              setShowProfitSection={setShowProfitSection}
+              serviceChargeAmount={serviceChargeAmount}
+              setServiceChargeAmount={setServiceChargeAmount}
+              serviceChargeCurrency={serviceChargeCurrency}
+              setServiceChargeCurrency={setServiceChargeCurrency}
+              serviceChargeAccountId={serviceChargeAccountId}
+              setServiceChargeAccountId={setServiceChargeAccountId}
+              showServiceChargeSection={showServiceChargeSection}
+              setShowServiceChargeSection={setShowServiceChargeSection}
+              updateOrder={updateOrder}
+              handleNumberInputWheel={handleNumberInputWheel}
+              layout="grid"
+              t={t}
+            />
+          </div>
+        )}
+      </>
+    );
+  };
+  
   const previousOrderStatusRef = useRef<string | null>(null);
   
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
@@ -1308,7 +1401,7 @@ export default function OrdersPage() {
                         setViewerModal={setViewerModal}
                         openPdfInNewTab={openPdfInNewTab}
                         isFlexOrder={true}
-                        showCancelButtons={false}
+                        showCancelButtons={true}
                         layout="grid"
                         t={t}
                       />
@@ -1328,6 +1421,25 @@ export default function OrdersPage() {
                           t={t}
                         />
                       )}
+
+                    {renderProfitServiceCharges()}
+
+                    {/* Complete Order Button for Flex Orders (under_process) */}
+                    <CompleteOrderButton
+                      orderId={viewModalOrderId}
+                      orderDetails={orderDetails}
+                      currencies={currencies}
+                      flexOrderRate={flexOrderRate}
+                      updateOrderStatus={updateOrderStatus}
+                      calculateAmountSell={calculateAmountSell}
+                      resolveFlexOrderRate={resolveFlexOrderRate}
+                      setMissingPaymentModalData={setMissingPaymentModalData}
+                      setShowMissingPaymentModal={setShowMissingPaymentModal}
+                      setExcessPaymentModalData={setExcessPaymentModalData}
+                      setShowExcessPaymentModal={setShowExcessPaymentModal}
+                      layout="grid"
+                      t={t}
+                    />
                     </>
                   ) : (
                     <>
@@ -1363,76 +1475,7 @@ export default function OrdersPage() {
                         />
                       )}
 
-                      {/* Display existing profit if it exists - For Flex Orders */}
-                      {orderDetails.order.profitAmount !== null && orderDetails.order.profitAmount !== undefined && (
-                        <div className="lg:col-span-2 border-t pt-4 mt-4">
-                          <div className="p-3 border border-blue-200 rounded-lg bg-blue-50">
-                            <h3 className="font-semibold text-blue-900 mb-2">
-                              {t("orders.profit") || "Profit"}
-                            </h3>
-                            <div className="text-sm text-slate-600 space-y-1">
-                              <div>
-                                {t("orders.profitAmount") || "Profit Amount"}: {orderDetails.order.profitAmount > 0 ? "+" : ""}{orderDetails.order.profitAmount.toFixed(2)} {orderDetails.order.profitCurrency || ""}
-                              </div>
-                              {orderDetails.order.profitAccountId && (
-                                <div className="text-slate-500">
-                                  {t("orders.account") || "Account"}: {accounts.find(acc => acc.id === orderDetails.order.profitAccountId)?.name || `Account #${orderDetails.order.profitAccountId}`}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Display existing service charges if they exist - For Flex Orders */}
-                      {orderDetails.order.serviceChargeAmount !== null && orderDetails.order.serviceChargeAmount !== undefined && (
-                        <div className="lg:col-span-2 border-t pt-4 mt-4">
-                          <div className="p-3 border border-green-200 rounded-lg bg-green-50">
-                            <h3 className="font-semibold text-green-900 mb-2">
-                              {t("orders.serviceCharges") || "Service Charges"}
-                            </h3>
-                            <div className="text-sm text-slate-600 space-y-1">
-                              <div>
-                                {t("orders.serviceChargeAmount") || "Service Charge Amount"}: {orderDetails.order.serviceChargeAmount > 0 ? "+" : ""}{orderDetails.order.serviceChargeAmount.toFixed(2)} {orderDetails.order.serviceChargeCurrency || ""}
-                              </div>
-                              {orderDetails.order.serviceChargeAccountId && (
-                                <div className="text-slate-500">
-                                  {t("orders.account") || "Account"}: {accounts.find(acc => acc.id === orderDetails.order.serviceChargeAccountId)?.name || `Account #${orderDetails.order.serviceChargeAccountId}`}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Profit and Service Charges Section for Flex Orders - Before Complete Button */}
-                      {orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
-                        <ProfitServiceChargeSection
-                          orderId={viewModalOrderId}
-                          order={orderDetails?.order}
-                          accounts={accounts}
-                          profitAmount={profitAmount}
-                          setProfitAmount={setProfitAmount}
-                          profitCurrency={profitCurrency}
-                          setProfitCurrency={setProfitCurrency}
-                          profitAccountId={profitAccountId}
-                          setProfitAccountId={setProfitAccountId}
-                          showProfitSection={showProfitSection}
-                          setShowProfitSection={setShowProfitSection}
-                          serviceChargeAmount={serviceChargeAmount}
-                          setServiceChargeAmount={setServiceChargeAmount}
-                          serviceChargeCurrency={serviceChargeCurrency}
-                          setServiceChargeCurrency={setServiceChargeCurrency}
-                          serviceChargeAccountId={serviceChargeAccountId}
-                          setServiceChargeAccountId={setServiceChargeAccountId}
-                          showServiceChargeSection={showServiceChargeSection}
-                          setShowServiceChargeSection={setShowServiceChargeSection}
-                          updateOrder={updateOrder}
-                          handleNumberInputWheel={handleNumberInputWheel}
-                          layout="grid"
-                          t={t}
-                        />
-                      )}
+                      {renderProfitServiceCharges()}
 
                       {/* Complete Order Button for Flex Orders */}
                       <CompleteOrderButton
@@ -1525,76 +1568,7 @@ export default function OrdersPage() {
                 />
               )}
 
-              {/* Display existing profit if it exists - For Non-Flex Orders */}
-              {!orderDetails.order.isFlexOrder && orderDetails.order.profitAmount !== null && orderDetails.order.profitAmount !== undefined && (
-                <div className="border-t pt-4 mt-4">
-                  <div className="p-3 border border-blue-200 rounded-lg bg-blue-50">
-                    <h3 className="font-semibold text-blue-900 mb-2">
-                      {t("orders.profit") || "Profit"}
-                    </h3>
-                    <div className="text-sm text-slate-600 space-y-1">
-                      <div>
-                        {t("orders.profitAmount") || "Profit Amount"}: {orderDetails.order.profitAmount > 0 ? "+" : ""}{orderDetails.order.profitAmount.toFixed(2)} {orderDetails.order.profitCurrency || ""}
-                      </div>
-                      {orderDetails.order.profitAccountId && (
-                        <div className="text-slate-500">
-                          {t("orders.account") || "Account"}: {accounts.find(acc => acc.id === orderDetails.order.profitAccountId)?.name || `Account #${orderDetails.order.profitAccountId}`}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Display existing service charges if they exist - For Non-Flex Orders */}
-              {!orderDetails.order.isFlexOrder && orderDetails.order.serviceChargeAmount !== null && orderDetails.order.serviceChargeAmount !== undefined && (
-                <div className="border-t pt-4 mt-4">
-                  <div className="p-3 border border-green-200 rounded-lg bg-green-50">
-                    <h3 className="font-semibold text-green-900 mb-2">
-                      {t("orders.serviceCharges") || "Service Charges"}
-                    </h3>
-                    <div className="text-sm text-slate-600 space-y-1">
-                      <div>
-                        {t("orders.serviceChargeAmount") || "Service Charge Amount"}: {orderDetails.order.serviceChargeAmount > 0 ? "+" : ""}{orderDetails.order.serviceChargeAmount.toFixed(2)} {orderDetails.order.serviceChargeCurrency || ""}
-                      </div>
-                      {orderDetails.order.serviceChargeAccountId && (
-                        <div className="text-slate-500">
-                          {t("orders.account") || "Account"}: {accounts.find(acc => acc.id === orderDetails.order.serviceChargeAccountId)?.name || `Account #${orderDetails.order.serviceChargeAccountId}`}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Profit and Service Charges Section - At the bottom */}
-              {!orderDetails.order.isFlexOrder && orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled" && (
-                <ProfitServiceChargeSection
-                  orderId={viewModalOrderId}
-                  order={orderDetails?.order}
-                  accounts={accounts}
-                  profitAmount={profitAmount}
-                  setProfitAmount={setProfitAmount}
-                  profitCurrency={profitCurrency}
-                  setProfitCurrency={setProfitCurrency}
-                  profitAccountId={profitAccountId}
-                  setProfitAccountId={setProfitAccountId}
-                  showProfitSection={showProfitSection}
-                  setShowProfitSection={setShowProfitSection}
-                  serviceChargeAmount={serviceChargeAmount}
-                  setServiceChargeAmount={setServiceChargeAmount}
-                  serviceChargeCurrency={serviceChargeCurrency}
-                  setServiceChargeCurrency={setServiceChargeCurrency}
-                  serviceChargeAccountId={serviceChargeAccountId}
-                  setServiceChargeAccountId={setServiceChargeAccountId}
-                  showServiceChargeSection={showServiceChargeSection}
-                  setShowServiceChargeSection={setShowServiceChargeSection}
-                  updateOrder={updateOrder}
-                  handleNumberInputWheel={handleNumberInputWheel}
-                  layout="vertical"
-                  t={t}
-                />
-              )}
+              {!orderDetails.order.isFlexOrder && renderProfitServiceCharges()}
 
               {/* Complete Order Button for Regular Orders */}
               {!orderDetails.order.isFlexOrder && (

@@ -84,6 +84,12 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
         },
       }).unwrap();
       alert(t("orders.profitUpdatedSuccessfully") || "Profit updated successfully");
+      // Close the section after successful save
+      setShowProfitSection(false);
+      // Clear the form fields
+      setProfitAmount("");
+      setProfitCurrency("");
+      setProfitAccountId("");
     } catch (error: any) {
       console.error("Error updating profit:", error);
       const errorMessage = error?.data?.message || error?.message || "Failed to update profit";
@@ -112,6 +118,12 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
         },
       }).unwrap();
       alert(t("orders.serviceChargeUpdatedSuccessfully") || "Service charge updated successfully");
+      // Close the section after successful save
+      setShowServiceChargeSection(false);
+      // Clear the form fields
+      setServiceChargeAmount("");
+      setServiceChargeCurrency("");
+      setServiceChargeAccountId("");
     } catch (error: any) {
       console.error("Error updating service charge:", error);
       const errorMessage = error?.data?.message || error?.message || "Failed to update service charge";
@@ -121,29 +133,12 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
 
   const containerClassName = layout === "grid" ? "lg:col-span-2 border-t pt-4 mt-4 space-y-4" : "border-t pt-4 mt-4 space-y-4";
 
+  // Treat null/undefined/0 as "no value" so flex + regular behave the same
+  const hasProfit = typeof order?.profitAmount === "number" && order.profitAmount !== 0;
+  const hasServiceCharge = typeof order?.serviceChargeAmount === "number" && order.serviceChargeAmount !== 0;
+
   return (
     <div className={containerClassName}>
-      <div className="flex gap-2">
-        {!showProfitSection && (
-          <button
-            type="button"
-            onClick={() => setShowProfitSection(true)}
-            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-          >
-            {t("orders.addProfit") || "ADD PROFIT"}
-          </button>
-        )}
-        {!showServiceChargeSection && (
-          <button
-            type="button"
-            onClick={() => setShowServiceChargeSection(true)}
-            className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
-          >
-            {t("orders.addServiceCharges") || "ADD SERVICE CHARGES"}
-          </button>
-        )}
-      </div>
-
       {/* Profit Section */}
       <ProfitSection
         profitAmount={profitAmount}
@@ -177,6 +172,27 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
         handleNumberInputWheel={handleNumberInputWheel}
         t={t}
       />
+
+      <div className="flex gap-2">
+        {!showProfitSection && !hasProfit && (
+          <button
+            type="button"
+            onClick={() => setShowProfitSection(true)}
+            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            {t("orders.addProfit") || "ADD PROFIT"}
+          </button>
+        )}
+        {!showServiceChargeSection && !hasServiceCharge && (
+          <button
+            type="button"
+            onClick={() => setShowServiceChargeSection(true)}
+            className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+          >
+            {t("orders.addServiceCharges") || "ADD SERVICE CHARGES"}
+          </button>
+        )}
+      </div>
     </div>
   );
 };
