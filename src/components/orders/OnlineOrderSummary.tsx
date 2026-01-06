@@ -125,52 +125,6 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
         </div>
       </div>
 
-      {/* Handler Information */}
-      {orderDetails.order.handlerName && (
-        <div className="border-b pb-4">
-          <h3 className="font-semibold text-slate-900 mb-2">
-            Handler Information
-          </h3>
-          <p className="text-sm text-slate-600">
-            Handler: {orderDetails.order.handlerName}
-          </p>
-          {orderDetails.order.paymentType === "CRYPTO" ? (
-            <div className="mt-2">
-              <p className="text-sm text-slate-600">
-                Network: {orderDetails.order.networkChain || "N/A"}
-              </p>
-              {orderDetails.order.walletAddresses && orderDetails.order.walletAddresses.length > 0 && (
-                <>
-                  <p className="text-sm text-slate-600 mt-1">
-                    Wallet Addresses:
-                  </p>
-                  <ul className="list-disc list-inside text-sm text-slate-600 ml-4">
-                    {orderDetails.order.walletAddresses.map(
-                      (addr, idx) => (
-                        <li key={idx}>{addr}</li>
-                      )
-                    )}
-                  </ul>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="mt-2 text-sm text-slate-600">
-              {orderDetails.order.bankDetails && (
-                <>
-                  <p>Bank: {orderDetails.order.bankDetails.bankName || "N/A"}</p>
-                  <p>Account Title: {orderDetails.order.bankDetails.accountTitle || "N/A"}</p>
-                  <p>Account Number: {orderDetails.order.bankDetails.accountNumber || "N/A"}</p>
-                  <p>IBAN: {orderDetails.order.bankDetails.accountIban || "N/A"}</p>
-                  <p>Swift Code: {orderDetails.order.bankDetails.swiftCode || "N/A"}</p>
-                  <p>Bank Address: {orderDetails.order.bankDetails.bankAddress || "N/A"}</p>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Customer Beneficiary Details */}
       {orderDetails.beneficiaries.length > 0 && (
         <div className="border-b pb-4">
@@ -214,10 +168,10 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
       {orderDetails.receipts.length > 0 && (
         <div className="border-b pb-4">
           <h3 className="font-semibold text-slate-900 mb-2">
-            Receipt Uploads
+            {t("orders.receiptUploads")}
           </h3>
           <div className="text-sm text-slate-600 mb-3">
-            Amount Received: {orderDetails.totalReceiptAmount.toFixed(2)}
+            {t("orders.amountReceived")}: {orderDetails.totalReceiptAmount.toFixed(2)}
           </div>
           <div className="grid grid-cols-4 gap-4">
             {orderDetails.receipts.map((receipt) => (
@@ -227,7 +181,7 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
                     src={receipt.imagePath}
                     alt="Receipt"
                     className="w-48 h-72 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity mb-2"
-                    onClick={() => setViewerModal({ isOpen: true, src: receipt.imagePath, type: 'image', title: t("orders.receiptUploads") || "Receipt Uploads" })}
+                    onClick={() => setViewerModal({ isOpen: true, src: receipt.imagePath, type: 'image', title: t("orders.receiptUploads") })}
                   />
                 ) : getFileType(receipt.imagePath) === 'pdf' ? (
                   <div
@@ -268,10 +222,10 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
       {orderDetails.payments.length > 0 && (
         <div className="border-b pb-4">
           <h3 className="font-semibold text-slate-900 mb-2">
-            Payment Uploads
+            {t("orders.paymentUploads")}
           </h3>
           <div className="text-sm text-slate-600 mb-3">
-            Amount Paid: {orderDetails.totalPaymentAmount.toFixed(2)}
+            {t("orders.amountPaid")}: {orderDetails.totalPaymentAmount.toFixed(2)}
           </div>
           <div className="grid grid-cols-4 gap-4">
             {orderDetails.payments.map((payment) => (
@@ -281,7 +235,7 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
                     src={payment.imagePath}
                     alt="Payment"
                     className="w-48 h-72 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity mb-2"
-                    onClick={() => setViewerModal({ isOpen: true, src: payment.imagePath, type: 'image', title: t("orders.paymentUploads") || "Payment Uploads" })}
+                    onClick={() => setViewerModal({ isOpen: true, src: payment.imagePath, type: 'image', title: t("orders.paymentUploads") })}
                   />
                 ) : getFileType(payment.imagePath) === 'pdf' ? (
                   <div

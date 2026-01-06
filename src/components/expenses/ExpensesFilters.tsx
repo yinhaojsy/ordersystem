@@ -95,7 +95,7 @@ export function ExpensesFilters({
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-          {t("expenses.filters") || "Filters"}
+          {t("expenses.filters")}
         </span>
         <span className="text-xs font-normal text-slate-500">
           {activeFilterCount > 0 && `(${activeFilterCount} active)`}
@@ -107,19 +107,19 @@ export function ExpensesFilters({
           {/* Date Preset */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t("expenses.datePreset") || "Date Range"}
+              {t("expenses.datePreset")}
             </label>
             <select
               value={filters.datePreset}
               onChange={(e) => onDatePresetChange(e.target.value as DatePreset)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">{t("expenses.all") || "All"}</option>
-              <option value="currentWeek">{t("expenses.currentWeek") || "Current Week"}</option>
-              <option value="lastWeek">{t("expenses.lastWeek") || "Last Week"}</option>
-              <option value="currentMonth">{t("expenses.currentMonth") || "Current Month"}</option>
-              <option value="lastMonth">{t("expenses.lastMonth") || "Last Month"}</option>
-              <option value="custom">{t("expenses.custom") || "Custom"}</option>
+              <option value="all">{t("expenses.all")}</option>
+              <option value="currentWeek">{t("expenses.currentWeek")}</option>
+              <option value="lastWeek">{t("expenses.lastWeek")}</option>
+              <option value="currentMonth">{t("expenses.currentMonth")}</option>
+              <option value="lastMonth">{t("expenses.lastMonth")}</option>
+              <option value="custom">{t("expenses.custom")}</option>
             </select>
           </div>
 
@@ -127,7 +127,7 @@ export function ExpensesFilters({
           {filters.datePreset === 'custom' && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t("expenses.dateFrom") || "Date From"}
+                {t("expenses.dateFrom")}
               </label>
               <input
                 type="date"
@@ -142,7 +142,7 @@ export function ExpensesFilters({
           {filters.datePreset === 'custom' && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t("expenses.dateTo") || "Date To"}
+                {t("expenses.dateTo")}
               </label>
               <input
                 type="date"
@@ -158,22 +158,22 @@ export function ExpensesFilters({
             value={filters.accountId}
             onChange={(value) => onFilterChange('accountId', value)}
             options={accounts}
-            placeholder={t("expenses.selectAccount") || "Type to search accounts..."}
-            label={t("expenses.account") || "Account"}
-            allOptionLabel={t("expenses.all") || "All"}
+            placeholder={t("expenses.selectAccount")}
+            label={t("expenses.account")}
+            allOptionLabel={t("expenses.all")}
           />
 
           {/* Currency */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t("expenses.currency") || "Currency"}
+              {t("expenses.currency")}
             </label>
             <select
               value={filters.currencyCode || ""}
               onChange={(e) => onFilterChange('currencyCode', e.target.value || null)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="">{t("expenses.all") || "All"}</option>
+              <option value="">{t("expenses.all")}</option>
               {currencyCodes.map((code) => (
                 <option key={code} value={code}>
                   {code}
@@ -187,15 +187,15 @@ export function ExpensesFilters({
             value={filters.createdBy}
             onChange={(value) => onFilterChange('createdBy', value)}
             options={users}
-            placeholder={t("expenses.selectCreatedBy") || "Type to search users..."}
-            label={t("expenses.createdBy") || "Created By"}
-            allOptionLabel={t("expenses.all") || "All"}
+            placeholder={t("expenses.selectCreatedBy")}
+            label={t("expenses.createdBy")}
+            allOptionLabel={t("expenses.all")}
           />
 
           {/* Tag Filter */}
           <div className="relative">
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t("expenses.tag") || "Tag"}
+              {t("expenses.tag")}
             </label>
             <button
               type="button"
@@ -227,7 +227,7 @@ export function ExpensesFilters({
               >
                 {tags.length === 0 && (
                   <div className="text-sm text-slate-500 px-2 py-1">
-                    {t("expenses.noTagsAvailable") || "No tags available"}
+                    {t("expenses.noTagsAvailable")}
                   </div>
                 )}
                 {tags.map((tag: Tag, idx: number) => {
@@ -264,13 +264,13 @@ export function ExpensesFilters({
                       className="text-xs text-slate-600 hover:text-slate-900"
                       onClick={() => onFilterChange('tagIds', [])}
                     >
-                      {t("common.clear") || "Clear"}
+                      {t("common.clear")}
                     </button>
                     <button
                       className="text-xs text-blue-600 hover:text-blue-800"
                       onClick={() => setIsTagFilterOpen(false)}
                     >
-                      {t("common.done") || "Done"}
+                      {t("common.done")}
                     </button>
                   </div>
                 )}
@@ -284,7 +284,7 @@ export function ExpensesFilters({
               onClick={onClearFilters}
               className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
             >
-              {t("expenses.clearFilters") || "Clear Filters"}
+              {t("expenses.clearFilters")}
             </button>
           </div>
 
@@ -301,14 +301,14 @@ export function ExpensesFilters({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  {t("expenses.exporting") || "Exporting..."}
+                  {t("expenses.exporting")}
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  {t("expenses.export") || "Export to Excel"}
+                  {t("expenses.export")}
                 </>
               )}
             </button>

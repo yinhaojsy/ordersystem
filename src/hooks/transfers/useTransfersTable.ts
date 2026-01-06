@@ -16,7 +16,7 @@ export function useTransfersTable() {
       { key: "amount", label: t("transfers.amount") },
       { key: "transactionFee", label: t("transfers.transactionFee") },
       { key: "currency", label: t("transfers.currency") },
-      { key: "tags", label: t("transfers.tags") || "Tags" },
+      { key: "tags", label: t("transfers.tags") },
       { key: "createdBy", label: t("transfers.createdBy") },
     ],
     storagePrefix: "transfersPage",

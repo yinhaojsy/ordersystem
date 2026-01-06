@@ -242,7 +242,7 @@ export function OrdersFilters({
           {/* Tag Filter */}
           <div className="relative">
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t("orders.tag") || "Tag"}
+              {t("orders.tag")}
             </label>
             <button
               type="button"

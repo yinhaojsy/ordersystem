@@ -38,7 +38,7 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
     <div className="p-4 border border-green-200 rounded-lg bg-green-50">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-green-900">
-          {t("orders.serviceCharges") || "Service Charges"}
+          {t("orders.serviceCharges")}
         </h3>
         <button
           type="button"
@@ -50,13 +50,13 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
           }}
           className="text-green-600 hover:text-green-800 text-sm"
         >
-          {t("common.remove") || "Remove"}
+          {t("common.remove")}
         </button>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-green-900 mb-1">
-            {t("orders.serviceChargeAmount") || "Service Charge Amount"}
+            {t("orders.serviceChargeAmount")}
           </label>
           <input
             type="number"
@@ -65,15 +65,15 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
             onChange={(e) => setServiceChargeAmount(e.target.value)}
             onWheel={handleNumberInputWheel}
             className="w-full rounded-lg border border-green-300 px-3 py-2"
-            placeholder="0.00 (negative for paid by us)"
+            placeholder={t("orders.amountNegativeIfPaidByUs")}
           />
           <p className="text-xs text-green-700 mt-1">
-            {t("orders.negativeForPaidByUs") || "Negative values indicate paid by us"}
+            {t("orders.negativeForPaidByUs")}
           </p>
         </div>
         <div>
           <label className="block text-sm font-medium text-green-900 mb-1">
-            {t("orders.serviceChargeCurrency") || "Service Charge Currency"}
+            {t("orders.serviceChargeCurrency")}
           </label>
           <select
             value={serviceChargeCurrency}
@@ -84,7 +84,7 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
             className="w-full rounded-lg border border-green-300 px-3 py-2"
           >
             <option value="">
-              {t("orders.selectCurrency") || "Select Currency"}
+              {t("orders.selectCurrency")}
             </option>
             {order && (
               <>
@@ -102,7 +102,7 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
       {serviceChargeCurrency && (
         <div className="mt-3">
           <label className="block text-sm font-medium text-green-900 mb-1">
-            {t("orders.selectAccount") || "Select Account"} ({serviceChargeCurrency})
+            {t("orders.selectAccount")} ({serviceChargeCurrency})
           </label>
           <select
             value={serviceChargeAccountId}
@@ -111,7 +111,7 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
             required
           >
             <option value="">
-              {t("orders.selectAccount") || "Select Account"}
+              {t("orders.selectAccount")}
             </option>
             {accounts
               .filter((acc) => acc.currencyCode === serviceChargeCurrency)
@@ -128,7 +128,7 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
         onClick={onSave}
         className="mt-3 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
       >
-        {t("common.save") || "Save"}
+        {t("common.save")}
       </button>
     </div>
   );

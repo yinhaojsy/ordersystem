@@ -15,7 +15,7 @@ export function useExpensesTable() {
       { key: "amount", label: t("expenses.amount") },
       { key: "currency", label: t("expenses.currency") },
       { key: "proof", label: t("expenses.proof") },
-      { key: "tags", label: t("expenses.tags") || "Tags" },
+      { key: "tags", label: t("expenses.tags") },
       { key: "createdBy", label: t("expenses.createdBy") },
       { key: "updatedBy", label: t("expenses.updatedBy") },
       { key: "updatedAt", label: t("expenses.updatedAt") },

@@ -38,7 +38,7 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
     <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-blue-900">
-          {t("orders.profit") || "Profit"}
+          {t("orders.profit")}
         </h3>
         <button
           type="button"
@@ -50,13 +50,13 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
           }}
           className="text-blue-600 hover:text-blue-800 text-sm"
         >
-          {t("common.remove") || "Remove"}
+          {t("common.remove")}
         </button>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-blue-900 mb-1">
-            {t("orders.profitAmount") || "Profit Amount"}
+            {t("orders.profitAmount")}
           </label>
           <input
             type="number"
@@ -70,7 +70,7 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
         </div>
         <div>
           <label className="block text-sm font-medium text-blue-900 mb-1">
-            {t("orders.profitCurrency") || "Profit Currency"}
+            {t("orders.profitCurrency")}
           </label>
           <select
             value={profitCurrency}
@@ -81,7 +81,7 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
             className="w-full rounded-lg border border-blue-300 px-3 py-2"
           >
             <option value="">
-              {t("orders.selectCurrency") || "Select Currency"}
+              {t("orders.selectCurrency")}
             </option>
             {order && (
               <>
@@ -99,7 +99,7 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
       {profitCurrency && (
         <div className="mt-3">
           <label className="block text-sm font-medium text-blue-900 mb-1">
-            {t("orders.selectAccount") || "Select Account"} ({profitCurrency})
+            {t("orders.selectAccount")} ({profitCurrency})
           </label>
           <select
             value={profitAccountId}
@@ -108,7 +108,7 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
             required
           >
             <option value="">
-              {t("orders.selectAccount") || "Select Account"}
+              {t("orders.selectAccount")}
             </option>
             {accounts
               .filter((acc) => acc.currencyCode === profitCurrency)
@@ -125,7 +125,7 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
         onClick={onSave}
         className="mt-3 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
       >
-        {t("common.save") || "Save"}
+        {t("common.save")}
       </button>
     </div>
   );

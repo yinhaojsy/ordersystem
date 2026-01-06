@@ -95,7 +95,7 @@ export function TransfersFilters({
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-          {t("transfers.filters") || "Filters"}
+          {t("transfers.filters")}
         </span>
         <span className="text-xs font-normal text-slate-500">
           {activeFilterCount > 0 && `(${activeFilterCount} active)`}
@@ -107,19 +107,19 @@ export function TransfersFilters({
           {/* Date Preset */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t("transfers.datePreset") || "Date Range"}
+              {t("transfers.datePreset")}
             </label>
             <select
               value={filters.datePreset}
               onChange={(e) => onDatePresetChange(e.target.value as DatePreset)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">{t("transfers.all") || "All"}</option>
-              <option value="currentWeek">{t("transfers.currentWeek") || "Current Week"}</option>
-              <option value="lastWeek">{t("transfers.lastWeek") || "Last Week"}</option>
-              <option value="currentMonth">{t("transfers.currentMonth") || "Current Month"}</option>
-              <option value="lastMonth">{t("transfers.lastMonth") || "Last Month"}</option>
-              <option value="custom">{t("transfers.custom") || "Custom"}</option>
+              <option value="all">{t("transfers.all")}</option>
+              <option value="currentWeek">{t("transfers.currentWeek")}</option>
+              <option value="lastWeek">{t("transfers.lastWeek")}</option>
+              <option value="currentMonth">{t("transfers.currentMonth")}</option>
+              <option value="lastMonth">{t("transfers.lastMonth")}</option>
+              <option value="custom">{t("transfers.custom")}</option>
             </select>
           </div>
 
@@ -127,7 +127,7 @@ export function TransfersFilters({
           {filters.datePreset === 'custom' && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t("transfers.dateFrom") || "Date From"}
+                {t("transfers.dateFrom")}
               </label>
               <input
                 type="date"
@@ -142,7 +142,7 @@ export function TransfersFilters({
           {filters.datePreset === 'custom' && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {t("transfers.dateTo") || "Date To"}
+                {t("transfers.dateTo")}
               </label>
               <input
                 type="date"
@@ -158,9 +158,9 @@ export function TransfersFilters({
             value={filters.fromAccountId}
             onChange={(value) => onFilterChange('fromAccountId', value)}
             options={accounts}
-            placeholder={t("transfers.selectFromAccount") || "Type to search from accounts..."}
-            label={t("transfers.fromAccount") || "From Account"}
-            allOptionLabel={t("transfers.all") || "All"}
+            placeholder={t("transfers.selectFromAccount")}
+            label={t("transfers.fromAccount")}
+            allOptionLabel={t("transfers.all")}
           />
 
           {/* To Account */}
@@ -168,22 +168,22 @@ export function TransfersFilters({
             value={filters.toAccountId}
             onChange={(value) => onFilterChange('toAccountId', value)}
             options={accounts}
-            placeholder={t("transfers.selectToAccount") || "Type to search to accounts..."}
-            label={t("transfers.toAccount") || "To Account"}
-            allOptionLabel={t("transfers.all") || "All"}
+            placeholder={t("transfers.selectToAccount")}
+            label={t("transfers.toAccount")}
+            allOptionLabel={t("transfers.all")}
           />
 
           {/* Currency */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t("transfers.currency") || "Currency"}
+              {t("transfers.currency")}
             </label>
             <select
               value={filters.currencyCode || ""}
               onChange={(e) => onFilterChange('currencyCode', e.target.value || null)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="">{t("transfers.all") || "All"}</option>
+              <option value="">{t("transfers.all")}</option>
               {currencyCodes.map((code) => (
                 <option key={code} value={code}>
                   {code}
@@ -197,15 +197,15 @@ export function TransfersFilters({
             value={filters.createdBy}
             onChange={(value) => onFilterChange('createdBy', value)}
             options={users}
-            placeholder={t("transfers.selectCreatedBy") || "Type to search users..."}
-            label={t("transfers.createdBy") || "Created By"}
-            allOptionLabel={t("transfers.all") || "All"}
+            placeholder={t("transfers.selectCreatedBy")}
+            label={t("transfers.createdBy")}
+            allOptionLabel={t("transfers.all")}
           />
 
           {/* Tag Filter */}
           <div className="relative">
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {t("transfers.tag") || "Tag"}
+              {t("transfers.tag")}
             </label>
             <button
               type="button"
@@ -237,7 +237,7 @@ export function TransfersFilters({
               >
                 {tags.length === 0 && (
                   <div className="text-sm text-slate-500 px-2 py-1">
-                    {t("transfers.noTagsAvailable") || "No tags available"}
+                    {t("transfers.noTagsAvailable")}
                   </div>
                 )}
                 {tags.map((tag: Tag, idx: number) => {
@@ -274,13 +274,13 @@ export function TransfersFilters({
                       className="text-xs text-slate-600 hover:text-slate-900"
                       onClick={() => onFilterChange('tagIds', [])}
                     >
-                      {t("common.clear") || "Clear"}
+                      {t("common.clear")}
                     </button>
                     <button
                       className="text-xs text-blue-600 hover:text-blue-800"
                       onClick={() => setIsTagFilterOpen(false)}
                     >
-                      {t("common.done") || "Done"}
+                      {t("common.done")}
                     </button>
                   </div>
                 )}
@@ -294,7 +294,7 @@ export function TransfersFilters({
               onClick={onClearFilters}
               className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
             >
-              {t("transfers.clearFilters") || "Clear Filters"}
+              {t("transfers.clearFilters")}
             </button>
           </div>
 
@@ -311,14 +311,14 @@ export function TransfersFilters({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  {t("transfers.exporting") || "Exporting..."}
+                  {t("transfers.exporting")}
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  {t("transfers.export") || "Export to Excel"}
+                  {t("transfers.export")}
                 </>
               )}
             </button>

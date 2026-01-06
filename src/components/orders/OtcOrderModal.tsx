@@ -87,6 +87,7 @@ type ViewProps = {
   users: BasicEntity[];
   otcOrderDetails: OtcOrderDetails;
   onClose: () => void;
+  t: (key: string) => string;
 };
 
 type FormProps = {
@@ -126,7 +127,7 @@ type FormProps = {
   t: (key: string) => string;
 };
 
-const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: ViewProps) => {
+const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose, t }: ViewProps) => {
   const order = otcOrderDetails.order;
   if (!order) return null;
 
@@ -136,46 +137,48 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: 
   return (
     <div className="space-y-6">
       <div className="space-y-3 border-b border-slate-200 pb-4">
-        <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
+        <h3 className="text-lg font-semibold text-slate-900">{t("orders.orderDetails")}</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-sm font-medium text-slate-600">Customer</label>
+            <label className="text-sm font-medium text-slate-600">{t("orders.customer")}</label>
             <p className="mt-1 text-sm text-slate-900">{customerName}</p>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600">Handler</label>
+            <label className="text-sm font-medium text-slate-600">{t("orders.handler")}</label>
             <p className="mt-1 text-sm text-slate-900">{handlerName || "-"}</p>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600">Currency Pair</label>
+            <label className="text-sm font-medium text-slate-600">{t("orders.currencyPair")}</label>
             <p className="mt-1 text-sm text-slate-900">
               {order.fromCurrency} / {order.toCurrency}
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600">Rate</label>
+            <label className="text-sm font-medium text-slate-600">{t("orders.rate")}</label>
             <p className="mt-1 text-sm text-slate-900">{order.rate}</p>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600">Amount Buy</label>
+            <label className="text-sm font-medium text-slate-600">{t("orders.amountBuy")}</label>
             <p className="mt-1 text-sm text-slate-900">
               {order.amountBuy.toFixed(2)} {order.fromCurrency}
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600">Amount Sell</label>
+            <label className="text-sm font-medium text-slate-600">{t("orders.amountSell")}</label>
             <p className="mt-1 text-sm text-slate-900">
               {order.amountSell.toFixed(2)} {order.toCurrency}
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600">Status</label>
+            <label className="text-sm font-medium text-slate-600">{t("orders.status")}</label>
             <p className="mt-1">
-              <Badge tone={order.status === "completed" ? "emerald" : "rose"}>{order.status}</Badge>
+              <Badge tone={order.status === "completed" ? "emerald" : "rose"}>
+                {t(`orders.${order.status}`)}
+              </Badge>
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600">Date</label>
+            <label className="text-sm font-medium text-slate-600">{t("orders.date")}</label>
             <p className="mt-1 text-sm text-slate-900">{order.createdAt ? formatDate(order.createdAt) : "-"}</p>
           </div>
         </div>
@@ -183,7 +186,9 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: 
 
       {otcOrderDetails.receipts && otcOrderDetails.receipts.length > 0 && (
         <div className="space-y-3 border-b border-slate-200 pb-4">
-          <h3 className="text-lg font-semibold text-slate-900">Receipts ({order.fromCurrency})</h3>
+          <h3 className="text-lg font-semibold text-slate-900">
+            {t("orders.receipts")} ({order.fromCurrency})
+          </h3>
           <div className="space-y-2">
             {otcOrderDetails.receipts.map((receipt, index) => (
               <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
@@ -194,7 +199,7 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: 
               </div>
             ))}
             <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-              <span className="text-sm font-semibold text-slate-900">Total</span>
+              <span className="text-sm font-semibold text-slate-900">{t("orders.total")}</span>
               <span className="text-sm font-semibold text-slate-900">
                 {otcOrderDetails.receipts.reduce((sum, r) => sum + r.amount, 0).toFixed(2)} {order.fromCurrency}
               </span>
@@ -205,7 +210,9 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: 
 
       {otcOrderDetails.payments && otcOrderDetails.payments.length > 0 && (
         <div className="space-y-3 border-b border-slate-200 pb-4">
-          <h3 className="text-lg font-semibold text-slate-900">Payments ({order.toCurrency})</h3>
+          <h3 className="text-lg font-semibold text-slate-900">
+            {t("orders.payments")} ({order.toCurrency})
+          </h3>
           <div className="space-y-2">
             {otcOrderDetails.payments.map((payment, index) => (
               <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
@@ -216,7 +223,7 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: 
               </div>
             ))}
             <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-              <span className="text-sm font-semibold text-slate-900">Total</span>
+              <span className="text-sm font-semibold text-slate-900">{t("orders.total")}</span>
               <span className="text-sm font-semibold text-slate-900">
                 {otcOrderDetails.payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)} {order.toCurrency}
               </span>
@@ -229,7 +236,7 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: 
         order.profitAmount !== undefined &&
         order.profitAccountId && (
           <div className="space-y-3 border-b border-slate-200 pb-4">
-            <h3 className="text-lg font-semibold text-blue-900">Profit</h3>
+            <h3 className="text-lg font-semibold text-blue-900">{t("orders.profit")}</h3>
             <div className="p-3 bg-blue-50 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-blue-900">
@@ -248,7 +255,7 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: 
         order.serviceChargeAmount !== undefined &&
         order.serviceChargeAccountId && (
           <div className="space-y-3 border-b border-slate-200 pb-4">
-            <h3 className="text-lg font-semibold text-green-900">Service Charges</h3>
+            <h3 className="text-lg font-semibold text-green-900">{t("orders.serviceCharges")}</h3>
             <div className="p-3 bg-green-50 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-green-900">
@@ -274,7 +281,7 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose }: 
           onClick={onClose}
           className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
         >
-          Close
+          {t("common.close")}
         </button>
       </div>
     </div>
@@ -319,7 +326,7 @@ const OtcOrderForm = ({
 }: FormProps) => (
   <form className="space-y-6" onSubmit={onSave}>
     <div className="space-y-3 border-b border-slate-200 pb-4">
-      <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
+      <h3 className="text-lg font-semibold text-slate-900">{t("orders.orderDetails")}</h3>
       <div className="flex gap-2">
         <select
           className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
@@ -457,13 +464,15 @@ const OtcOrderForm = ({
 
     <div className="space-y-3 border-b border-slate-200 pb-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">Receipts ({otcForm.fromCurrency})</h3>
+        <h3 className="text-lg font-semibold text-slate-900">
+          {t("orders.receipts")} ({otcForm.fromCurrency})
+        </h3>
         <button
           type="button"
           onClick={() => setOtcReceipts([...otcReceipts, { amount: "", accountId: "" }])}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
         >
-          Add Receipt
+          {t("orders.addReceipt")}
         </button>
       </div>
       {otcReceipts.map((receipt, index) => (
@@ -471,7 +480,7 @@ const OtcOrderForm = ({
           <input
             type="number"
             step="0.01"
-            placeholder="Amount"
+            placeholder={t("orders.amount")}
             value={receipt.amount}
             onChange={(e) => {
               const newReceipts = [...otcReceipts];
@@ -493,7 +502,9 @@ const OtcOrderForm = ({
               }}
               required
             >
-              <option value="">Select Account ({otcForm.fromCurrency})</option>
+              <option value="">
+                {t("orders.selectAccount")} ({otcForm.fromCurrency})
+              </option>
               {accounts
                 .filter((a) => a.currencyCode === otcForm.fromCurrency)
                 .map((acc) => (
@@ -507,25 +518,28 @@ const OtcOrderForm = ({
               onClick={() => setOtcReceipts(otcReceipts.filter((_, i) => i !== index))}
               className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
             >
-              Remove
+              {t("orders.remove")}
             </button>
           </div>
         </div>
       ))}
       <div className="text-sm text-slate-600">
-        Total: {otcReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0).toFixed(2)} {otcForm.fromCurrency}
+        {t("orders.total")}: {otcReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0).toFixed(2)}{" "}
+        {otcForm.fromCurrency}
       </div>
     </div>
 
     <div className="space-y-3 border-b border-slate-200 pb-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">Payments ({otcForm.toCurrency})</h3>
+        <h3 className="text-lg font-semibold text-slate-900">
+          {t("orders.payments")} ({otcForm.toCurrency})
+        </h3>
         <button
           type="button"
           onClick={() => setOtcPayments([...otcPayments, { amount: "", accountId: "" }])}
           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
         >
-          Add Payment
+          {t("orders.addPayment")}
         </button>
       </div>
       {otcPayments.map((payment, index) => (
@@ -533,7 +547,7 @@ const OtcOrderForm = ({
           <input
             type="number"
             step="0.01"
-            placeholder="Amount"
+            placeholder={t("orders.amount")}
             value={payment.amount}
             onChange={(e) => {
               const newPayments = [...otcPayments];
@@ -555,7 +569,9 @@ const OtcOrderForm = ({
               }}
               required
             >
-              <option value="">Select Account ({otcForm.toCurrency})</option>
+              <option value="">
+                {t("orders.selectAccount")} ({otcForm.toCurrency})
+              </option>
               {accounts
                 .filter((a) => a.currencyCode === otcForm.toCurrency)
                 .map((acc) => (
@@ -569,13 +585,14 @@ const OtcOrderForm = ({
               onClick={() => setOtcPayments(otcPayments.filter((_, i) => i !== index))}
               className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
             >
-              Remove
+              {t("orders.remove")}
             </button>
           </div>
         </div>
       ))}
       <div className="text-sm text-slate-600">
-        Total: {otcPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0).toFixed(2)} {otcForm.toCurrency}
+        {t("orders.total")}: {otcPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0).toFixed(2)}{" "}
+        {otcForm.toCurrency}
       </div>
     </div>
 
@@ -586,12 +603,12 @@ const OtcOrderForm = ({
           onClick={() => setShowOtcProfitSection(true)}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
         >
-          Add Profit
+          {t("orders.addProfit")}
         </button>
       ) : (
         <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-blue-900">Profit</h3>
+            <h3 className="font-semibold text-blue-900">{t("orders.profit")}</h3>
             <button
               type="button"
               onClick={() => {
@@ -602,14 +619,14 @@ const OtcOrderForm = ({
               }}
               className="text-blue-600 hover:text-blue-800 text-sm"
             >
-              Remove
+              {t("orders.remove")}
             </button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <input
               type="number"
               step="0.01"
-              placeholder="Amount"
+              placeholder={t("orders.amount")}
               value={otcProfitAmount}
               onChange={(e) => setOtcProfitAmount(e.target.value)}
               className="rounded-lg border border-blue-300 px-3 py-2"
@@ -623,7 +640,7 @@ const OtcOrderForm = ({
               }}
               className="rounded-lg border border-blue-300 px-3 py-2"
             >
-              <option value="">Select Currency</option>
+              <option value="">{t("orders.selectCurrency")}</option>
               {otcForm.fromCurrency && <option value={otcForm.fromCurrency}>{otcForm.fromCurrency}</option>}
               {otcForm.toCurrency && <option value={otcForm.toCurrency}>{otcForm.toCurrency}</option>}
             </select>
@@ -634,7 +651,9 @@ const OtcOrderForm = ({
               value={otcProfitAccountId}
               onChange={(e) => setOtcProfitAccountId(e.target.value)}
             >
-              <option value="">Select Account ({otcProfitCurrency})</option>
+              <option value="">
+                {t("orders.selectAccount")} ({otcProfitCurrency})
+              </option>
               {accounts
                 .filter((a) => a.currencyCode === otcProfitCurrency)
                 .map((acc) => (
@@ -655,12 +674,12 @@ const OtcOrderForm = ({
           onClick={() => setShowOtcServiceChargeSection(true)}
           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
         >
-          Add Service Charges
+          {t("orders.addServiceCharges")}
         </button>
       ) : (
         <div className="p-4 border border-green-200 rounded-lg bg-green-50">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-green-900">Service Charges</h3>
+            <h3 className="font-semibold text-green-900">{t("orders.serviceCharges")}</h3>
             <button
               type="button"
               onClick={() => {
@@ -671,14 +690,14 @@ const OtcOrderForm = ({
               }}
               className="text-green-600 hover:text-green-800 text-sm"
             >
-              Remove
+              {t("orders.remove")}
             </button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <input
               type="number"
               step="0.01"
-              placeholder="Amount (negative if paid by us)"
+              placeholder={t("orders.amountNegativeIfPaidByUs")}
               value={otcServiceChargeAmount}
               onChange={(e) => setOtcServiceChargeAmount(e.target.value)}
               className="rounded-lg border border-green-300 px-3 py-2"
@@ -692,7 +711,7 @@ const OtcOrderForm = ({
               }}
               className="rounded-lg border border-green-300 px-3 py-2"
             >
-              <option value="">Select Currency</option>
+              <option value="">{t("orders.selectCurrency")}</option>
               {otcForm.fromCurrency && <option value={otcForm.fromCurrency}>{otcForm.fromCurrency}</option>}
               {otcForm.toCurrency && <option value={otcForm.toCurrency}>{otcForm.toCurrency}</option>}
             </select>
@@ -703,7 +722,9 @@ const OtcOrderForm = ({
               value={otcServiceChargeAccountId}
               onChange={(e) => setOtcServiceChargeAccountId(e.target.value)}
             >
-              <option value="">Select Account ({otcServiceChargeCurrency})</option>
+              <option value="">
+                {t("orders.selectAccount")} ({otcServiceChargeCurrency})
+              </option>
               {accounts
                 .filter((a) => a.currencyCode === otcServiceChargeCurrency)
                 .map((acc) => (
@@ -730,7 +751,7 @@ const OtcOrderForm = ({
         disabled={isSaving}
         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
       >
-        {isSaving ? t("common.saving") : "Save"}
+        {isSaving ? t("common.saving") : t("common.save")}
       </button>
       <button
         type="button"
@@ -738,7 +759,7 @@ const OtcOrderForm = ({
         disabled={isSaving}
         className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-green-700 disabled:opacity-60 transition-colors"
       >
-        Complete
+        {t("orders.complete")}
       </button>
     </div>
   </form>
@@ -786,7 +807,11 @@ export default function OtcOrderModal({
 }: OtcOrderModalProps) {
   if (!isOpen) return null;
 
-  const heading = isOtcCompleted ? "View OTC Order" : otcEditingOrderId ? "Edit OTC Order" : "Create OTC Order";
+  const heading = isOtcCompleted
+    ? t("orders.viewOtcOrder")
+    : otcEditingOrderId
+      ? t("orders.editOtcOrder")
+      : t("orders.createOtcOrder");
 
   // Close on Escape
   useEffect(() => {
@@ -829,6 +854,7 @@ export default function OtcOrderModal({
               users={users}
               otcOrderDetails={otcOrderDetails}
               onClose={onClose}
+              t={t}
             />
           ) : (
             <OtcOrderForm
