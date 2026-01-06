@@ -26,11 +26,10 @@ export function ImportExpensesModal({
       onClose={onClose}
       onFileChange={onFileChange}
       onDownloadTemplate={onDownloadTemplate}
-      title={t("expenses.importExpenses") || "Import Expenses"}
-      description={t("expenses.importDescription") ||
-        "Select an Excel file (.xlsx) to import expenses. The 'Expenses' sheet must include: Account, Amount. Optional: Expense ID, Currency, Created By, Description, Tags. Note: Date will be set to current time when imported."}
-      templateButtonText={t("expenses.downloadTemplate") || "Download Template"}
-      importingText={t("expenses.importing") || "Importing..."}
+      title={t("expenses.importExpenses")}
+      description={t("expenses.importDescription")}
+      templateButtonText={t("expenses.downloadTemplate")}
+      importingText={t("expenses.importing")}
       cancelText={t("common.cancel")}
       closeAriaLabel={t("common.close")}
     />

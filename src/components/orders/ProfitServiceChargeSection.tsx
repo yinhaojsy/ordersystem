@@ -66,12 +66,12 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
   const handleSaveProfit = async () => {
     if (!orderId || !order) return;
     if (!profitAmount || !profitCurrency || !profitAccountId) {
-      alert(t("orders.pleaseFillAllFields") || "Please fill all fields");
+      alert(t("orders.pleaseFillAllFields"));
       return;
     }
     const amount = Number(profitAmount);
     if (isNaN(amount) || amount <= 0) {
-      alert(t("orders.pleaseEnterValidAmount") || "Please enter a valid amount");
+      alert(t("orders.pleaseEnterValidAmount"));
       return;
     }
     try {
@@ -83,7 +83,7 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
           profitAccountId: Number(profitAccountId),
         },
       }).unwrap();
-      alert(t("orders.profitUpdatedSuccessfully") || "Profit updated successfully");
+      alert(t("orders.profitUpdatedSuccessfully"));
       // Close the section after successful save
       setShowProfitSection(false);
       // Clear the form fields
@@ -92,7 +92,7 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
       setProfitAccountId("");
     } catch (error: any) {
       console.error("Error updating profit:", error);
-      const errorMessage = error?.data?.message || error?.message || "Failed to update profit";
+      const errorMessage = error?.data?.message || error?.message || t("orders.failedToUpdateProfit");
       alert(errorMessage);
     }
   };
@@ -100,12 +100,12 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
   const handleSaveServiceCharge = async () => {
     if (!orderId || !order) return;
     if (!serviceChargeAmount || !serviceChargeCurrency || !serviceChargeAccountId) {
-      alert(t("orders.pleaseFillAllFields") || "Please fill all fields");
+      alert(t("orders.pleaseFillAllFields"));
       return;
     }
     const amount = Number(serviceChargeAmount);
     if (isNaN(amount) || amount === 0) {
-      alert(t("orders.pleaseEnterValidAmount") || "Please enter a valid amount");
+      alert(t("orders.pleaseEnterValidAmount"));
       return;
     }
     try {
@@ -117,7 +117,7 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
           serviceChargeAccountId: Number(serviceChargeAccountId),
         },
       }).unwrap();
-      alert(t("orders.serviceChargeUpdatedSuccessfully") || "Service charge updated successfully");
+      alert(t("orders.serviceChargeUpdatedSuccessfully"));
       // Close the section after successful save
       setShowServiceChargeSection(false);
       // Clear the form fields
@@ -126,7 +126,7 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
       setServiceChargeAccountId("");
     } catch (error: any) {
       console.error("Error updating service charge:", error);
-      const errorMessage = error?.data?.message || error?.message || "Failed to update service charge";
+      const errorMessage = error?.data?.message || error?.message || t("orders.failedToUpdateServiceCharge");
       alert(errorMessage);
     }
   };
@@ -180,7 +180,7 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
             onClick={() => setShowProfitSection(true)}
             className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
           >
-            {t("orders.addProfit") || "ADD PROFIT"}
+            {t("orders.addProfit")}
           </button>
         )}
         {!showServiceChargeSection && !hasServiceCharge && (
@@ -189,7 +189,7 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
             onClick={() => setShowServiceChargeSection(true)}
             className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
           >
-            {t("orders.addServiceCharges") || "ADD SERVICE CHARGES"}
+            {t("orders.addServiceCharges")}
           </button>
         )}
       </div>

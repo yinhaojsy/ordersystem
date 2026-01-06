@@ -34,7 +34,7 @@ export function useTransfersImportExport({
       const result = await exportTransfersToExcel(exportQueryParams, t);
       setAlertModal({
         isOpen: true,
-        message: (t("transfers.exportSuccess") || "Successfully exported {{count}} transfers to {{fileName}}")
+        message: t("transfers.exportSuccess")
           .replace("{{count}}", result.count.toString())
           .replace("{{fileName}}", result.fileName),
         type: "success",
@@ -42,7 +42,7 @@ export function useTransfersImportExport({
     } catch (error) {
       setAlertModal({
         isOpen: true,
-        message: t("transfers.exportError") || "Failed to export transfers. Please try again.",
+        message: t("transfers.exportError"),
         type: "error",
       });
     } finally {
@@ -112,19 +112,19 @@ export function useTransfersImportExport({
           await addTransfer({ ...transferData, isImported: true }).unwrap();
           successCount++;
         } catch (error: any) {
-          errors.push(`Transfer ${transferData.fromAccountId} -> ${transferData.toAccountId}: ${error.message || "Unknown error"}`);
+          errors.push(`Transfer ${transferData.fromAccountId} -> ${transferData.toAccountId}: ${error.message || t("common.unknownError")}`);
           errorCount++;
         }
       }
 
       // Show results
-      let message = (t("transfers.importSuccess") || "Successfully imported {{count}} transfers").replace("{{count}}", successCount.toString());
+      let message = t("transfers.importSuccess").replace("{{count}}", successCount.toString());
       if (errorCount > 0) {
-        message += `. ${errorCount} transfers failed to import.`;
+        message += `. ${errorCount} ${t("transfers.transfersFailedToImport")}.`;
         if (errors.length > 0) {
-          message += `\n\nErrors:\n${errors.slice(0, 10).join("\n")}`;
+          message += `\n\n${t("transfers.errors")}:\n${errors.slice(0, 10).join("\n")}`;
           if (errors.length > 10) {
-            message += `\n... and ${errors.length - 10} more errors`;
+            message += `\n... ${t("transfers.andMoreErrors").replace("{{count}}", (errors.length - 10).toString())}`;
           }
         }
       }
@@ -139,23 +139,23 @@ export function useTransfersImportExport({
       // Reset file input
       e.target.value = "";
     } catch (error: any) {
-      const errorMessage = error.message || "Unknown error";
+      const errorMessage = error.message || t("common.unknownError");
       if (errorMessage.includes("Transfers sheet not found")) {
         setAlertModal({
           isOpen: true,
-          message: t("transfers.transfersSheetNotFound") || "Transfers sheet not found in the file",
+          message: t("transfers.transfersSheetNotFound"),
           type: "error",
         });
       } else if (errorMessage.includes("No transfers found")) {
         setAlertModal({
           isOpen: true,
-          message: t("transfers.noTransfersInFile") || "No transfers found in the file",
+          message: t("transfers.noTransfersInFile"),
           type: "error",
         });
       } else {
         setAlertModal({
           isOpen: true,
-          message: t("transfers.importError") || `Failed to import transfers: ${errorMessage}`,
+          message: `${t("transfers.importError")}: ${errorMessage}`,
           type: "error",
         });
       }

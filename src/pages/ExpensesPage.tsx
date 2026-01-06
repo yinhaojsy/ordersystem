@@ -89,8 +89,8 @@ export default function ExpensesPage() {
     setConfirmModal: setBatchDeleteConfirmModal,
   } = useBatchDelete({
     deleteSingle: (id: number) => deleteExpense({ id, deletedBy: authUser?.id }),
-    confirmMessage: t("expenses.confirmDelete") || "Are you sure you want to delete this expense?",
-    confirmBulkMessage: t("expenses.confirmDeleteSelected") || "Are you sure you want to delete the selected expenses?",
+    confirmMessage: t("expenses.confirmDelete"),
+    confirmBulkMessage: t("expenses.confirmDeleteSelected"),
     errorMessage: t("expenses.errorDeleting"),
     t,
     setAlertModal,
@@ -242,7 +242,7 @@ export default function ExpensesPage() {
     if (!isImage && !isPDF) {
       setAlertModal({ 
         isOpen: true, 
-        message: t("expenses.invalidImageFile") || "Please upload an image file or PDF", 
+        message: t("expenses.invalidImageFile"), 
         type: "error" 
       });
       return;
@@ -335,7 +335,7 @@ export default function ExpensesPage() {
     if (!accountId || !amount || !description) {
       setAlertModal({ 
         isOpen: true, 
-        message: t("expenses.accountAndAmountRequired") || "Account and amount are required", 
+        message: t("expenses.accountAndAmountRequired"), 
         type: "warning" 
       });
       return;
@@ -348,7 +348,7 @@ export default function ExpensesPage() {
     if (isNaN(accountIdNum) || accountIdNum <= 0) {
       setAlertModal({ 
         isOpen: true, 
-        message: t("expenses.invalidAccount") || "Please select a valid account", 
+        message: t("expenses.invalidAccount"), 
         type: "warning" 
       });
       return;
@@ -357,7 +357,7 @@ export default function ExpensesPage() {
     if (isNaN(amountNum) || amountNum <= 0) {
       setAlertModal({ 
         isOpen: true, 
-        message: t("expenses.invalidAmount") || "Amount must be a positive number", 
+        message: t("expenses.invalidAmount"), 
         type: "warning" 
       });
       return;
@@ -525,7 +525,7 @@ export default function ExpensesPage() {
     if (selectedTagIds.length === 0) {
       setAlertModal({
         isOpen: true,
-        message: t("expenses.selectAtLeastOneTag") || "Please select at least one tag",
+        message: t("expenses.selectAtLeastOneTag"),
         type: "error",
       });
       return;
@@ -544,7 +544,7 @@ export default function ExpensesPage() {
       
       setAlertModal({
         isOpen: true,
-        message: t("expenses.tagsApplied") || "Tags applied successfully",
+        message: t("expenses.tagsApplied"),
         type: "success",
       });
       
@@ -558,7 +558,7 @@ export default function ExpensesPage() {
     } catch (error: any) {
       setAlertModal({
         isOpen: true,
-        message: error?.data?.message || t("expenses.tagError") || "Failed to apply tags",
+        message: error?.data?.message || t("expenses.tagError"),
         type: "error",
       });
     }
@@ -568,7 +568,7 @@ export default function ExpensesPage() {
     if (selectedTagIds.length === 0) {
       setAlertModal({
         isOpen: true,
-        message: t("expenses.selectAtLeastOneTag") || "Please select at least one tag",
+        message: t("expenses.selectAtLeastOneTag"),
         type: "error",
       });
       return;
@@ -587,7 +587,7 @@ export default function ExpensesPage() {
 
       setAlertModal({
         isOpen: true,
-        message: t("expenses.tagsRemovedSuccess") || "Tags removed successfully",
+        message: t("expenses.tagsRemovedSuccess"),
         type: "success",
       });
 
@@ -604,8 +604,7 @@ export default function ExpensesPage() {
         message:
           error?.data?.message ||
           error?.message ||
-          t("expenses.failedToRemoveTags") ||
-          "Failed to remove tags",
+          t("expenses.failedToRemoveTags"),
         type: "error",
       });
     }
@@ -627,12 +626,12 @@ export default function ExpensesPage() {
 
   const tagFilterLabel = useMemo(() => {
     if (filters.tagIds.length === 0) {
-      return t("expenses.allTags") || "All Tags";
+      return t("expenses.allTags");
     }
     if (filters.tagIds.length === 1) {
       return selectedTagNames[0] || "";
     }
-    return `${filters.tagIds.length} ${t("expenses.tagsSelected") || "tags selected"}`;
+    return `${filters.tagIds.length} ${t("expenses.tagsSelected")}`;
   }, [filters.tagIds.length, selectedTagNames, t]);
 
   const handleTagFilterKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -841,10 +840,10 @@ export default function ExpensesPage() {
               className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
             >
               {isTagging || isUntagging
-                ? t("expenses.tagging") || "Tagging..."
+                ? t("expenses.tagging")
                 : isBatchTagMode
-                  ? (selectedExpenseIds.length > 0 ? t("expenses.addTags") || "Add Tags" : t("common.cancel"))
-                  : t("expenses.addTag") || "Add Tag"}
+                  ? (selectedExpenseIds.length > 0 ? t("expenses.addTags") : t("common.cancel"))
+                  : t("expenses.addTag")}
             </button>
             {hasActionPermission(authUser, "deleteExpense") && (
               <button
@@ -886,7 +885,7 @@ export default function ExpensesPage() {
                   d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                 />
               </svg>
-              {t("expenses.import") || "Import Expenses"}
+              {t("expenses.import")}
             </button>
             <ColumnDropdown
               isOpen={isColumnDropdownOpen}
@@ -1621,13 +1620,13 @@ export default function ExpensesPage() {
         onRemove={handleRemoveTags}
         isApplying={isTagging}
         isRemoving={isUntagging}
-        title={t("expenses.selectTags") || "Select Tags"}
-        noTagsMessage={t("expenses.noTagsAvailable") || "No tags available. Create tags in the Tags page."}
-        selectAtLeastOneMessage={t("expenses.selectAtLeastOneTag") || "Please select at least one tag"}
-        applyButtonText={t("expenses.apply") || "Apply"}
-        removeButtonText={t("expenses.remove") || "Remove"}
+        title={t("expenses.selectTags")}
+        noTagsMessage={t("expenses.noTagsAvailable")}
+        selectAtLeastOneMessage={t("expenses.selectAtLeastOneTag")}
+        applyButtonText={t("expenses.apply")}
+        removeButtonText={t("expenses.remove")}
         cancelButtonText={t("common.cancel")}
-        applyingText={t("expenses.applying") || "Applying..."}
+        applyingText={t("expenses.applying")}
         savingText={t("common.saving")}
         t={t}
       />

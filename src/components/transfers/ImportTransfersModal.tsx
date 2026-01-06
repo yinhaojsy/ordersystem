@@ -26,11 +26,10 @@ export function ImportTransfersModal({
       onClose={onClose}
       onFileChange={onFileChange}
       onDownloadTemplate={onDownloadTemplate}
-      title={t("transfers.importTransfers") || "Import Transfers"}
-      description={t("transfers.importDescription") ||
-        "Select an Excel file (.xlsx) to import transfers. The 'Transfers' sheet must include: From Account, To Account, Amount, Description. Optional: Transfer ID, Currency, Created By, Transaction Fee, Tags. Note: From Account and To Account must have the same currency. Date will be set to current time when imported."}
-      templateButtonText={t("transfers.downloadTemplate") || "Download Template"}
-      importingText={t("transfers.importing") || "Importing..."}
+      title={t("transfers.importTransfers")}
+      description={t("transfers.importDescription")}
+      templateButtonText={t("transfers.downloadTemplate")}
+      importingText={t("transfers.importing")}
       cancelText={t("common.cancel")}
       closeAriaLabel={t("common.close")}
     />

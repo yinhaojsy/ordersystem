@@ -34,7 +34,7 @@ export function useExpensesImportExport({
       const result = await exportExpensesToExcel(exportQueryParams, t);
       setAlertModal({
         isOpen: true,
-        message: (t("expenses.exportSuccess") || "Successfully exported {{count}} expenses to {{fileName}}")
+        message: t("expenses.exportSuccess")
           .replace("{{count}}", result.count.toString())
           .replace("{{fileName}}", result.fileName),
         type: "success",
@@ -42,7 +42,7 @@ export function useExpensesImportExport({
     } catch (error) {
       setAlertModal({
         isOpen: true,
-        message: t("expenses.exportError") || "Failed to export expenses. Please try again.",
+        message: t("expenses.exportError"),
         type: "error",
       });
     } finally {
@@ -108,19 +108,19 @@ export function useExpensesImportExport({
           await addExpense({ ...expenseData, isImported: true }).unwrap();
           successCount++;
         } catch (error: any) {
-          errors.push(`Expense ${expenseData.accountId}: ${error.message || "Unknown error"}`);
+          errors.push(`Expense ${expenseData.accountId}: ${error.message || t("common.unknownError")}`);
           errorCount++;
         }
       }
 
       // Show results
-      let message = (t("expenses.importSuccess") || "Successfully imported {{count}} expenses").replace("{{count}}", successCount.toString());
+      let message = t("expenses.importSuccess").replace("{{count}}", successCount.toString());
       if (errorCount > 0) {
-        message += `. ${errorCount} expenses failed to import.`;
+        message += `. ${errorCount} ${t("expenses.expensesFailedToImport")}.`;
         if (errors.length > 0) {
-          message += `\n\nErrors:\n${errors.slice(0, 10).join("\n")}`;
+          message += `\n\n${t("expenses.errors")}:\n${errors.slice(0, 10).join("\n")}`;
           if (errors.length > 10) {
-            message += `\n... and ${errors.length - 10} more errors`;
+            message += `\n... ${t("expenses.andMoreErrors").replace("{{count}}", (errors.length - 10).toString())}`;
           }
         }
       }
@@ -135,23 +135,23 @@ export function useExpensesImportExport({
       // Reset file input
       e.target.value = "";
     } catch (error: any) {
-      const errorMessage = error.message || "Unknown error";
+      const errorMessage = error.message || t("common.unknownError");
       if (errorMessage.includes("Expenses sheet not found")) {
         setAlertModal({
           isOpen: true,
-          message: t("expenses.expensesSheetNotFound") || "Expenses sheet not found in the file",
+          message: t("expenses.expensesSheetNotFound"),
           type: "error",
         });
       } else if (errorMessage.includes("No expenses found")) {
         setAlertModal({
           isOpen: true,
-          message: t("expenses.noExpensesInFile") || "No expenses found in the file",
+          message: t("expenses.noExpensesInFile"),
           type: "error",
         });
       } else {
         setAlertModal({
           isOpen: true,
-          message: t("expenses.importError") || `Failed to import expenses: ${errorMessage}`,
+          message: `${t("expenses.importError")}: ${errorMessage}`,
           type: "error",
         });
       }

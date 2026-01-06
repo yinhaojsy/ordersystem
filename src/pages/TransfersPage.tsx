@@ -89,8 +89,8 @@ export default function TransfersPage() {
     setConfirmModal: setBatchDeleteConfirmModal,
   } = useBatchDelete({
     deleteSingle: (id: number) => deleteTransfer(id),
-    confirmMessage: t("transfers.confirmDelete") || "Are you sure you want to delete this transfer?",
-    confirmBulkMessage: t("transfers.confirmDeleteSelected") || "Are you sure you want to delete the selected transfers?",
+    confirmMessage: t("transfers.confirmDelete"),
+    confirmBulkMessage: t("transfers.confirmDeleteSelected"),
     errorMessage: t("transfers.errorDeleting"),
     t,
     setAlertModal,
@@ -366,7 +366,7 @@ export default function TransfersPage() {
     if (selectedTagIds.length === 0) {
       setAlertModal({
         isOpen: true,
-        message: t("transfers.selectAtLeastOneTag") || "Please select at least one tag",
+        message: t("transfers.selectAtLeastOneTag"),
         type: "error",
       });
       return;
@@ -385,7 +385,7 @@ export default function TransfersPage() {
       
       setAlertModal({
         isOpen: true,
-        message: t("transfers.tagsApplied") || "Tags applied successfully",
+        message: t("transfers.tagsApplied"),
         type: "success",
       });
       
@@ -399,7 +399,7 @@ export default function TransfersPage() {
     } catch (error: any) {
       setAlertModal({
         isOpen: true,
-        message: error?.data?.message || t("transfers.tagError") || "Failed to apply tags",
+        message: error?.data?.message || t("transfers.tagError"),
         type: "error",
       });
     }
@@ -409,7 +409,7 @@ export default function TransfersPage() {
     if (selectedTagIds.length === 0) {
       setAlertModal({
         isOpen: true,
-        message: t("transfers.selectAtLeastOneTag") || "Please select at least one tag",
+        message: t("transfers.selectAtLeastOneTag"),
         type: "error",
       });
       return;
@@ -428,7 +428,7 @@ export default function TransfersPage() {
 
       setAlertModal({
         isOpen: true,
-        message: t("transfers.tagsRemovedSuccess") || "Tags removed successfully",
+        message: t("transfers.tagsRemovedSuccess"),
         type: "success",
       });
 
@@ -445,8 +445,7 @@ export default function TransfersPage() {
         message:
           error?.data?.message ||
           error?.message ||
-          t("transfers.failedToRemoveTags") ||
-          "Failed to remove tags",
+          t("transfers.failedToRemoveTags"),
         type: "error",
       });
     }
@@ -468,12 +467,12 @@ export default function TransfersPage() {
 
   const tagFilterLabel = useMemo(() => {
     if (filters.tagIds.length === 0) {
-      return t("transfers.allTags") || "All Tags";
+      return t("transfers.allTags");
     }
     if (filters.tagIds.length === 1) {
       return selectedTagNames[0] || "";
     }
-    return `${filters.tagIds.length} ${t("transfers.tagsSelected") || "tags selected"}`;
+    return `${filters.tagIds.length} ${t("transfers.tagsSelected")}`;
   }, [filters.tagIds.length, selectedTagNames, t]);
 
   const handleTagFilterKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -637,10 +636,10 @@ export default function TransfersPage() {
               className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
             >
               {isTagging || isUntagging
-                ? t("transfers.tagging") || "Tagging..."
+                ? t("transfers.tagging")
                 : isBatchTagMode
-                  ? (selectedTransferIds.length > 0 ? t("transfers.addTags") || "Add Tags" : t("common.cancel"))
-                  : t("transfers.addTag") || "Add Tag"}
+                  ? (selectedTransferIds.length > 0 ? t("transfers.addTags") : t("common.cancel"))
+                  : t("transfers.addTag")}
             </button>
             {hasActionPermission(authUser, "deleteTransfer") && (
               <button
@@ -660,7 +659,7 @@ export default function TransfersPage() {
                     // Delete selected transfers
                     setConfirmModal({
                       isOpen: true,
-                      message: t("transfers.confirmDelete") || "Are you sure you want to delete the selected transfers?",
+                      message: t("transfers.confirmDeleteSelected"),
                       transferId: -1,
                       isBulk: true,
                     });
@@ -693,7 +692,7 @@ export default function TransfersPage() {
                   d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                 />
               </svg>
-              {t("transfers.import") || "Import Transfers"}
+              {t("transfers.import")}
             </button>
             <ColumnDropdown
               isOpen={isColumnDropdownOpen}
@@ -1281,13 +1280,13 @@ export default function TransfersPage() {
         onRemove={handleRemoveTags}
         isApplying={isTagging}
         isRemoving={isUntagging}
-        title={t("transfers.selectTags") || "Select Tags"}
-        noTagsMessage={t("transfers.noTagsAvailable") || "No tags available. Create tags in the Tags page."}
-        selectAtLeastOneMessage={t("transfers.selectAtLeastOneTag") || "Please select at least one tag"}
-        applyButtonText={t("transfers.apply") || "Apply"}
-        removeButtonText={t("transfers.remove") || "Remove"}
+        title={t("transfers.selectTags")}
+        noTagsMessage={t("transfers.noTagsAvailable")}
+        selectAtLeastOneMessage={t("transfers.selectAtLeastOneTag")}
+        applyButtonText={t("transfers.apply")}
+        removeButtonText={t("transfers.remove")}
         cancelButtonText={t("common.cancel")}
-        applyingText={t("transfers.applying") || "Applying..."}
+        applyingText={t("transfers.applying")}
         savingText={t("common.saving")}
         t={t}
       />

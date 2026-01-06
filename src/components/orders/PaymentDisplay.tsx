@@ -33,36 +33,36 @@ export const PaymentDisplay: React.FC<PaymentDisplayProps> = ({
             <button
               type="button"
               onClick={async () => {
-                if (window.confirm(t("orders.confirmPaymentQuestion") || "Confirm this payment?")) {
+                if (window.confirm(t("orders.confirmPaymentQuestion"))) {
                   try {
                     await onConfirm(payment.id);
                   } catch (error: any) {
                     console.error("Error confirming payment:", error);
-                    const errorMessage = error?.data?.message || error?.message || "Failed to confirm payment";
+                    const errorMessage = error?.data?.message || error?.message || t("orders.failedToConfirmPayment");
                     alert(errorMessage);
                   }
                 }
               }}
               className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
             >
-              {t("common.confirm") || "Confirm"}
+              {t("common.confirm")}
             </button>
             <button
               type="button"
               onClick={async () => {
-                if (window.confirm(t("orders.deletePaymentQuestion") || "Delete this payment?")) {
+                if (window.confirm(t("orders.deletePaymentQuestion"))) {
                   try {
                     await onDelete(payment.id);
                   } catch (error: any) {
                     console.error("Error deleting payment:", error);
-                    const errorMessage = error?.data?.message || error?.message || "Failed to delete payment";
+                    const errorMessage = error?.data?.message || error?.message || t("orders.failedToDeletePayment");
                     alert(errorMessage);
                   }
                 }
               }}
               className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
             >
-              {t("common.delete") || "Delete"}
+              {t("common.delete")}
             </button>
           </div>
         )}
@@ -72,7 +72,7 @@ export const PaymentDisplay: React.FC<PaymentDisplayProps> = ({
           src={payment.imagePath}
           alt="Payment"
           className="w-48 h-72 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity mb-2"
-          onClick={() => onViewImage(payment.imagePath, 'image', t("orders.paymentUploads") || "Payment Uploads")}
+          onClick={() => onViewImage(payment.imagePath, 'image', t("orders.paymentUploads"))}
         />
       ) : getFileType(payment.imagePath) === 'pdf' ? (
         <div

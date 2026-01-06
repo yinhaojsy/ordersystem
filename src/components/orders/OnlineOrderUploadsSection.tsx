@@ -219,7 +219,7 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
             }}
             className="mt-4 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
           >
-            {t("orders.addReceipt") || "ADD RECEIPT"}
+            {t("orders.addReceipt")}
           </button>
         )}
       </div>
@@ -323,7 +323,7 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
                 : "text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
             }`}
           >
-            {t("orders.addPayment") || "ADD PAYMENT"}
+            {t("orders.addPayment")}
           </button>
         )}
       </div>

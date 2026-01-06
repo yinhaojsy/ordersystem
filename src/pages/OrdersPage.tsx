@@ -217,8 +217,8 @@ export default function OrdersPage() {
     setConfirmModal: setBatchDeleteConfirmModal,
   } = useBatchDelete({
     deleteSingle: (id: number) => deleteOrder(id),
-    confirmMessage: t("orders.confirmDeleteOrder") || "Are you sure you want to delete this order?",
-    confirmBulkMessage: t("orders.confirmDeleteSelected") || "Are you sure you want to delete the selected orders?",
+    confirmMessage: t("orders.confirmDeleteOrder"),
+    confirmBulkMessage: t("orders.confirmDeleteSelected"),
     errorMessage: t("orders.errorDeleting"),
     t,
     setAlertModal,
@@ -284,7 +284,7 @@ export default function OrdersPage() {
   );
   const tagFilterLabel = useMemo(() => {
     if (selectedTagNames.length === 0) {
-      return t("orders.selectTag") || "Select tags";
+      return t("orders.selectTag");
     }
     return selectedTagNames.join(", ");
   }, [selectedTagNames, t]);
@@ -442,17 +442,17 @@ export default function OrdersPage() {
             <div className={summaryClass}>
               <div className="p-3 border border-blue-200 rounded-lg bg-blue-50">
                 <h3 className="font-semibold text-blue-900 mb-2">
-                  {t("orders.profit") || "Profit"}
+                  {t("orders.profit")}
                 </h3>
                 <div className="text-sm text-slate-600 space-y-1">
                   <div>
-                    {t("orders.profitAmount") || "Profit Amount"}:{" "}
+                    {t("orders.profitAmount")}:{" "}
                     {order.profitAmount > 0 ? "+" : ""}
                     {order.profitAmount.toFixed(2)} {order.profitCurrency || ""}
                   </div>
                   {order.profitAccountId && (
                     <div className="text-slate-500">
-                      {t("orders.account") || "Account"}:{" "}
+                      {t("orders.account")}:{" "}
                       {accounts.find((acc) => acc.id === order.profitAccountId)?.name ||
                         `Account #${order.profitAccountId}`}
                     </div>
@@ -467,18 +467,18 @@ export default function OrdersPage() {
             <div className={summaryClass}>
               <div className="p-3 border border-green-200 rounded-lg bg-green-50">
                 <h3 className="font-semibold text-green-900 mb-2">
-                  {t("orders.serviceCharges") || "Service Charges"}
+                  {t("orders.serviceCharges")}
                 </h3>
                 <div className="text-sm text-slate-600 space-y-1">
                   <div>
-                    {t("orders.serviceChargeAmount") || "Service Charge Amount"}:{" "}
+                    {t("orders.serviceChargeAmount")}:{" "}
                     {order.serviceChargeAmount > 0 ? "+" : ""}
                     {order.serviceChargeAmount.toFixed(2)}{" "}
                     {order.serviceChargeCurrency || ""}
                   </div>
                   {order.serviceChargeAccountId && (
                     <div className="text-slate-500">
-                      {t("orders.account") || "Account"}:{" "}
+                      {t("orders.account")}:{" "}
                       {accounts.find((acc) => acc.id === order.serviceChargeAccountId)?.name ||
                         `Account #${order.serviceChargeAccountId}`}
                     </div>
@@ -848,7 +848,7 @@ export default function OrdersPage() {
     if (selectedTagIds.length === 0) {
       setAlertModal({
         isOpen: true,
-        message: t("orders.selectAtLeastOneTag") || "Please select at least one tag",
+        message: t("orders.selectAtLeastOneTag"),
         type: "error",
       });
       return;
@@ -869,7 +869,7 @@ export default function OrdersPage() {
       // Show success message
       setAlertModal({
         isOpen: true,
-        message: t("orders.tagsApplied") || "Tags applied successfully",
+        message: t("orders.tagsApplied"),
         type: "success",
       });
       
@@ -884,7 +884,7 @@ export default function OrdersPage() {
     } catch (error: any) {
       setAlertModal({
         isOpen: true,
-        message: error?.data?.message || t("orders.tagError") || "Failed to apply tags",
+        message: error?.data?.message || t("orders.tagError"),
         type: "error",
       });
     }
@@ -894,7 +894,7 @@ export default function OrdersPage() {
     if (selectedTagIds.length === 0) {
       setAlertModal({
         isOpen: true,
-        message: t("orders.selectAtLeastOneTag") || "Please select at least one tag",
+        message: t("orders.selectAtLeastOneTag"),
         type: "error",
       });
       return;
@@ -913,7 +913,7 @@ export default function OrdersPage() {
 
       setAlertModal({
         isOpen: true,
-        message: t("orders.tagsRemovedSuccess") || "Tags removed successfully",
+        message: t("orders.tagsRemovedSuccess"),
         type: "success",
       });
 
@@ -1165,10 +1165,10 @@ export default function OrdersPage() {
               className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
             >
               {isTagging 
-                ? t("orders.tagging") || "Tagging..." 
+                ? t("orders.tagging")
                 : isBatchTagMode 
-                  ? (selectedOrderIds.length > 0 ? t("orders.addTags") || "Add Tags" : t("common.cancel"))
-                  : t("orders.addTag") || "Add Tag"}
+                  ? (selectedOrderIds.length > 0 ? t("orders.addTags") : t("common.cancel"))
+                  : t("orders.addTag")}
             </button>
             {canDeleteManyOrders && (
               <button
@@ -1209,7 +1209,7 @@ export default function OrdersPage() {
                   d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                 />
               </svg>
-              {t("orders.import") || "Import Orders"}
+              {t("orders.import")}
             </button>
             <OrdersColumnDropdown
               isOpen={isColumnDropdownOpen}

@@ -33,36 +33,36 @@ export const ReceiptDisplay: React.FC<ReceiptDisplayProps> = ({
             <button
               type="button"
               onClick={async () => {
-                if (window.confirm(t("orders.confirmReceiptQuestion") || "Confirm this receipt?")) {
+                if (window.confirm(t("orders.confirmReceiptQuestion"))) {
                   try {
                     await onConfirm(receipt.id);
                   } catch (error: any) {
                     console.error("Error confirming receipt:", error);
-                    const errorMessage = error?.data?.message || error?.message || "Failed to confirm receipt";
+                    const errorMessage = error?.data?.message || error?.message || t("orders.failedToConfirmReceipt");
                     alert(errorMessage);
                   }
                 }
               }}
               className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
             >
-              {t("common.confirm") || "Confirm"}
+              {t("common.confirm")}
             </button>
             <button
               type="button"
               onClick={async () => {
-                if (window.confirm(t("orders.deleteReceiptQuestion") || "Delete this receipt?")) {
+                if (window.confirm(t("orders.deleteReceiptQuestion"))) {
                   try {
                     await onDelete(receipt.id);
                   } catch (error: any) {
                     console.error("Error deleting receipt:", error);
-                    const errorMessage = error?.data?.message || error?.message || "Failed to delete receipt";
+                    const errorMessage = error?.data?.message || error?.message || t("orders.failedToDeleteReceipt");
                     alert(errorMessage);
                   }
                 }
               }}
               className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
             >
-              {t("common.delete") || "Delete"}
+              {t("common.delete")}
             </button>
           </div>
         )}
@@ -72,7 +72,7 @@ export const ReceiptDisplay: React.FC<ReceiptDisplayProps> = ({
           src={receipt.imagePath}
           alt="Receipt"
           className="w-48 h-72 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity mb-2"
-          onClick={() => onViewImage(receipt.imagePath, 'image', t("orders.receiptUploads") || "Receipt Uploads")}
+          onClick={() => onViewImage(receipt.imagePath, 'image', t("orders.receiptUploads"))}
         />
       ) : getFileType(receipt.imagePath) === 'pdf' ? (
         <div
