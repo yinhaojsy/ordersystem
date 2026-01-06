@@ -752,8 +752,8 @@ export const deleteExpense = (req, res, next) => {
         ? `Expense: ${expense.description}`
         : "Expense";
       
-      // Use the expense's original createdAt if available, otherwise use current time
-      const reversalCreatedAt = expense.createdAt || new Date().toISOString();
+      // Always use current time for reversal to ensure it appears as the latest transaction
+      const reversalCreatedAt = new Date().toISOString();
       
       db.prepare(
         `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
