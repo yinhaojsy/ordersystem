@@ -2,6 +2,7 @@
 nixPkgs = ["nodejs_22", "python3", "npm-9_x"]
 
 [phases.install]
+env = { NPM_CONFIG_PRODUCTION = "false" }
 cmds = ["npm ci"]
 
 [phases.build]
