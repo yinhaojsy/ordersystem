@@ -1,9 +1,11 @@
 import React, { useEffect, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import Badge from "../common/Badge";
 import { formatDate } from "../../utils/format";
+import { RemarksSection } from "./RemarksSection";
 import type { Account } from "../../types";
 
 type BasicEntity = { id: number; name: string };
+type UserEntity = { id: number; name: string; role?: string };
 type Currency = { id: number; code: string; active?: boolean | number };
 
 export type OtcFormState = {
@@ -35,6 +37,7 @@ export type OtcOrderDetails = {
     serviceChargeAmount?: number | null;
     serviceChargeCurrency?: string | null;
     serviceChargeAccountId?: number | null;
+    remarks?: string | null;
   };
   receipts?: Array<{ amount: number; accountId?: number | null; accountName?: string }>;
   payments?: Array<{ amount: number; accountId?: number | null; accountName?: string }>;
@@ -47,7 +50,7 @@ type OtcOrderModalProps = {
   otcEditingOrderId: number | null;
   otcOrderDetails?: OtcOrderDetails | null;
   customers: BasicEntity[];
-  users: BasicEntity[];
+  users: UserEntity[];
   currencies: Currency[];
   accounts: Account[];
   otcForm: OtcFormState;
@@ -72,6 +75,10 @@ type OtcOrderModalProps = {
   setOtcServiceChargeCurrency: Dispatch<SetStateAction<string>>;
   otcServiceChargeAccountId: string;
   setOtcServiceChargeAccountId: Dispatch<SetStateAction<string>>;
+  otcRemarks: string;
+  setOtcRemarks: Dispatch<SetStateAction<string>>;
+  showOtcRemarks: boolean;
+  setShowOtcRemarks: Dispatch<SetStateAction<boolean>>;
   handleNumberInputWheel: (e: React.WheelEvent<HTMLInputElement>) => void;
   getBaseCurrency: (fromCurrency: string, toCurrency: string) => boolean | null;
   onSave: (event: FormEvent) => void;
@@ -93,7 +100,7 @@ type ViewProps = {
 type FormProps = {
   accounts: Account[];
   customers: BasicEntity[];
-  users: BasicEntity[];
+  users: UserEntity[];
   currencies: Currency[];
   otcForm: OtcFormState;
   setOtcForm: Dispatch<SetStateAction<OtcFormState>>;
@@ -117,6 +124,10 @@ type FormProps = {
   setOtcServiceChargeCurrency: Dispatch<SetStateAction<string>>;
   otcServiceChargeAccountId: string;
   setOtcServiceChargeAccountId: Dispatch<SetStateAction<string>>;
+  otcRemarks: string;
+  setOtcRemarks: Dispatch<SetStateAction<string>>;
+  showOtcRemarks: boolean;
+  setShowOtcRemarks: Dispatch<SetStateAction<boolean>>;
   handleNumberInputWheel: (e: React.WheelEvent<HTMLInputElement>) => void;
   getBaseCurrency: (fromCurrency: string, toCurrency: string) => boolean | null;
   onSave: (event: FormEvent) => void;
@@ -275,6 +286,15 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose, t 
           </div>
         )}
 
+      {order.remarks && (
+        <div className="space-y-3 border-b border-slate-200 pb-4">
+          <h3 className="text-lg font-semibold text-slate-900">{t("orders.remarks") || "Remarks"}</h3>
+          <div className="p-3 bg-slate-50 rounded-lg">
+            <p className="text-sm text-slate-900 whitespace-pre-wrap">{order.remarks}</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end">
         <button
           type="button"
@@ -315,6 +335,10 @@ const OtcOrderForm = ({
   setOtcServiceChargeCurrency,
   otcServiceChargeAccountId,
   setOtcServiceChargeAccountId,
+  otcRemarks,
+  setOtcRemarks,
+  showOtcRemarks,
+  setShowOtcRemarks,
   handleNumberInputWheel,
   getBaseCurrency,
   onSave,
@@ -454,7 +478,7 @@ const OtcOrderForm = ({
         required
       >
         <option value="">{t("orders.selectHandler")}</option>
-        {users.map((user) => (
+        {users.filter((user) => user.role !== "admin").map((user) => (
           <option key={user.id} value={user.id}>
             {user.name}
           </option>
@@ -738,6 +762,14 @@ const OtcOrderForm = ({
       )}
     </div>
 
+    <RemarksSection
+      remarks={otcRemarks}
+      setRemarks={setOtcRemarks}
+      showRemarks={showOtcRemarks}
+      setShowRemarks={setShowOtcRemarks}
+      t={t}
+    />
+
     <div className="flex gap-3 justify-end">
       <button
         type="button"
@@ -797,6 +829,10 @@ export default function OtcOrderModal({
   setOtcServiceChargeCurrency,
   otcServiceChargeAccountId,
   setOtcServiceChargeAccountId,
+  otcRemarks,
+  setOtcRemarks,
+  showOtcRemarks,
+  setShowOtcRemarks,
   handleNumberInputWheel,
   getBaseCurrency,
   onSave,
@@ -805,8 +841,6 @@ export default function OtcOrderModal({
   setIsCreateCustomerModalOpen,
   t,
 }: OtcOrderModalProps) {
-  if (!isOpen) return null;
-
   const heading = isOtcCompleted
     ? t("orders.viewOtcOrder")
     : otcEditingOrderId
@@ -815,6 +849,8 @@ export default function OtcOrderModal({
 
   // Close on Escape
   useEffect(() => {
+    if (!isOpen) return;
+    
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
@@ -822,7 +858,9 @@ export default function OtcOrderModal({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -884,6 +922,10 @@ export default function OtcOrderModal({
               setOtcServiceChargeCurrency={setOtcServiceChargeCurrency}
               otcServiceChargeAccountId={otcServiceChargeAccountId}
               setOtcServiceChargeAccountId={setOtcServiceChargeAccountId}
+              otcRemarks={otcRemarks}
+              setOtcRemarks={setOtcRemarks}
+              showOtcRemarks={showOtcRemarks}
+              setShowOtcRemarks={setShowOtcRemarks}
               handleNumberInputWheel={handleNumberInputWheel}
               getBaseCurrency={getBaseCurrency}
               onSave={onSave}

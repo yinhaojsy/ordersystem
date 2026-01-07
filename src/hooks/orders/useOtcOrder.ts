@@ -63,6 +63,8 @@ export function useOtcOrder(
   const [showOtcProfitSection, setShowOtcProfitSection] = useState(false);
   const [showOtcServiceChargeSection, setShowOtcServiceChargeSection] = useState(false);
   const [otcCalculatedField, setOtcCalculatedField] = useState<"buy" | "sell" | null>(null);
+  const [otcRemarks, setOtcRemarks] = useState<string>("");
+  const [showOtcRemarks, setShowOtcRemarks] = useState(false);
 
   const { data: otcOrderDetails } = useGetOrderDetailsQuery(otcEditingOrderId || 0, {
     skip: !otcEditingOrderId,
@@ -128,6 +130,17 @@ export function useOtcOrder(
         setOtcServiceChargeAccountId(order.serviceChargeAccountId ? String(order.serviceChargeAccountId) : "");
         setShowOtcServiceChargeSection(true);
       }
+      // Load remarks if available
+      // Check if remarks exists (could be string, null, or undefined)
+      const remarksValue = (order as any).remarks;
+      if (remarksValue !== null && remarksValue !== undefined && remarksValue.trim() !== "") {
+        setOtcRemarks(remarksValue);
+        setShowOtcRemarks(true);
+      } else {
+        // Reset remarks state if no remarks exist
+        setOtcRemarks("");
+        setShowOtcRemarks(false);
+      }
     }
   }, [otcEditingOrderId, otcOrderDetails]);
 
@@ -152,6 +165,8 @@ export function useOtcOrder(
     setShowOtcProfitSection(false);
     setShowOtcServiceChargeSection(false);
     setOtcCalculatedField(null);
+    setOtcRemarks("");
+    setShowOtcRemarks(false);
   };
 
   const closeOtcModal = () => {
@@ -180,37 +195,42 @@ export function useOtcOrder(
     try {
       let orderId: number;
       
+      // Prepare order data with remarks
+      const orderData: any = {
+        customerId: Number(otcForm.customerId),
+        fromCurrency: otcForm.fromCurrency,
+        toCurrency: otcForm.toCurrency,
+        amountBuy: Number(otcForm.amountBuy || 0),
+        amountSell: Number(otcForm.amountSell || 0),
+        rate: Number(otcForm.rate || 1),
+        handlerId,
+        buyAccountId: buyAccountIdValue,
+        sellAccountId: sellAccountIdValue,
+      };
+      
+      // Handle remarks: if section is shown, include remarks (null if empty to remove from DB)
+      if (showOtcRemarks) {
+        if (otcRemarks && otcRemarks.trim() !== "") {
+          orderData.remarks = otcRemarks.trim();
+        } else {
+          // Empty remarks - set to null to remove from database
+          orderData.remarks = null;
+        }
+      }
+
       if (otcEditingOrderId) {
         // Update existing order
         await updateOrder({
           id: otcEditingOrderId,
-          data: {
-            customerId: Number(otcForm.customerId),
-            fromCurrency: otcForm.fromCurrency,
-            toCurrency: otcForm.toCurrency,
-            amountBuy: Number(otcForm.amountBuy || 0),
-            amountSell: Number(otcForm.amountSell || 0),
-            rate: Number(otcForm.rate || 1),
-            handlerId,
-            buyAccountId: buyAccountIdValue,
-            sellAccountId: sellAccountIdValue,
-          },
+          data: orderData,
         }).unwrap();
         orderId = otcEditingOrderId;
       } else {
         // Create new OTC order
         const newOrder = await addOrder({
-          customerId: Number(otcForm.customerId),
-          fromCurrency: otcForm.fromCurrency,
-          toCurrency: otcForm.toCurrency,
-          amountBuy: Number(otcForm.amountBuy || 0),
-          amountSell: Number(otcForm.amountSell || 0),
-          rate: Number(otcForm.rate || 1),
+          ...orderData,
           status: "pending",
           orderType: "otc",
-          handlerId,
-          buyAccountId: buyAccountIdValue,
-          sellAccountId: sellAccountIdValue,
         }).unwrap();
         orderId = newOrder.id;
       }
@@ -356,37 +376,42 @@ export function useOtcOrder(
     try {
       let orderId: number;
       
+      // Prepare order data with remarks
+      const orderData: any = {
+        customerId: Number(otcForm.customerId),
+        fromCurrency: otcForm.fromCurrency,
+        toCurrency: otcForm.toCurrency,
+        amountBuy: Number(otcForm.amountBuy || 0),
+        amountSell: Number(otcForm.amountSell || 0),
+        rate: Number(otcForm.rate || 1),
+        handlerId,
+        buyAccountId: buyAccountIdValue,
+        sellAccountId: sellAccountIdValue,
+      };
+      
+      // Handle remarks: if section is shown, include remarks (null if empty to remove from DB)
+      if (showOtcRemarks) {
+        if (otcRemarks && otcRemarks.trim() !== "") {
+          orderData.remarks = otcRemarks.trim();
+        } else {
+          // Empty remarks - set to null to remove from database
+          orderData.remarks = null;
+        }
+      }
+
       if (otcEditingOrderId) {
         // Update existing order
         await updateOrder({
           id: otcEditingOrderId,
-          data: {
-            customerId: Number(otcForm.customerId),
-            fromCurrency: otcForm.fromCurrency,
-            toCurrency: otcForm.toCurrency,
-            amountBuy: Number(otcForm.amountBuy || 0),
-            amountSell: Number(otcForm.amountSell || 0),
-            rate: Number(otcForm.rate || 1),
-            handlerId,
-            buyAccountId: buyAccountIdValue,
-            sellAccountId: sellAccountIdValue,
-          },
+          data: orderData,
         }).unwrap();
         orderId = otcEditingOrderId;
       } else {
         // Create new OTC order
         const newOrder = await addOrder({
-          customerId: Number(otcForm.customerId),
-          fromCurrency: otcForm.fromCurrency,
-          toCurrency: otcForm.toCurrency,
-          amountBuy: Number(otcForm.amountBuy || 0),
-          amountSell: Number(otcForm.amountSell || 0),
-          rate: Number(otcForm.rate || 1),
+          ...orderData,
           status: "pending",
           orderType: "otc",
-          handlerId,
-          buyAccountId: buyAccountIdValue,
-          sellAccountId: sellAccountIdValue,
         }).unwrap();
         orderId = newOrder.id;
       }
@@ -515,6 +540,10 @@ export function useOtcOrder(
     setShowOtcServiceChargeSection,
     otcCalculatedField,
     setOtcCalculatedField,
+    otcRemarks,
+    setOtcRemarks,
+    showOtcRemarks,
+    setShowOtcRemarks,
     otcOrderDetails,
     isOtcCompleted,
     // Handlers

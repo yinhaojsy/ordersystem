@@ -26,6 +26,7 @@ import { OnlineOrderUploadsSection } from "../components/orders/OnlineOrderUploa
 import { CompleteOrderButton } from "../components/orders/CompleteOrderButton";
 import { OnlineOrderSummary } from "../components/orders/OnlineOrderSummary";
 import { TagSelectionModal } from "../components/common/TagSelectionModal";
+import { RemarksSection } from "../components/orders/RemarksSection";
 import { calculateAmountSell as calculateAmountSellUtil } from "../utils/orders/orderCalculations";
 import { useOrdersFilters } from "../hooks/orders/useOrdersFilters";
 import { useOrdersTable } from "../hooks/orders/useOrdersTable";
@@ -85,6 +86,7 @@ export default function OrdersPage() {
   // Page state
   const [currentPage, setCurrentPage] = useState(1);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [isSavingRemarks, setIsSavingRemarks] = useState(false);
 
   // Filter state and handlers
   const {
@@ -410,6 +412,10 @@ export default function OrdersPage() {
     setShowProfitSection,
     showServiceChargeSection,
     setShowServiceChargeSection,
+    remarks,
+    setRemarks,
+    showRemarks,
+    setShowRemarks,
     showExcessPaymentModal,
     setShowExcessPaymentModal,
     excessPaymentModalData,
@@ -582,6 +588,10 @@ export default function OrdersPage() {
     setShowOtcServiceChargeSection,
     otcCalculatedField,
     setOtcCalculatedField,
+    otcRemarks,
+    setOtcRemarks,
+    showOtcRemarks,
+    setShowOtcRemarks,
     otcOrderDetails,
     isOtcCompleted,
     handleOtcOrderSave,
@@ -738,6 +748,57 @@ export default function OrdersPage() {
   };
 
   const resolvedFlexRate = resolveFlexOrderRate(orderDetails);
+
+  // Load remarks when order details change
+  useEffect(() => {
+    if (viewModalOrderId && orderDetails?.order) {
+      const orderRemarks = orderDetails.order.remarks;
+      if (orderRemarks !== null && orderRemarks !== undefined && orderRemarks.trim() !== "") {
+        setRemarks(orderRemarks);
+        setShowRemarks(true);
+      } else {
+        setRemarks("");
+        setShowRemarks(false);
+      }
+    } else if (!viewModalOrderId) {
+      // Reset saving state when modal closes
+      setIsSavingRemarks(false);
+    }
+  }, [viewModalOrderId, orderDetails?.order?.id, orderDetails?.order?.remarks]);
+
+  // Handler to save remarks
+  const handleSaveRemarks = useCallback(async () => {
+    if (!viewModalOrderId || isSavingRemarks) return;
+    
+    setIsSavingRemarks(true);
+    try {
+      const remarksData: any = {};
+      if (showRemarks) {
+        if (remarks && remarks.trim() !== "") {
+          remarksData.remarks = remarks.trim();
+        } else {
+          // Empty remarks - set to null to remove from database
+          remarksData.remarks = null;
+        }
+      }
+      
+      if (Object.keys(remarksData).length > 0) {
+        await updateOrder({
+          id: viewModalOrderId,
+          data: remarksData,
+        }).unwrap();
+      }
+    } catch (error: any) {
+      console.error("Error saving remarks:", error);
+      setAlertModal({
+        isOpen: true,
+        message: error?.data?.message || error?.message || t("orders.failedToSaveRemarks"),
+        type: "error",
+      });
+    } finally {
+      setIsSavingRemarks(false);
+    }
+  }, [viewModalOrderId, remarks, showRemarks, updateOrder, setAlertModal, t, isSavingRemarks]);
 
   // Track order status when modal opens
   useEffect(() => {
@@ -1424,6 +1485,23 @@ export default function OrdersPage() {
 
                     {renderProfitServiceCharges()}
 
+                    {/* Remarks Section for Flex Orders (under_process) */}
+                    {isUnderProcess && (
+                      <div className="lg:col-span-3">
+                        <RemarksSection
+                          remarks={remarks}
+                          setRemarks={setRemarks}
+                          showRemarks={showRemarks}
+                          setShowRemarks={setShowRemarks}
+                          onSave={handleSaveRemarks}
+                          showSaveButton={true}
+                          isSaving={isSavingRemarks}
+                          canEdit={orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled"}
+                          t={t}
+                        />
+                      </div>
+                    )}
+
                     {/* Complete Order Button for Flex Orders (under_process) */}
                     <CompleteOrderButton
                       orderId={viewModalOrderId}
@@ -1569,6 +1647,21 @@ export default function OrdersPage() {
               )}
 
               {!orderDetails.order.isFlexOrder && renderProfitServiceCharges()}
+
+              {/* Remarks Section for Regular Orders (under_process) */}
+              {isUnderProcess && !orderDetails.order.isFlexOrder && (
+                <RemarksSection
+                  remarks={remarks}
+                  setRemarks={setRemarks}
+                  showRemarks={showRemarks}
+                  setShowRemarks={setShowRemarks}
+                  onSave={handleSaveRemarks}
+                  showSaveButton={true}
+                  isSaving={isSavingRemarks}
+                  canEdit={orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled"}
+                  t={t}
+                />
+              )}
 
               {/* Complete Order Button for Regular Orders */}
               {!orderDetails.order.isFlexOrder && (
@@ -1745,6 +1838,10 @@ export default function OrdersPage() {
         setOtcServiceChargeCurrency={setOtcServiceChargeCurrency}
         otcServiceChargeAccountId={otcServiceChargeAccountId}
         setOtcServiceChargeAccountId={setOtcServiceChargeAccountId}
+        otcRemarks={otcRemarks}
+        setOtcRemarks={setOtcRemarks}
+        showOtcRemarks={showOtcRemarks}
+        setShowOtcRemarks={setShowOtcRemarks}
         handleNumberInputWheel={handleNumberInputWheel}
         getBaseCurrency={getBaseCurrency}
         onSave={handleOtcOrderSave}

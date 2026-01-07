@@ -793,6 +793,7 @@ export const updateOrder = (req, res, next) => {
       "handlerId",
       "buyAccountId",
       "sellAccountId",
+      "remarks",
     ];
     
     // Separate updates into pending-only and always-updatable
@@ -982,7 +983,14 @@ export const updateOrder = (req, res, next) => {
     const updateValues = {};
     fieldsToUpdate.forEach(field => {
       const value = allUpdates[field];
-      if (value === null || value === "" || (typeof value === "string" && value.trim() === "")) {
+      if (field === "remarks") {
+        // For remarks: null/undefined removes it, empty string also removes it, otherwise save the value
+        if (value === null || value === undefined || value === "" || (typeof value === "string" && value.trim() === "")) {
+          updateValues[field] = null;
+        } else {
+          updateValues[field] = String(value);
+        }
+      } else if (value === null || value === "" || (typeof value === "string" && value.trim() === "")) {
         updateValues[field] = null;
       } else if (field === "profitAccountId" || field === "serviceChargeAccountId") {
         // Handle account IDs - convert empty string to null

@@ -623,6 +623,9 @@ const migrateDatabase = () => {
     if (!columnNames.includes("serviceChargeAccountId")) {
       db.prepare("ALTER TABLE orders ADD COLUMN serviceChargeAccountId INTEGER REFERENCES accounts(id)").run();
     }
+    if (!columnNames.includes("remarks")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN remarks TEXT").run();
+    }
 
     // Check order_payments table for new columns
     const paymentTableInfo = db.prepare("PRAGMA table_info(order_payments)").all();

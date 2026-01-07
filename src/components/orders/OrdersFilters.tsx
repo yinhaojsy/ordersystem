@@ -150,7 +150,7 @@ export function OrdersFilters({
           <SearchableSelect
             value={filters.handlerId}
             onChange={(value) => onFilterChange('handlerId', value)}
-            options={users}
+            options={users.filter((user) => user.role !== "admin")}
             placeholder={t("orders.selectHandler") || "Type to search handlers..."}
             label={t("orders.handler") || "Handler"}
             allOptionLabel={t("orders.all") || "All"}

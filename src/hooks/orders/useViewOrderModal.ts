@@ -45,6 +45,10 @@ export function useViewOrderModal() {
   const [showProfitSection, setShowProfitSection] = useState(false);
   const [showServiceChargeSection, setShowServiceChargeSection] = useState(false);
   
+  // Remarks state
+  const [remarks, setRemarks] = useState<string>("");
+  const [showRemarks, setShowRemarks] = useState(false);
+  
   // Excess payment/receipt modals
   const [showExcessPaymentModal, setShowExcessPaymentModal] = useState(false);
   const [excessPaymentModalData, setExcessPaymentModalData] = useState<{
@@ -94,6 +98,8 @@ export function useViewOrderModal() {
     setServiceChargeAccountId("");
     setShowProfitSection(false);
     setShowServiceChargeSection(false);
+    setRemarks("");
+    setShowRemarks(false);
     setShowReceiptUpload(false);
     setShowPaymentUpload(false);
     // Clear refs
@@ -151,6 +157,11 @@ export function useViewOrderModal() {
     setShowProfitSection,
     showServiceChargeSection,
     setShowServiceChargeSection,
+    // Remarks state
+    remarks,
+    setRemarks,
+    showRemarks,
+    setShowRemarks,
     // Excess modals
     showExcessPaymentModal,
     setShowExcessPaymentModal,

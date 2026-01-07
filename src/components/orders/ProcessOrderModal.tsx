@@ -64,7 +64,7 @@ export function ProcessOrderModal({
             required
           >
             <option value="">{t("orders.selectHandler")}</option>
-            {users.map((user) => (
+            {users.filter((user) => user.role !== "admin").map((user) => (
               <option value={user.id} key={user.id}>
                 {user.name}
               </option>

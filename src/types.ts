@@ -104,6 +104,7 @@ export interface Order {
   profitAccountId?: number;
   orderType?: "online" | "otc";
   tags?: Tag[];
+  remarks?: string;
   createdAt: string;
 }
 
@@ -180,6 +181,7 @@ export interface OrderInput {
   orderType?: "online" | "otc";
   handlerId?: number;
   tagIds?: number[];
+  remarks?: string;
 }
 
 export interface Account {
