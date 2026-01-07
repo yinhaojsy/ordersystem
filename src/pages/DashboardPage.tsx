@@ -17,8 +17,10 @@ export default function DashboardPage() {
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: users = [] } = useGetUsersQuery();
-  const { data: ordersData, isLoading } = useGetOrdersQuery({});
+  // Fetch all orders for accurate statistics (use a high limit to get all orders)
+  const { data: ordersData, isLoading } = useGetOrdersQuery({ limit: 10000 });
   const orders = ordersData?.orders ?? [];
+  const totalOrders = ordersData?.total ?? 0;
 
   const stats = useMemo(() => {
     // Ensure orders is an array
@@ -37,12 +39,12 @@ export default function DashboardPage() {
       currencies: currencies.length,
       customers: customers.length,
       users: users.length,
-      orders: ordersArray.length,
+      orders: totalOrders, // Use total from API instead of array length
       pending,
       completed,
       cancelled,
     };
-  }, [orders, currencies.length, customers.length, users.length]);
+  }, [orders, totalOrders, currencies.length, customers.length, users.length]);
 
   const recentOrders = Array.isArray(orders) ? orders.slice(0, 5) : [];
 
