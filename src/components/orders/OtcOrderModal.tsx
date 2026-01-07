@@ -41,6 +41,8 @@ export type OtcOrderDetails = {
   };
   receipts?: Array<{ amount: number; accountId?: number | null; accountName?: string }>;
   payments?: Array<{ amount: number; accountId?: number | null; accountName?: string }>;
+  profits?: Array<{ id: number; amount: number; currencyCode: string; accountId?: number | null; accountName?: string; status?: string }>;
+  serviceCharges?: Array<{ id: number; amount: number; currencyCode: string; accountId?: number | null; accountName?: string; status?: string }>;
 };
 
 type OtcOrderModalProps = {
@@ -243,49 +245,51 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose, t 
         </div>
       )}
 
-      {order.profitAmount !== null &&
-        order.profitAmount !== undefined &&
-        order.profitAccountId && (
-          <div className="space-y-3 border-b border-slate-200 pb-4">
-            <h3 className="text-lg font-semibold text-blue-900">{t("orders.profit")}</h3>
-            <div className="p-3 bg-blue-50 rounded-lg">
+      {/* Display profit entries (draft and confirmed) */}
+      {otcOrderDetails.profits && otcOrderDetails.profits.length > 0 && (
+        <div className="space-y-3 border-b border-slate-200 pb-4">
+          <h3 className="text-lg font-semibold text-blue-900">{t("orders.profit")}</h3>
+          {otcOrderDetails.profits.map((profit) => (
+            <div key={profit.id} className="p-3 bg-blue-50 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-blue-900">
-                  {accounts.find((a) => a.id === order.profitAccountId)?.name || "-"} ({order.profitCurrency})
+                  {profit.accountName || accounts.find((a) => a.id === profit.accountId)?.name || "-"} ({profit.currencyCode})
                 </span>
                 <span className="text-sm font-semibold text-blue-900">
-                  {order.profitAmount > 0 ? "+" : ""}
-                  {order.profitAmount.toFixed(2)} {order.profitCurrency}
+                  {profit.amount > 0 ? "+" : ""}
+                  {profit.amount.toFixed(2)} {profit.currencyCode}
                 </span>
               </div>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
+      )}
 
-      {order.serviceChargeAmount !== null &&
-        order.serviceChargeAmount !== undefined &&
-        order.serviceChargeAccountId && (
-          <div className="space-y-3 border-b border-slate-200 pb-4">
-            <h3 className="text-lg font-semibold text-green-900">{t("orders.serviceCharges")}</h3>
-            <div className="p-3 bg-green-50 rounded-lg">
+      {/* Display service charge entries (draft and confirmed) */}
+      {otcOrderDetails.serviceCharges && otcOrderDetails.serviceCharges.length > 0 && (
+        <div className="space-y-3 border-b border-slate-200 pb-4">
+          <h3 className="text-lg font-semibold text-green-900">{t("orders.serviceCharges")}</h3>
+          {otcOrderDetails.serviceCharges.map((serviceCharge) => (
+            <div key={serviceCharge.id} className="p-3 bg-green-50 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-green-900">
-                  {accounts.find((a) => a.id === order.serviceChargeAccountId)?.name || "-"} (
-                  {order.serviceChargeCurrency})
+                  {serviceCharge.accountName || accounts.find((a) => a.id === serviceCharge.accountId)?.name || "-"} ({serviceCharge.currencyCode})
                 </span>
                 <span
                   className={`text-sm font-semibold ${
-                    order.serviceChargeAmount < 0 ? "text-red-600" : "text-green-700"
+                    serviceCharge.amount < 0 ? "text-red-600" : "text-green-700"
                   }`}
                 >
-                  {order.serviceChargeAmount > 0 ? "+" : ""}
-                  {order.serviceChargeAmount.toFixed(2)} {order.serviceChargeCurrency}
+                  {serviceCharge.amount > 0 ? "+" : ""}
+                  {serviceCharge.amount.toFixed(2)} {serviceCharge.currencyCode}
                 </span>
               </div>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
+      )}
 
+      {/* Remarks Display - At the bottom */}
       {order.remarks && (
         <div className="space-y-3 border-b border-slate-200 pb-4">
           <h3 className="text-lg font-semibold text-slate-900">{t("orders.remarks") || "Remarks"}</h3>

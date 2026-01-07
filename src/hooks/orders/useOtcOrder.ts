@@ -12,6 +12,10 @@ import {
   useConfirmReceiptMutation,
   useConfirmPaymentMutation,
   useUpdateOrderStatusMutation,
+  useAddProfitMutation,
+  useConfirmProfitMutation,
+  useAddServiceChargeMutation,
+  useConfirmServiceChargeMutation,
 } from "../../services/api";
 import type { Account } from "../../types";
 
@@ -80,6 +84,10 @@ export function useOtcOrder(
   const [deletePayment] = useDeletePaymentMutation();
   const [confirmReceipt] = useConfirmReceiptMutation();
   const [confirmPayment] = useConfirmPaymentMutation();
+  const [addProfit] = useAddProfitMutation();
+  const [confirmProfit] = useConfirmProfitMutation();
+  const [addServiceCharge] = useAddServiceChargeMutation();
+  const [confirmServiceCharge] = useConfirmServiceChargeMutation();
 
   // Determine if OTC order is completed/cancelled for view mode
   const isOtcCompleted = useMemo(() => {
@@ -389,14 +397,12 @@ export function useOtcOrder(
         sellAccountId: sellAccountIdValue,
       };
       
-      // Handle remarks: if section is shown, include remarks (null if empty to remove from DB)
-      if (showOtcRemarks) {
-        if (otcRemarks && otcRemarks.trim() !== "") {
-          orderData.remarks = otcRemarks.trim();
-        } else {
-          // Empty remarks - set to null to remove from database
-          orderData.remarks = null;
-        }
+      // Handle remarks: save if not empty, regardless of whether section is shown
+      if (otcRemarks && otcRemarks.trim() !== "") {
+        orderData.remarks = otcRemarks.trim();
+      } else if (showOtcRemarks) {
+        // If section is shown but remarks are empty, set to null to remove from database
+        orderData.remarks = null;
       }
 
       if (otcEditingOrderId) {
@@ -472,26 +478,44 @@ export function useOtcOrder(
         }
       }
 
-      // Add profit if provided
+      // Add profit if provided - create draft and immediately confirm for OTC orders
       if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
-        await updateOrder({
-          id: orderId,
-          data: {
-            profitAmount: Number(otcProfitAmount),
-            profitCurrency: otcProfitCurrency,
-            profitAccountId: Number(otcProfitAccountId),
-          },
+        const profitResult = await addProfit({
+          orderId,
+          amount: Number(otcProfitAmount),
+          currencyCode: otcProfitCurrency,
+          accountId: Number(otcProfitAccountId),
         }).unwrap();
+        // Immediately confirm profit for OTC orders
+        await confirmProfit((profitResult as any).id).unwrap();
       }
 
-      // Add service charges if provided
+      // Add service charges if provided - create draft and immediately confirm for OTC orders
       if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
+        const serviceChargeResult = await addServiceCharge({
+          orderId,
+          amount: Number(otcServiceChargeAmount),
+          currencyCode: otcServiceChargeCurrency,
+          accountId: Number(otcServiceChargeAccountId),
+        }).unwrap();
+        // Immediately confirm service charge for OTC orders
+        await confirmServiceCharge((serviceChargeResult as any).id).unwrap();
+      }
+
+      // Ensure remarks are saved before completing (in case they weren't saved earlier)
+      if (otcRemarks && otcRemarks.trim() !== "") {
         await updateOrder({
           id: orderId,
           data: {
-            serviceChargeAmount: Number(otcServiceChargeAmount),
-            serviceChargeCurrency: otcServiceChargeCurrency,
-            serviceChargeAccountId: Number(otcServiceChargeAccountId),
+            remarks: otcRemarks.trim(),
+          },
+        }).unwrap();
+      } else if (showOtcRemarks && (!otcRemarks || otcRemarks.trim() === "")) {
+        // If section is shown but remarks are empty, remove from database
+        await updateOrder({
+          id: orderId,
+          data: {
+            remarks: null,
           },
         }).unwrap();
       }

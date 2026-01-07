@@ -25,6 +25,7 @@ interface OrderDetails {
       swiftCode?: string;
       bankAddress?: string;
     };
+    remarks?: string | null;
   };
   receipts: any[]; // OrderReceipt[]
   beneficiaries: any[]; // OrderBeneficiary[]
@@ -268,6 +269,20 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Remarks Display */}
+      {orderDetails.order.remarks && (
+        <div className="border-b pb-4">
+          <h3 className="font-semibold text-slate-900 mb-2">
+            {t("orders.remarks")}
+          </h3>
+          <div className="p-3 bg-slate-50 rounded-lg">
+            <p className="text-sm text-slate-900 whitespace-pre-wrap">
+              {orderDetails.order.remarks}
+            </p>
           </div>
         </div>
       )}
