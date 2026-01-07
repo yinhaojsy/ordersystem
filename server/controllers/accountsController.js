@@ -620,3 +620,17 @@ export const getAccountTransactions = (req, res, next) => {
   }
 };
 
+export const clearAllTransactionLogs = (req, res, next) => {
+  try {
+    // Delete all records from account_transactions table
+    const result = db.prepare("DELETE FROM account_transactions").run();
+    res.json({ 
+      success: true, 
+      deletedCount: result.changes,
+      message: `Successfully cleared ${result.changes} transaction log records`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

@@ -822,6 +822,13 @@ export const api = createApi({
       query: (id) => `accounts/${id}/transactions`,
       providesTags: (_res, _err, id) => [{ type: "Account", id }],
     }),
+    clearAllTransactionLogs: builder.mutation<{ success: boolean; deletedCount: number; message: string }, void>({
+      query: () => ({
+        url: "accounts/transactions/clear-all",
+        method: "DELETE",
+      }),
+      invalidatesTags: [{ type: "Account", id: "LIST" }, { type: "Account" }],
+    }),
     getTransfers: builder.query<
       Transfer[],
       {
@@ -1342,6 +1349,7 @@ export const {
   useAddFundsMutation,
   useWithdrawFundsMutation,
   useGetAccountTransactionsQuery,
+  useClearAllTransactionLogsMutation,
   useGetTransfersQuery,
   useCreateTransferMutation,
   useUpdateTransferMutation,

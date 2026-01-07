@@ -63,6 +63,7 @@ import {
   addFunds,
   withdrawFunds,
   getAccountTransactions,
+  clearAllTransactionLogs,
   getAccountReferences,
   getAllReferences,
 } from "../controllers/accountsController.js";
@@ -171,6 +172,7 @@ router.delete("/accounts/:id", deleteAccount);
 router.post("/accounts/:id/add-funds", addFunds);
 router.post("/accounts/:id/withdraw-funds", withdrawFunds);
 router.get("/accounts/:id/transactions", getAccountTransactions);
+router.delete("/accounts/transactions/clear-all", clearAllTransactionLogs);
 
 router.get("/transfers", listTransfers);
 router.get("/transfers/export", exportTransfers);

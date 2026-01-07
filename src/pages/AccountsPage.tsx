@@ -16,6 +16,7 @@ import {
   useAddFundsMutation,
   useWithdrawFundsMutation,
   useGetAccountTransactionsQuery,
+  useClearAllTransactionLogsMutation,
   useGetProfitCalculationsQuery,
   useGetProfitCalculationQuery,
   useGetSettingQuery,
@@ -26,6 +27,7 @@ import { formatDate } from "../utils/format";
 import { useAppSelector } from "../app/hooks";
 import { hasActionPermission } from "../utils/permissions";
 import { useProfitSummary } from "../hooks/useProfitSummary";
+import { useBatchDelete } from "../hooks/useBatchDelete";
 import * as XLSX from "xlsx";
 
 // Helper function to format currency with proper number formatting
@@ -66,22 +68,86 @@ export default function AccountsPage() {
     type: "error",
   });
 
-  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; accountId: number | null }>({
-    isOpen: false,
-    message: "",
-    accountId: null,
-  });
 
   const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [fundsModalAccountId, setFundsModalAccountId] = useState<number | null>(null);
   const [fundsModalType, setFundsModalType] = useState<"add" | "withdraw" | null>(null);
   const [transactionsModalAccountId, setTransactionsModalAccountId] = useState<number | null>(null);
-  const [importExportMenuOpen, setImportExportMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<number>>(new Set());
-  const importExportMenuRef = useRef<HTMLDivElement>(null);
+  const [clearLogsConfirmModal, setClearLogsConfirmModal] = useState(false);
+  const [clearTransactionLogs] = useClearAllTransactionLogsMutation();
+
+  // Batch delete hook
+  const {
+    isBatchDeleteMode,
+    selectedIds: selectedAccountIdsForDelete,
+    setSelectedIds: setSelectedAccountIdsForDelete,
+    setIsBatchDeleteMode,
+    handleDeleteClick: handleBatchDeleteClick,
+    handleDelete: handleBatchDelete,
+    handleBulkDelete,
+    toggleBatchDeleteMode,
+    exitBatchDeleteMode,
+    confirmModal: batchDeleteConfirmModal,
+    setConfirmModal: setBatchDeleteConfirmModal,
+  } = useBatchDelete({
+    deleteSingle: (id: number) => deleteAccount(id),
+    confirmMessage: t("accounts.confirmDelete") || "Are you sure you want to delete this account?",
+    confirmBulkMessage: t("accounts.confirmDeleteSelected") || "Are you sure you want to delete the selected accounts?",
+    errorMessage: t("accounts.errorDeleting") || "Error deleting account",
+    onError: (error: any, setAlertModalFn?: (modal: { isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }) => void) => {
+      let message = t("accounts.cannotDeleteReferenced");
+      
+      if (error?.data) {
+        let errorMessage = '';
+        if (typeof error.data === 'string') {
+          errorMessage = error.data;
+        } else if (error.data.message) {
+          errorMessage = error.data.message;
+        }
+        
+        // Check for specific error messages and translate them
+        if (errorMessage === "Cannot delete this item because it is referenced by other records.") {
+          message = t("accounts.cannotDeleteReferenced");
+        } else if (errorMessage === "Cannot delete account that is linked to existing orders") {
+          message = t("accounts.cannotDeleteLinkedToOrders");
+        } else if (errorMessage === "Cannot delete account that is linked to existing transfers") {
+          message = t("accounts.cannotDeleteLinkedToTransfers");
+        } else if (errorMessage === "Cannot delete account that is linked to existing expenses") {
+          message = t("accounts.cannotDeleteLinkedToExpenses");
+        } else if (errorMessage) {
+          message = errorMessage;
+        }
+      }
+      
+      if (setAlertModalFn) {
+        setAlertModalFn({ isOpen: true, message, type: "error" });
+      } else {
+        setAlertModal({ isOpen: true, message, type: "error" });
+      }
+    },
+    onSuccess: () => {
+      refetchAccounts();
+    },
+    t,
+    setAlertModal: (modal: { isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }) => setAlertModal(modal),
+  });
+
+  // Custom handleDeleteClick to show account name in confirmation
+  const handleDeleteClick = (id: number) => {
+    const account = accounts.find((a) => a.id === id);
+    if (!account) return;
+    
+    setBatchDeleteConfirmModal({
+      isOpen: true,
+      message: t("accounts.confirmDelete")?.replace("{{accountName}}", account.name) || `Are you sure you want to delete ${account.name}?`,
+      entityId: id,
+      isBulk: false,
+    });
+  };
   const [addCurrency] = useAddCurrencyMutation();
 
   const { data: accountsByCurrency = [] } = useGetAccountsByCurrencyQuery(
@@ -197,59 +263,6 @@ export default function AccountsPage() {
     }
   };
 
-  const handleDeleteClick = (id: number) => {
-    const account = accounts.find((a) => a.id === id);
-    if (!account) return;
-    
-    setConfirmModal({
-      isOpen: true,
-      message: t("accounts.confirmDelete") || `Are you sure you want to delete ${account.name}?`,
-      accountId: id,
-    });
-  };
-
-  const handleDelete = async (id: number | null) => {
-    if (id === null || id === undefined) {
-      setAlertModal({ 
-        isOpen: true, 
-        message: t("accounts.errorDeleting") || "Error: Invalid account ID", 
-        type: "error" 
-      });
-      return;
-    }
-
-    try {
-      await deleteAccount(id).unwrap();
-      setConfirmModal({ isOpen: false, message: "", accountId: null });
-    } catch (error: any) {
-      let message = t("accounts.cannotDeleteReferenced");
-      
-      if (error?.data) {
-        let errorMessage = '';
-        if (typeof error.data === 'string') {
-          errorMessage = error.data;
-        } else if (error.data.message) {
-          errorMessage = error.data.message;
-        }
-        
-        // Check for specific error messages and translate them
-        if (errorMessage === "Cannot delete this item because it is referenced by other records.") {
-          message = t("accounts.cannotDeleteReferenced");
-        } else if (errorMessage === "Cannot delete account that is linked to existing orders") {
-          message = t("accounts.cannotDeleteLinkedToOrders");
-        } else if (errorMessage === "Cannot delete account that is linked to existing transfers") {
-          message = t("accounts.cannotDeleteLinkedToTransfers");
-        } else if (errorMessage === "Cannot delete account that is linked to existing expenses") {
-          message = t("accounts.cannotDeleteLinkedToExpenses");
-        } else if (errorMessage) {
-          message = errorMessage;
-        }
-      }
-      
-      setConfirmModal({ isOpen: false, message: "", accountId: null });
-      setAlertModal({ isOpen: true, message, type: "error" });
-    }
-  };
 
   const openFundsModal = (accountId: number, type: "add" | "withdraw") => {
     setFundsModalAccountId(accountId);
@@ -349,24 +362,6 @@ export default function AccountsPage() {
     }
   }, [transactionsModalAccountId]);
 
-  // Close import/export menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        importExportMenuRef.current &&
-        !importExportMenuRef.current.contains(event.target as Node)
-      ) {
-        setImportExportMenuOpen(false);
-      }
-    };
-
-    if (importExportMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }
-  }, [importExportMenuOpen]);
 
   // Use shared hook for profit summary calculation
   const profitSummary = useProfitSummary(
@@ -392,14 +387,37 @@ export default function AccountsPage() {
   };
 
   const handleExportClick = () => {
-    setImportExportMenuOpen(false);
     setExportModalOpen(true);
     setSelectedAccountIds(new Set());
   };
 
   const handleImportClick = () => {
-    setImportExportMenuOpen(false);
     setImportModalOpen(true);
+  };
+
+  const handleClearLogsClick = () => {
+    setClearLogsConfirmModal(true);
+  };
+
+  const handleConfirmClearLogs = async () => {
+    try {
+      const result = await clearTransactionLogs().unwrap();
+      setClearLogsConfirmModal(false);
+      setAlertModal({
+        isOpen: true,
+        message: result.message || t("accounts.transactionLogsCleared") || "Transaction logs cleared successfully",
+        type: "success",
+      });
+      // Refetch accounts to update any cached transaction data
+      await refetchAccounts();
+    } catch (error: any) {
+      setClearLogsConfirmModal(false);
+      setAlertModal({
+        isOpen: true,
+        message: error?.data?.message || t("accounts.errorClearingLogs") || "Error clearing transaction logs",
+        type: "error",
+      });
+    }
   };
 
   const handleSelectAllAccounts = () => {
@@ -707,28 +725,54 @@ export default function AccountsPage() {
         title={t("accounts.currencyPoolsTitle")}
         description={t("accounts.currencyPoolsDescription")}
         actions={
-          <div className="relative" ref={importExportMenuRef}>
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setImportExportMenuOpen(!importExportMenuOpen)}
+              onClick={handleImportClick}
               className="px-3 py-1 text-sm rounded bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
             >
-              {t("accounts.importExport") || "Import/Export"}
+              {t("accounts.importAccounts") || "Import Accounts"}
             </button>
-            {importExportMenuOpen && (
-              <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-[9999]">
-                <button
-                  onClick={handleImportClick}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-t-lg"
-                >
-                  {t("accounts.importAccounts") || "Import Accounts"}
-                </button>
-                <button
-                  onClick={handleExportClick}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-b-lg"
-                >
-                  {t("accounts.exportAccounts") || "Export Accounts"}
-                </button>
-              </div>
+            <button
+              onClick={handleExportClick}
+              className="px-3 py-1 text-sm rounded bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
+            >
+              {t("accounts.exportAccounts") || "Export Accounts"}
+            </button>
+            <button
+              onClick={handleClearLogsClick}
+              className="px-3 py-1 text-sm rounded bg-rose-200 text-rose-700 hover:bg-rose-300 transition-colors"
+            >
+              {t("accounts.clearTransactionLogs") || "Clear Transaction Logs"}
+            </button>
+            {hasActionPermission(authUser, "deleteAccount") && (
+              <button
+                onClick={async () => {
+                  if (!isBatchDeleteMode) {
+                    setIsBatchDeleteMode(true);
+                    setSelectedAccountIdsForDelete([]);
+                  } else {
+                    if (!selectedAccountIdsForDelete.length) {
+                      setIsBatchDeleteMode(false);
+                      setSelectedAccountIdsForDelete([]);
+                      return;
+                    }
+                    setBatchDeleteConfirmModal({
+                      isOpen: true,
+                      message: t("accounts.confirmDeleteSelected") || "Are you sure you want to delete the selected accounts?",
+                      entityId: -1,
+                      isBulk: true,
+                    });
+                  }
+                }}
+                disabled={isDeleting}
+                className="px-3 py-1 text-sm rounded border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-60 transition-colors"
+              >
+                {isDeleting
+                  ? t("common.deleting")
+                  : isBatchDeleteMode
+                    ? (selectedAccountIdsForDelete.length > 0 ? t("accounts.deleteSelected") || "Delete Selected" : t("common.cancel"))
+                    : t("accounts.batchDelete") || "Batch Delete"}
+              </button>
             )}
           </div>
         }
@@ -769,14 +813,58 @@ export default function AccountsPage() {
                     <table className="w-full text-left text-sm">
                       <thead>
                         <tr className="border-b border-slate-200 text-slate-600">
+                          {isBatchDeleteMode && (
+                            <th className="py-2 w-8">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4"
+                                checked={
+                                  !!currencyAccounts.length &&
+                                  currencyAccounts.every(acc => selectedAccountIdsForDelete.includes(acc.id))
+                                }
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedAccountIdsForDelete((prev: number[]) => {
+                                      const newIds = currencyAccounts.map(acc => acc.id).filter(id => !prev.includes(id));
+                                      return [...prev, ...newIds];
+                                    });
+                                  } else {
+                                    setSelectedAccountIdsForDelete((prev: number[]) => 
+                                      prev.filter(id => !currencyAccounts.some(acc => acc.id === id))
+                                    );
+                                  }
+                                }}
+                              />
+                            </th>
+                          )}
                           <th className="py-2">{t("accounts.accountName")}</th>
                           <th className="py-2">{t("accounts.balance")}</th>
-                          <th className="py-2">{t("accounts.actions")}</th>
+                          {!isBatchDeleteMode && <th className="py-2">{t("accounts.actions")}</th>}
                         </tr>
                       </thead>
                       <tbody>
                         {currencyAccounts.map((account) => (
                           <tr key={account.id} className="border-b border-slate-100">
+                            {isBatchDeleteMode && (
+                              <td className="py-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4"
+                                  checked={selectedAccountIdsForDelete.includes(account.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedAccountIdsForDelete((prev: number[]) =>
+                                        prev.includes(account.id) ? prev : [...prev, account.id]
+                                      );
+                                    } else {
+                                      setSelectedAccountIdsForDelete((prev: number[]) =>
+                                        prev.filter(id => id !== account.id)
+                                      );
+                                    }
+                                  }}
+                                />
+                              </td>
+                            )}
                             <td className="py-2 font-semibold">{account.name}</td>
                             <td className="py-2">
                               <span className={`font-semibold ${
@@ -785,43 +873,45 @@ export default function AccountsPage() {
                                 {formatCurrency(account.balance, currencyCode)}
                               </span>
                             </td>
-                            <td className="py-2">
-                              <div className="flex gap-2 text-sm">
-                                <button
-                                  className="text-blue-600 hover:text-blue-700"
-                                  onClick={() => openFundsModal(account.id, "add")}
-                                >
-                                  {t("accounts.addFunds")}
-                                </button>
-                                <button
-                                  className="text-amber-600 hover:text-amber-700"
-                                  onClick={() => openFundsModal(account.id, "withdraw")}
-                                >
-                                  {t("accounts.withdrawFunds")}
-                                </button>
-                                <button
-                                  className="text-purple-600 hover:text-purple-700"
-                                  onClick={() => setTransactionsModalAccountId(account.id)}
-                                >
-                                  {t("accounts.transactions")}
-                                </button>
-                                <button
-                                  className="text-amber-600 hover:text-amber-700"
-                                  onClick={() => startEdit(account.id)}
-                                >
-                                  {t("common.edit")}
-                                </button>
-                                {hasActionPermission(authUser, "deleteAccount") && (
+                            {!isBatchDeleteMode && (
+                              <td className="py-2">
+                                <div className="flex gap-2 text-sm">
                                   <button
-                                    className="text-rose-600 hover:text-rose-700"
-                                    onClick={() => handleDeleteClick(account.id)}
-                                    disabled={isDeleting}
+                                    className="text-blue-600 hover:text-blue-700"
+                                    onClick={() => openFundsModal(account.id, "add")}
                                   >
-                                    {t("common.delete")}
+                                    {t("accounts.addFunds")}
                                   </button>
-                                )}
-                              </div>
-                            </td>
+                                  <button
+                                    className="text-amber-600 hover:text-amber-700"
+                                    onClick={() => openFundsModal(account.id, "withdraw")}
+                                  >
+                                    {t("accounts.withdrawFunds")}
+                                  </button>
+                                  <button
+                                    className="text-purple-600 hover:text-purple-700"
+                                    onClick={() => setTransactionsModalAccountId(account.id)}
+                                  >
+                                    {t("accounts.transactions")}
+                                  </button>
+                                  <button
+                                    className="text-amber-600 hover:text-amber-700"
+                                    onClick={() => startEdit(account.id)}
+                                  >
+                                    {t("common.edit")}
+                                  </button>
+                                  {hasActionPermission(authUser, "deleteAccount") && (
+                                    <button
+                                      className="text-rose-600 hover:text-rose-700"
+                                      onClick={() => handleDeleteClick(account.id)}
+                                      disabled={isDeleting}
+                                    >
+                                      {t("common.delete")}
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
@@ -1212,15 +1302,27 @@ export default function AccountsPage() {
       />
 
       <ConfirmModal
-        isOpen={confirmModal.isOpen}
-        message={confirmModal.message}
+        isOpen={batchDeleteConfirmModal.isOpen}
+        message={batchDeleteConfirmModal.message}
         onConfirm={() => {
-          if (confirmModal.accountId !== null && confirmModal.accountId !== undefined) {
-            handleDelete(confirmModal.accountId);
+          if (batchDeleteConfirmModal.isBulk) {
+            handleBulkDelete();
+          } else if (batchDeleteConfirmModal.entityId !== null && batchDeleteConfirmModal.entityId !== undefined) {
+            handleBatchDelete(batchDeleteConfirmModal.entityId);
           }
         }}
-        onCancel={() => setConfirmModal({ isOpen: false, message: "", accountId: null })}
+        onCancel={() => setBatchDeleteConfirmModal({ isOpen: false, message: "", entityId: null, isBulk: false })}
         confirmText={t("common.delete")}
+        cancelText={t("common.cancel")}
+        type="warning"
+      />
+
+      <ConfirmModal
+        isOpen={clearLogsConfirmModal}
+        message={t("accounts.confirmClearTransactionLogs") || "Are you sure you want to clear all transaction logs for all accounts? This action cannot be undone."}
+        onConfirm={handleConfirmClearLogs}
+        onCancel={() => setClearLogsConfirmModal(false)}
+        confirmText={t("accounts.clearLogs") || "Clear Logs"}
         cancelText={t("common.cancel")}
         type="warning"
       />
