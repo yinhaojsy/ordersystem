@@ -133,7 +133,7 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
     }
   };
 
-  const containerClassName = layout === "grid" ? "lg:col-span-2 border-t pt-4 mt-4 space-y-4" : "border-t pt-4 mt-4 space-y-4";
+  const containerClassName = layout === "grid" ? "border-t pt-4 mt-4 space-y-4" : "border-t pt-4 mt-4 space-y-4";
 
   // Check if there are any profit or service charge entries (draft or confirmed)
   const hasProfit = profits && profits.length > 0;

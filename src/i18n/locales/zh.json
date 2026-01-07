@@ -21,7 +21,8 @@
     "confirm": "确认",
     "unknownError": "未知错误",
     "clear": "清除",
-    "done": "完成"
+    "done": "完成",
+    "remove": "移除"
   },
   "nav": {
     "dashboard": "仪表板",
@@ -425,7 +426,10 @@
     "selectCurrency": "选择货币",
     "complete": "完成",
     "amountNegativeIfPaidByUs": "金额（负数表示由我们支付）",
-    "clickOrDragToUpload": "点击或拖拽上传"
+    "clickOrDragToUpload": "点击或拖拽上传",
+    "addRemarks": "添加备注",
+    "remarks": "备注",
+    "remarksPlaceholder": "为此订单添加任何注释或备注供团队参考..."
   },
   "accounts": {
     "title": "账户",

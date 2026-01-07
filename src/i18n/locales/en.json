@@ -20,7 +20,8 @@
     "confirm": "Confirm",
     "unknownError": "Unknown error",
     "clear": "Clear",
-    "done": "Done"
+    "done": "Done",
+    "remove": "Remove"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -431,7 +432,10 @@
     "selectCurrency": "Select Currency",
     "complete": "Complete",
     "amountNegativeIfPaidByUs": "Amount (negative if paid by us)",
-    "clickOrDragToUpload": "Click or drag to upload"
+    "clickOrDragToUpload": "Click or drag to upload",
+    "addRemarks": "Add Remarks",
+    "remarks": "Remarks",
+    "remarksPlaceholder": "Add any notes or remarks about this order for the team..."
   },
   "accounts": {
     "title": "Accounts",

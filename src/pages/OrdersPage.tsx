@@ -446,7 +446,7 @@ export default function OrdersPage() {
     if (!orderDetails) return null;
     const order = orderDetails.order;
     const summaryClass = "lg:col-span-2 border-t pt-4 mt-4";
-    const addWrapperClass = "lg:col-span-3";
+    const addWrapperClass = "lg:col-span-2";
     const canEdit = order.status !== "completed" && order.status !== "cancelled";
 
     return (
