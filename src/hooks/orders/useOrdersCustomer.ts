@@ -15,6 +15,7 @@ export function useOrdersCustomer({
     name: "",
     email: "",
     phone: "",
+    remarks: "",
   });
 
   const resetCustomerForm = () => {
@@ -22,6 +23,7 @@ export function useOrdersCustomer({
       name: "",
       email: "",
       phone: "",
+      remarks: "",
     });
   };
 
@@ -34,6 +36,7 @@ export function useOrdersCustomer({
         name: customerForm.name,
         email: customerForm.email || "",
         phone: customerForm.phone || "",
+        remarks: customerForm.remarks || "",
         id: undefined,
       }).unwrap();
       

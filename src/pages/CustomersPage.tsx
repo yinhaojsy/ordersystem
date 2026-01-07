@@ -44,6 +44,7 @@ export default function CustomersPage() {
     name: "",
     email: "",
     phone: "",
+    remarks: "",
   });
 
   const [includeBeneficiary, setIncludeBeneficiary] = useState(false);
@@ -66,6 +67,7 @@ export default function CustomersPage() {
       name: form.name,
       email: form.email,
       phone: form.phone,
+      remarks: form.remarks,
       id: undefined,
     }).unwrap();
 
@@ -101,7 +103,7 @@ export default function CustomersPage() {
       await addCustomerBeneficiary(payload);
     }
 
-    setForm({ name: "", email: "", phone: "" });
+    setForm({ name: "", email: "", phone: "", remarks: "" });
     setIncludeBeneficiary(false);
     setBeneficiaryForm({
       paymentType: "CRYPTO",
@@ -190,6 +192,7 @@ export default function CustomersPage() {
       name: current.name,
       email: current.email,
       phone: current.phone,
+      remarks: current.remarks || "",
     });
   };
 
@@ -354,6 +357,13 @@ export default function CustomersPage() {
               placeholder={t("customers.phonePlaceholder")}
               value={editForm.phone}
               onChange={(e) => setEditForm((p) => (p ? { ...p, phone: e.target.value } : p))}
+            />
+            <textarea
+              className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
+              placeholder={t("customers.remarksPlaceholder") || "Remarks (optional)"}
+              value={editForm.remarks || ""}
+              onChange={(e) => setEditForm((p) => (p ? { ...p, remarks: e.target.value } : p))}
+              rows={3}
             />
             <button
               type="submit"
@@ -661,6 +671,13 @@ export default function CustomersPage() {
             placeholder={t("customers.phonePlaceholder")}
             value={form.phone}
             onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+          />
+          <textarea
+            className="col-span-full rounded-lg border border-slate-200 px-3 py-2"
+            placeholder={t("customers.remarksPlaceholder") || "Remarks (optional)"}
+            value={form.remarks}
+            onChange={(e) => setForm((p) => ({ ...p, remarks: e.target.value }))}
+            rows={3}
           />
           <div className="col-span-full flex items-center gap-3 rounded-lg border border-dashed border-slate-300 px-3 py-2">
             <input

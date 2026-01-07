@@ -14,6 +14,7 @@ export interface Customer {
   name: string;
   email: string;
   phone: string;
+  remarks?: string;
 }
 
 export interface User {

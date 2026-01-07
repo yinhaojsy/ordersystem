@@ -120,6 +120,8 @@
     "namePlaceholder": "姓名",
     "emailPlaceholder": "电子邮件",
     "phonePlaceholder": "电话",
+    "remarksPlaceholder": "备注（可选）",
+    "createCustomer": "创建客户",
     "confirmDelete": "您确定要删除此客户吗？",
     "cannotDeleteWithOrders": "无法删除有订单的客户。请先删除订单。",
     "cannotDeleteReferenced": "无法删除客户，因为它被其他记录引用。"

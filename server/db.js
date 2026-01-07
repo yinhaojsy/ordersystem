@@ -33,7 +33,8 @@ const ensureSchema = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       email TEXT,
-      phone TEXT
+      phone TEXT,
+      remarks TEXT
     );`,
   ).run();
 
@@ -653,6 +654,14 @@ const migrateDatabase = () => {
     }
     if (!columnNames.includes("remarks")) {
       db.prepare("ALTER TABLE orders ADD COLUMN remarks TEXT").run();
+    }
+
+    // Check customers table for remarks column
+    const customerTableInfo = db.prepare("PRAGMA table_info(customers)").all();
+    const customerColumnNames = customerTableInfo.map((col) => col.name);
+    
+    if (!customerColumnNames.includes("remarks")) {
+      db.prepare("ALTER TABLE customers ADD COLUMN remarks TEXT").run();
     }
 
     // Check order_payments table for new columns

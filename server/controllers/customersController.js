@@ -9,7 +9,7 @@ export const createCustomer = (req, res, next) => {
   try {
     const payload = req.body || {};
     const stmt = db.prepare(
-      `INSERT INTO customers (name, email, phone) VALUES (@name, @email, @phone);`,
+      `INSERT INTO customers (name, email, phone, remarks) VALUES (@name, @email, @phone, @remarks);`,
     );
     const result = stmt.run(payload);
     const row = db.prepare("SELECT * FROM customers WHERE id = ?;").get(result.lastInsertRowid);

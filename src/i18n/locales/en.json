@@ -118,6 +118,8 @@
     "namePlaceholder": "Name",
     "emailPlaceholder": "Email",
     "phonePlaceholder": "Phone",
+    "remarksPlaceholder": "Remarks (optional)",
+    "createCustomer": "Create Customer",
     "confirmDelete": "Are you sure you want to delete this customer?",
     "cannotDeleteWithOrders": "Cannot delete customer while they have existing orders. Please delete the orders first.",
     "cannotDeleteReferenced": "Cannot delete customer because it is referenced by other records."

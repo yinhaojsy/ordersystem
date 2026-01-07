@@ -7,11 +7,13 @@ interface CreateCustomerModalProps {
     name: string;
     email: string;
     phone: string;
+    remarks: string;
   };
   setCustomerForm: React.Dispatch<React.SetStateAction<{
     name: string;
     email: string;
     phone: string;
+    remarks: string;
   }>>;
   isCreatingCustomer: boolean;
   onClose: () => void;
@@ -87,6 +89,15 @@ export function CreateCustomerModal({
             onChange={(e) =>
               setCustomerForm((p) => ({ ...p, phone: e.target.value }))
             }
+          />
+          <textarea
+            className="rounded-lg border border-slate-200 px-3 py-2"
+            placeholder={t("customers.remarksPlaceholder") || "Remarks (optional)"}
+            value={customerForm.remarks}
+            onChange={(e) =>
+              setCustomerForm((p) => ({ ...p, remarks: e.target.value }))
+            }
+            rows={3}
           />
           <div className="flex gap-3 justify-end">
             <button
