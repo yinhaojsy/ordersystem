@@ -9,5 +9,6 @@ cmds = ["npm ci"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npm start"
+env = { NPM_CONFIG_PRODUCTION = "false" }
+cmd = "node server/index.js"
 
