@@ -271,6 +271,7 @@ export default function TagsPage() {
                       <Badge
                         tone="slate"
                         backgroundColor={tag.color}
+                        lightStyle={true} /*我 CHANGE TO BETTER LOOKS*/
                       >
                         {tag.name}
                       </Badge>

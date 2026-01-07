@@ -46,10 +46,23 @@ export function renderOrderCell({
         <td key={columnKey} className="py-2 font-semibold">
           <div className="flex items-center gap-2">
             {order.customerName || order.customerId}
+            
+{/*         我 FLEX TAGS DISPLAY NEXT TO CUSTOMER NAME    
             {order.isFlexOrder && (
               <Badge tone="purple">
                 Flex Order
               </Badge>
+            )} */}
+            
+            {/* 我 TAGS DISPLAY NEXT TO CUSTOMER NAME */} 
+            {order.tags && Array.isArray(order.tags) && order.tags.length > 0 ? (
+              order.tags.map((tag: { id: number; name: string; color: string }) => (
+                <Badge key={tag.id} tone="slate" backgroundColor={tag.color} lightStyle={true}>
+                  {tag.name}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-slate-400 text-xs">-</span>
             )}
           </div>
         </td>
@@ -321,7 +334,7 @@ export function renderOrderCell({
           <div className="flex flex-wrap gap-1">
             {order.tags && Array.isArray(order.tags) && order.tags.length > 0 ? (
               order.tags.map((tag: { id: number; name: string; color: string }) => (
-                <Badge key={tag.id} tone="slate" backgroundColor={tag.color}>
+                <Badge key={tag.id} tone="slate" backgroundColor={tag.color} lightStyle={true}>
                   {tag.name}
                 </Badge>
               ))

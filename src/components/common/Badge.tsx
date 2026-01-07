@@ -11,9 +11,86 @@ const tones: Record<Tone, string> = {
   purple: "bg-purple-50 text-purple-700 ring-purple-100",
 };
 
-export default function Badge({ children, tone = "slate", backgroundColor }: { children: ReactNode; tone?: Tone; backgroundColor?: string }) {
-  const style = backgroundColor ? { backgroundColor, color: 'white' } : {};
-  const ringColor = backgroundColor ? `ring-1 ring-inset ring-white/20` : tones[tone];
+// Convert hex color to RGB
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16),
+      }
+    : null;
+}
+
+// Convert RGB to hex
+function rgbToHex(r: number, g: number, b: number): string {
+  return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+// Lighten a color (similar to Tailwind's -50 shades)
+function lightenColor(hex: string, amount: number = 0.95): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+
+  const r = Math.round(rgb.r + (255 - rgb.r) * amount);
+  const g = Math.round(rgb.g + (255 - rgb.g) * amount);
+  const b = Math.round(rgb.b + (255 - rgb.b) * amount);
+
+  return rgbToHex(r, g, b);
+}
+
+// Darken a color for text (similar to Tailwind's -700 shades)
+function darkenColor(hex: string, amount: number = 0.3): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+
+  const r = Math.round(rgb.r * amount);
+  const g = Math.round(rgb.g * amount);
+  const b = Math.round(rgb.b * amount);
+
+  return rgbToHex(r, g, b);
+}
+
+export default function Badge({
+  children,
+  tone = "slate",
+  backgroundColor,
+  lightStyle = false,
+}: {
+  children: ReactNode;
+  tone?: Tone;
+  backgroundColor?: string;
+  lightStyle?: boolean;
+}) {
+  let style: React.CSSProperties = {};
+  let ringColor: string;
+
+  if (backgroundColor) {
+    if (lightStyle) {
+      // Light style: light background with dark text (like flex order tags)
+      const lightBg = lightenColor(backgroundColor, 0.95);
+      const darkText = darkenColor(backgroundColor, 0.95);
+      const ringColorValue = lightenColor(backgroundColor, 0.3);
+      style = {
+        backgroundColor: lightBg,
+        color: darkText,
+        
+      };
+      ringColor = `ring-1 ring-inset`;
+      // Use box-shadow for ring effect with custom color
+      const rgb = hexToRgb(ringColorValue);
+      if (rgb) {
+        style.boxShadow = `inset 0 0 0 1px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`;
+      }
+    } else {
+      // Original style: solid background with white text
+      style = { backgroundColor, color: "white" };
+      ringColor = `ring-1 ring-inset ring-white/20`;
+    }
+  } else {
+    ringColor = tones[tone];
+  }
 
   return (
     <span
