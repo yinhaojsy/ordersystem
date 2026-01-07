@@ -12,6 +12,7 @@ interface AccountTooltipProps {
   serviceChargeCurrency?: string | null;
   serviceChargeAccountName?: string | null;
   isSellAccount?: boolean;
+  accountCount?: number;
 }
 
 /**
@@ -28,11 +29,16 @@ export const AccountTooltip = memo(function AccountTooltip({
   serviceChargeCurrency,
   serviceChargeAccountName,
   isSellAccount = false,
+  accountCount,
 }: AccountTooltipProps) {
   const { t } = useTranslation();
   const [position, setPosition] = useState<'above' | 'below'>('below');
+  const [isHovered, setIsHovered] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  // Use provided accountCount or calculate from accounts length
+  const totalAccountCount = accountCount !== undefined ? accountCount : accounts.length;
 
   useEffect(() => {
     const checkPosition = () => {
@@ -58,29 +64,39 @@ export const AccountTooltip = memo(function AccountTooltip({
     const container = containerRef.current;
     if (container) {
       const handleMouseEnter = () => {
+        setIsHovered(true);
         checkPosition();
         // Double-check after a brief delay to ensure tooltip is fully rendered
         setTimeout(checkPosition, 10);
       };
       
+      const handleMouseLeave = () => {
+        setIsHovered(false);
+      };
+      
       container.addEventListener('mouseenter', handleMouseEnter);
+      container.addEventListener('mouseleave', handleMouseLeave);
       // Also check on scroll
       window.addEventListener('scroll', checkPosition, true);
       return () => {
         container.removeEventListener('mouseenter', handleMouseEnter);
+        container.removeEventListener('mouseleave', handleMouseLeave);
         window.removeEventListener('scroll', checkPosition, true);
       };
     }
   }, [accounts.length]);
 
   return (
-    <div ref={containerRef} className="relative group">
+    <div ref={containerRef} className="relative group inline-block">
       {children}
-      <div
+      {isHovered && (
+        <div
         ref={tooltipRef}
-        className={`absolute left-0 z-50 hidden group-hover:block bg-white border border-slate-200 rounded-lg shadow-xl p-3 min-w-[220px] max-w-[300px] ${
+        className={`absolute left-0 z-[100] bg-white border border-slate-200 rounded-lg shadow-xl p-3 min-w-[220px] max-w-[300px] ${
           position === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
         }`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         style={{
           maxHeight: `${Math.min(window.innerHeight - 40, 400)}px`,
           overflowY: 'auto',
@@ -88,7 +104,7 @@ export const AccountTooltip = memo(function AccountTooltip({
         }}
       >
         <div className="text-xs font-semibold text-slate-700 mb-2 pb-2 border-b border-slate-200">
-          {label} ({accounts.length})
+          {label} ({totalAccountCount})
         </div>
         <div className="space-y-2">
           {accounts.map((acc, idx) => (
@@ -118,7 +134,8 @@ export const AccountTooltip = memo(function AccountTooltip({
             </div>
           )}
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 });

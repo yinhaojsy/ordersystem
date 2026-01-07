@@ -186,6 +186,7 @@ export function renderOrderCell({
       
       const hasMultiple = accountCount > 1;
       const shouldShowTooltip = hasMultiple || showProfitInBuy || showServiceChargeInBuy;
+      const showBadge = accountCount > 1;
       
       return (
         <td key={columnKey} className="py-2 text-slate-600">
@@ -199,10 +200,11 @@ export function renderOrderCell({
               serviceChargeAmount={showServiceChargeInBuy ? order.serviceChargeAmount : null}
               serviceChargeCurrency={showServiceChargeInBuy ? order.serviceChargeCurrency : null}
               serviceChargeAccountName={serviceChargeAccountName}
+              accountCount={accountCount}
             >
-              <div className="flex items-center gap-2 cursor-default">
+              <div className="flex items-center gap-2 cursor-pointer">
                 <span>{accountName}</span>
-                {hasMultiple && (
+                {showBadge && (
                   <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
                     {accountCount}
                   </span>
@@ -276,6 +278,7 @@ export function renderOrderCell({
       
       const hasMultiple = accountCount > 1;
       const shouldShowTooltip = hasMultiple || showProfitInSell || showServiceChargeInSell;
+      const showBadge = accountCount > 1;
       
       return (
         <td key={columnKey} className="py-2 text-slate-600">
@@ -284,14 +287,17 @@ export function renderOrderCell({
               accounts={sellAccounts} 
               label={t("orders.sellAccount")}
               profitAmount={showProfitInSell ? order.profitAmount : null}
+              profitCurrency={showProfitInSell ? order.profitCurrency : null}
               profitAccountName={profitAccountName}
               serviceChargeAmount={showServiceChargeInSell ? order.serviceChargeAmount : null}
+              serviceChargeCurrency={showServiceChargeInSell ? order.serviceChargeCurrency : null}
               serviceChargeAccountName={serviceChargeAccountName}
               isSellAccount={true}
+              accountCount={accountCount}
             >
-              <div className="flex items-center gap-2 cursor-default">
+              <div className="flex items-center gap-2 cursor-pointer">
                 <span>{accountName}</span>
-                {hasMultiple && (
+                {showBadge && (
                   <span className="flex items-center justify-center w-5 h-5 text-xs font-semibold text-white bg-blue-600 rounded-full">
                     {accountCount}
                   </span>

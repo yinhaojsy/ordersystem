@@ -270,6 +270,38 @@ export const listOrders = (req, res) => {
         )
         .all(order.id);
 
+      // Get confirmed profit for this order
+      const confirmedProfit = db
+        .prepare(
+          `SELECT amount, currencyCode as profitCurrency, accountId as profitAccountId
+           FROM order_profits
+           WHERE orderId = ? AND status = 'confirmed'
+           ORDER BY createdAt DESC
+           LIMIT 1;`
+        )
+        .get(order.id);
+
+      // Get confirmed service charge for this order
+      const confirmedServiceCharge = db
+        .prepare(
+          `SELECT amount, currencyCode as serviceChargeCurrency, accountId as serviceChargeAccountId
+           FROM order_service_charges
+           WHERE orderId = ? AND status = 'confirmed'
+           ORDER BY createdAt DESC
+           LIMIT 1;`
+        )
+        .get(order.id);
+
+      // Use confirmed profit/service charge if available, otherwise fall back to order table fields
+      // Ensure amounts are numbers
+      const profitAmount = confirmedProfit ? Number(confirmedProfit.amount) : (order.profitAmount !== null && order.profitAmount !== undefined ? Number(order.profitAmount) : null);
+      const profitCurrency = confirmedProfit ? confirmedProfit.profitCurrency : (order.profitCurrency ?? null);
+      const profitAccountId = confirmedProfit ? confirmedProfit.profitAccountId : (order.profitAccountId ?? null);
+      
+      const serviceChargeAmount = confirmedServiceCharge ? Number(confirmedServiceCharge.amount) : (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined ? Number(order.serviceChargeAmount) : null);
+      const serviceChargeCurrency = confirmedServiceCharge ? confirmedServiceCharge.serviceChargeCurrency : (order.serviceChargeCurrency ?? null);
+      const serviceChargeAccountId = confirmedServiceCharge ? confirmedServiceCharge.serviceChargeAccountId : (order.serviceChargeAccountId ?? null);
+
       return {
         ...order,
         walletAddresses: order.walletAddresses ? JSON.parse(order.walletAddresses) : null,
@@ -279,6 +311,12 @@ export const listOrders = (req, res) => {
         buyAccounts: buyAccounts.length > 0 ? buyAccounts : null,
         sellAccounts: sellAccounts.length > 0 ? sellAccounts : null,
         tags: tags.length > 0 ? tags : [],
+        profitAmount,
+        profitCurrency,
+        profitAccountId,
+        serviceChargeAmount,
+        serviceChargeCurrency,
+        serviceChargeAccountId,
       };
     } catch (e) {
       // Get tags for this order even in error case
@@ -292,6 +330,36 @@ export const listOrders = (req, res) => {
         )
         .all(order.id);
 
+      // Get confirmed profit/service charge even in error case
+      const confirmedProfit = db
+        .prepare(
+          `SELECT amount, currencyCode as profitCurrency, accountId as profitAccountId
+           FROM order_profits
+           WHERE orderId = ? AND status = 'confirmed'
+           ORDER BY createdAt DESC
+           LIMIT 1;`
+        )
+        .get(order.id);
+
+      const confirmedServiceCharge = db
+        .prepare(
+          `SELECT amount, currencyCode as serviceChargeCurrency, accountId as serviceChargeAccountId
+           FROM order_service_charges
+           WHERE orderId = ? AND status = 'confirmed'
+           ORDER BY createdAt DESC
+           LIMIT 1;`
+        )
+        .get(order.id);
+
+      // Ensure amounts are numbers
+      const profitAmount = confirmedProfit ? Number(confirmedProfit.amount) : (order.profitAmount !== null && order.profitAmount !== undefined ? Number(order.profitAmount) : null);
+      const profitCurrency = confirmedProfit ? confirmedProfit.profitCurrency : (order.profitCurrency ?? null);
+      const profitAccountId = confirmedProfit ? confirmedProfit.profitAccountId : (order.profitAccountId ?? null);
+      
+      const serviceChargeAmount = confirmedServiceCharge ? Number(confirmedServiceCharge.amount) : (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined ? Number(order.serviceChargeAmount) : null);
+      const serviceChargeCurrency = confirmedServiceCharge ? confirmedServiceCharge.serviceChargeCurrency : (order.serviceChargeCurrency ?? null);
+      const serviceChargeAccountId = confirmedServiceCharge ? confirmedServiceCharge.serviceChargeAccountId : (order.serviceChargeAccountId ?? null);
+
       return {
         ...order,
         walletAddresses: null,
@@ -301,6 +369,12 @@ export const listOrders = (req, res) => {
         buyAccounts: null,
         sellAccounts: null,
         tags: tags.length > 0 ? tags : [],
+        profitAmount,
+        profitCurrency,
+        profitAccountId,
+        serviceChargeAmount,
+        serviceChargeCurrency,
+        serviceChargeAccountId,
       };
     }
   });
@@ -2675,23 +2749,30 @@ export const confirmProfit = (req, res, next) => {
     // Update profit status to confirmed
     db.prepare("UPDATE order_profits SET status = 'confirmed' WHERE id = ?;").run(profitId);
 
-    // Update account balance
+    // Update account balance and create transaction
     const accountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(profit.accountId);
-    if (accountForBalance) {
-      const oldBalance = accountForBalance.balance;
-      const newBalance = oldBalance + profit.amount;
-      
-      db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, profit.accountId);
-      
-      db.prepare(
-        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-         VALUES (?, 'add', ?, ?, ?);`
-      ).run(
-        profit.accountId,
-        profit.amount,
-        `Order #${profit.orderId} - Profit`,
-        new Date().toISOString()
-      );
+    if (!accountForBalance) {
+      return res.status(400).json({ message: "Profit account not found" });
+    }
+    
+    const oldBalance = accountForBalance.balance;
+    const newBalance = oldBalance + profit.amount;
+    
+    db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, profit.accountId);
+    
+    // Create account transaction
+    const transactionResult = db.prepare(
+      `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+       VALUES (?, 'add', ?, ?, ?);`
+    ).run(
+      profit.accountId,
+      profit.amount,
+      `Order #${profit.orderId} - Profit`,
+      new Date().toISOString()
+    );
+    
+    if (!transactionResult.lastInsertRowid) {
+      console.error("Failed to create account transaction for profit:", profitId);
     }
 
     // Get updated profit
@@ -2823,41 +2904,53 @@ export const confirmServiceCharge = (req, res, next) => {
     // Update service charge status to confirmed
     db.prepare("UPDATE order_service_charges SET status = 'confirmed' WHERE id = ?;").run(serviceChargeId);
 
-    // Update account balance
+    // Update account balance and create transaction
     const accountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(serviceCharge.accountId);
-    if (accountForBalance) {
-      const oldBalance = accountForBalance.balance;
-      const amount = Number(serviceCharge.amount);
+    if (!accountForBalance) {
+      return res.status(400).json({ message: "Service charge account not found" });
+    }
+    
+    const oldBalance = accountForBalance.balance;
+    const amount = Number(serviceCharge.amount);
+    
+    if (amount > 0) {
+      // Positive service charge: add to account (we receive it)
+      const newBalance = oldBalance + amount;
+      db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, serviceCharge.accountId);
       
-      if (amount > 0) {
-        // Positive service charge: add to account (we receive it)
-        const newBalance = oldBalance + amount;
-        db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, serviceCharge.accountId);
-        
-        db.prepare(
-          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-           VALUES (?, 'add', ?, ?, ?);`
-        ).run(
-          serviceCharge.accountId,
-          amount,
-          `Order #${serviceCharge.orderId} - Service charge`,
-          new Date().toISOString()
-        );
-      } else if (amount < 0) {
-        // Negative service charge: subtract from account (we pay it)
-        const absAmount = Math.abs(amount);
-        const newBalance = oldBalance - absAmount;
-        db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, serviceCharge.accountId);
-        
-        db.prepare(
-          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-           VALUES (?, 'withdraw', ?, ?, ?);`
-        ).run(
-          serviceCharge.accountId,
-          absAmount,
-          `Order #${serviceCharge.orderId} - Service charge paid by us`,
-          new Date().toISOString()
-        );
+      // Create account transaction
+      const transactionResult = db.prepare(
+        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+         VALUES (?, 'add', ?, ?, ?);`
+      ).run(
+        serviceCharge.accountId,
+        amount,
+        `Order #${serviceCharge.orderId} - Service charge`,
+        new Date().toISOString()
+      );
+      
+      if (!transactionResult.lastInsertRowid) {
+        console.error("Failed to create account transaction for service charge:", serviceChargeId);
+      }
+    } else if (amount < 0) {
+      // Negative service charge: subtract from account (we pay it)
+      const absAmount = Math.abs(amount);
+      const newBalance = oldBalance - absAmount;
+      db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, serviceCharge.accountId);
+      
+      // Create account transaction
+      const transactionResult = db.prepare(
+        `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+         VALUES (?, 'withdraw', ?, ?, ?);`
+      ).run(
+        serviceCharge.accountId,
+        absAmount,
+        `Order #${serviceCharge.orderId} - Service charge paid by us`,
+        new Date().toISOString()
+      );
+      
+      if (!transactionResult.lastInsertRowid) {
+        console.error("Failed to create account transaction for service charge:", serviceChargeId);
       }
     }
 

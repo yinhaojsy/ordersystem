@@ -12,9 +12,7 @@ import {
   useConfirmReceiptMutation,
   useConfirmPaymentMutation,
   useUpdateOrderStatusMutation,
-  useAddProfitMutation,
   useConfirmProfitMutation,
-  useAddServiceChargeMutation,
   useConfirmServiceChargeMutation,
 } from "../../services/api";
 import type { Account } from "../../types";
@@ -84,9 +82,7 @@ export function useOtcOrder(
   const [deletePayment] = useDeletePaymentMutation();
   const [confirmReceipt] = useConfirmReceiptMutation();
   const [confirmPayment] = useConfirmPaymentMutation();
-  const [addProfit] = useAddProfitMutation();
   const [confirmProfit] = useConfirmProfitMutation();
-  const [addServiceCharge] = useAddServiceChargeMutation();
   const [confirmServiceCharge] = useConfirmServiceChargeMutation();
 
   // Determine if OTC order is completed/cancelled for view mode
@@ -478,28 +474,78 @@ export function useOtcOrder(
         }
       }
 
-      // Add profit if provided - create draft and immediately confirm for OTC orders
+      // Add profit if provided - create draft via updateOrder and immediately confirm for OTC orders
       if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
-        const profitResult = await addProfit({
-          orderId,
-          amount: Number(otcProfitAmount),
-          currencyCode: otcProfitCurrency,
-          accountId: Number(otcProfitAccountId),
+        // Create draft profit via updateOrder
+        await updateOrder({
+          id: orderId,
+          data: {
+            profitAmount: Number(otcProfitAmount),
+            profitCurrency: otcProfitCurrency,
+            profitAccountId: Number(otcProfitAccountId),
+          },
         }).unwrap();
-        // Immediately confirm profit for OTC orders
-        await confirmProfit((profitResult as any).id).unwrap();
+        
+        // Get the draft profit ID and confirm it
+        // Use a small delay to ensure the draft is committed, then fetch order details
+        await new Promise(resolve => setTimeout(resolve, 100));
+        try {
+          const response = await fetch(`/api/orders/${orderId}/details`);
+          if (response.ok) {
+            const orderDetails = await response.json();
+            if (orderDetails && orderDetails.profits && Array.isArray(orderDetails.profits)) {
+              const draftProfit = orderDetails.profits.find((p: any) => p.status === 'draft');
+              if (draftProfit && draftProfit.id) {
+                await confirmProfit(draftProfit.id).unwrap();
+              } else {
+                console.error("Draft profit not found for order:", orderId, orderDetails.profits);
+              }
+            } else {
+              console.error("Order details profits not found or invalid:", orderId, orderDetails);
+            }
+          } else {
+            console.error("Failed to fetch order details for profit confirmation:", response.status);
+          }
+        } catch (error) {
+          console.error("Error fetching order details for profit confirmation:", error);
+        }
       }
 
-      // Add service charges if provided - create draft and immediately confirm for OTC orders
+      // Add service charges if provided - create draft via updateOrder and immediately confirm for OTC orders
       if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
-        const serviceChargeResult = await addServiceCharge({
-          orderId,
-          amount: Number(otcServiceChargeAmount),
-          currencyCode: otcServiceChargeCurrency,
-          accountId: Number(otcServiceChargeAccountId),
+        // Create draft service charge via updateOrder
+        await updateOrder({
+          id: orderId,
+          data: {
+            serviceChargeAmount: Number(otcServiceChargeAmount),
+            serviceChargeCurrency: otcServiceChargeCurrency,
+            serviceChargeAccountId: Number(otcServiceChargeAccountId),
+          },
         }).unwrap();
-        // Immediately confirm service charge for OTC orders
-        await confirmServiceCharge((serviceChargeResult as any).id).unwrap();
+        
+        // Get the draft service charge ID and confirm it
+        // Use a small delay to ensure the draft is committed, then fetch order details
+        await new Promise(resolve => setTimeout(resolve, 100));
+        try {
+          const response = await fetch(`/api/orders/${orderId}/details`);
+          if (response.ok) {
+            const orderDetails = await response.json();
+            if (orderDetails && orderDetails.serviceCharges && Array.isArray(orderDetails.serviceCharges)) {
+              const draftServiceCharge = orderDetails.serviceCharges.find((sc: any) => sc.status === 'draft');
+              if (draftServiceCharge && draftServiceCharge.id) {
+                await confirmServiceCharge(draftServiceCharge.id).unwrap();
+              } else {
+                console.error("Draft service charge not found for order:", orderId, orderDetails.serviceCharges);
+              }
+            } else {
+              console.error("Order details service charges not found or invalid:", orderId, orderDetails);
+            }
+          } else {
+            console.error("Failed to fetch order details for service charge confirmation:", response.status);
+          }
+        } catch (error) {
+          console.error("Error fetching order details for service charge confirmation:", error);
+        }
       }
 
       // Ensure remarks are saved before completing (in case they weren't saved earlier)
