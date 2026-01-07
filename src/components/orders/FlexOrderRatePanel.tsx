@@ -136,8 +136,8 @@ export const FlexOrderRatePanel: React.FC<FlexOrderRatePanelProps> = ({
   const expectedAmountBuy = orderDetails.order.actualAmountBuy || orderDetails.order.amountBuy;
 
   return (
-    <div className="lg:col-span-1">
-      <div className="sticky top-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+    <div className="lg:col-span-1 lg:sticky lg:top-4 lg:self-start lg:h-fit">
+      <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
         <p className="text-sm font-semibold text-purple-900 mb-2">
           Flex Order - Adjust Exchange Rate
         </p>

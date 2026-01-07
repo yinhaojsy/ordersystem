@@ -145,6 +145,28 @@ export interface OrderPayment {
   createdAt: string;
 }
 
+export interface OrderProfit {
+  id: number;
+  orderId: number;
+  amount: number;
+  currencyCode: string;
+  accountId: number;
+  accountName?: string;
+  status: "draft" | "confirmed";
+  createdAt: string;
+}
+
+export interface OrderServiceCharge {
+  id: number;
+  orderId: number;
+  amount: number;
+  currencyCode: string;
+  accountId: number;
+  accountName?: string;
+  status: "draft" | "confirmed";
+  createdAt: string;
+}
+
 export interface CustomerBeneficiary {
   id: number;
   customerId: number;

@@ -158,6 +158,34 @@ const ensureSchema = () => {
   ).run();
 
   db.prepare(
+    `CREATE TABLE IF NOT EXISTS order_profits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      orderId INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      currencyCode TEXT NOT NULL,
+      accountId INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE,
+      FOREIGN KEY(accountId) REFERENCES accounts(id)
+    );`,
+  ).run();
+
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS order_service_charges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      orderId INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      currencyCode TEXT NOT NULL,
+      accountId INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(orderId) REFERENCES orders(id) ON DELETE CASCADE,
+      FOREIGN KEY(accountId) REFERENCES accounts(id)
+    );`,
+  ).run();
+
+  db.prepare(
     `CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       currencyCode TEXT NOT NULL,

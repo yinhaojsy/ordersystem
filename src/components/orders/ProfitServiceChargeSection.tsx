@@ -7,6 +7,8 @@ interface ProfitServiceChargeSectionProps {
   orderId: number | null;
   order: Order | null | undefined;
   accounts: Account[];
+  profits?: any[]; // OrderProfit[]
+  serviceCharges?: any[]; // OrderServiceCharge[]
   
   // Profit state
   profitAmount: string;
@@ -42,6 +44,8 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
   orderId,
   order,
   accounts,
+  profits = [],
+  serviceCharges = [],
   profitAmount,
   setProfitAmount,
   profitCurrency,
@@ -83,7 +87,6 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
           profitAccountId: Number(profitAccountId),
         },
       }).unwrap();
-      alert(t("orders.profitUpdatedSuccessfully"));
       // Close the section after successful save
       setShowProfitSection(false);
       // Clear the form fields
@@ -117,7 +120,6 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
           serviceChargeAccountId: Number(serviceChargeAccountId),
         },
       }).unwrap();
-      alert(t("orders.serviceChargeUpdatedSuccessfully"));
       // Close the section after successful save
       setShowServiceChargeSection(false);
       // Clear the form fields
@@ -133,9 +135,9 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
 
   const containerClassName = layout === "grid" ? "lg:col-span-2 border-t pt-4 mt-4 space-y-4" : "border-t pt-4 mt-4 space-y-4";
 
-  // Treat null/undefined/0 as "no value" so flex + regular behave the same
-  const hasProfit = typeof order?.profitAmount === "number" && order.profitAmount !== 0;
-  const hasServiceCharge = typeof order?.serviceChargeAmount === "number" && order.serviceChargeAmount !== 0;
+  // Check if there are any profit or service charge entries (draft or confirmed)
+  const hasProfit = profits && profits.length > 0;
+  const hasServiceCharge = serviceCharges && serviceCharges.length > 0;
 
   return (
     <div className={containerClassName}>

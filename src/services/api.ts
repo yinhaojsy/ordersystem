@@ -10,6 +10,8 @@ import type {
   OrderReceipt,
   OrderBeneficiary,
   OrderPayment,
+  OrderProfit,
+  OrderServiceCharge,
   CustomerBeneficiary,
   AuthResponse,
   Account,
@@ -450,6 +452,8 @@ export const api = createApi({
         receipts: OrderReceipt[];
         beneficiaries: OrderBeneficiary[];
         payments: OrderPayment[];
+        profits: OrderProfit[];
+        serviceCharges: OrderServiceCharge[];
         totalReceiptAmount: number;
         totalPaymentAmount: number;
         receiptBalance: number;
@@ -697,6 +701,98 @@ export const api = createApi({
     confirmPayment: builder.mutation<OrderPayment, number>({
       query: (paymentId) => ({
         url: `orders/payments/${paymentId}/confirm`,
+        method: "POST",
+      }),
+      invalidatesTags: (result) => {
+        if (result) {
+          return [
+            { type: "Order", id: result.orderId },
+            { type: "Order", id: "LIST" },
+            { type: "Account", id: "LIST" },
+          ];
+        }
+        return [{ type: "Order", id: "LIST" }, { type: "Account", id: "LIST" }];
+      },
+    }),
+    updateProfit: builder.mutation<
+      OrderProfit,
+      { profitId: number; amount?: number; accountId?: number; currencyCode?: string }
+    >({
+      query: ({ profitId, ...body }) => ({
+        url: `orders/profits/${profitId}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: () => [
+        { type: "Order", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    deleteProfit: builder.mutation<{ success: boolean; orderId?: number }, number>({
+      query: (profitId) => ({
+        url: `orders/profits/${profitId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result) => {
+        const tags: Array<{ type: "Order" | "Account"; id: number | "LIST" }> = [
+          { type: "Order", id: "LIST" },
+          { type: "Account", id: "LIST" },
+        ];
+        if (result?.orderId) {
+          tags.push({ type: "Order", id: result.orderId });
+        }
+        return tags;
+      },
+    }),
+    confirmProfit: builder.mutation<OrderProfit, number>({
+      query: (profitId) => ({
+        url: `orders/profits/${profitId}/confirm`,
+        method: "POST",
+      }),
+      invalidatesTags: (result) => {
+        if (result) {
+          return [
+            { type: "Order", id: result.orderId },
+            { type: "Order", id: "LIST" },
+            { type: "Account", id: "LIST" },
+          ];
+        }
+        return [{ type: "Order", id: "LIST" }, { type: "Account", id: "LIST" }];
+      },
+    }),
+    updateServiceCharge: builder.mutation<
+      OrderServiceCharge,
+      { serviceChargeId: number; amount?: number; accountId?: number; currencyCode?: string }
+    >({
+      query: ({ serviceChargeId, ...body }) => ({
+        url: `orders/service-charges/${serviceChargeId}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: () => [
+        { type: "Order", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+    deleteServiceCharge: builder.mutation<{ success: boolean; orderId?: number }, number>({
+      query: (serviceChargeId) => ({
+        url: `orders/service-charges/${serviceChargeId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result) => {
+        const tags: Array<{ type: "Order" | "Account"; id: number | "LIST" }> = [
+          { type: "Order", id: "LIST" },
+          { type: "Account", id: "LIST" },
+        ];
+        if (result?.orderId) {
+          tags.push({ type: "Order", id: result.orderId });
+        }
+        return tags;
+      },
+    }),
+    confirmServiceCharge: builder.mutation<OrderServiceCharge, number>({
+      query: (serviceChargeId) => ({
+        url: `orders/service-charges/${serviceChargeId}/confirm`,
         method: "POST",
       }),
       invalidatesTags: (result) => {
@@ -1333,6 +1429,12 @@ export const {
   useUpdateReceiptMutation,
   useDeleteReceiptMutation,
   useConfirmReceiptMutation,
+  useUpdateProfitMutation,
+  useDeleteProfitMutation,
+  useConfirmProfitMutation,
+  useUpdateServiceChargeMutation,
+  useDeleteServiceChargeMutation,
+  useConfirmServiceChargeMutation,
   useAddBeneficiaryMutation,
   useAddPaymentMutation,
   useUpdatePaymentMutation,

@@ -57,6 +57,10 @@ import {
   useUpdateReceiptMutation,
   useDeleteReceiptMutation,
   useConfirmReceiptMutation,
+  useDeleteProfitMutation,
+  useConfirmProfitMutation,
+  useDeleteServiceChargeMutation,
+  useConfirmServiceChargeMutation,
   useAddBeneficiaryMutation,
   useAddPaymentMutation,
   useUpdatePaymentMutation,
@@ -262,6 +266,10 @@ export default function OrdersPage() {
   const [updateReceipt] = useUpdateReceiptMutation();
   const [deleteReceipt] = useDeleteReceiptMutation();
   const [confirmReceipt] = useConfirmReceiptMutation();
+  const [deleteProfit] = useDeleteProfitMutation();
+  const [confirmProfit] = useConfirmProfitMutation();
+  const [deleteServiceCharge] = useDeleteServiceChargeMutation();
+  const [confirmServiceCharge] = useConfirmServiceChargeMutation();
   const [addBeneficiary] = useAddBeneficiaryMutation();
   const [addPayment] = useAddPaymentMutation();
   const [updatePayment] = useUpdatePaymentMutation();
@@ -443,56 +451,149 @@ export default function OrdersPage() {
 
     return (
       <>
-        {order.profitAmount !== null &&
-          order.profitAmount !== undefined && (
-            <div className={summaryClass}>
-              <div className="p-3 border border-blue-200 rounded-lg bg-blue-50">
-                <h3 className="font-semibold text-blue-900 mb-2">
-                  {t("orders.profit")}
-                </h3>
-                <div className="text-sm text-slate-600 space-y-1">
-                  <div>
-                    {t("orders.profitAmount")}:{" "}
-                    {order.profitAmount > 0 ? "+" : ""}
-                    {order.profitAmount.toFixed(2)} {order.profitCurrency || ""}
+        {/* Display profit entries (draft and confirmed) */}
+        {orderDetails?.profits && orderDetails.profits.length > 0 && (
+          <div className={summaryClass}>
+            {orderDetails.profits.map((profit: any) => (
+              <div key={profit.id} className="p-3 border border-blue-200 rounded-lg bg-blue-50 mb-2 relative">
+                <div className="flex items-start gap-2 mb-2">
+                  {profit.status === 'draft' && (
+                    <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
+                      Draft
+                    </span>
+                  )}
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-blue-900 mb-2">
+                      {t("orders.profit")}
+                    </h3>
+                    <div className="text-sm text-slate-600 space-y-1">
+                      <div>
+                        {t("orders.profitAmount")}:{" "}
+                        {profit.amount > 0 ? "+" : ""}
+                        {profit.amount.toFixed(2)} {profit.currencyCode || ""}
+                      </div>
+                      {profit.accountName && (
+                        <div className="text-slate-500">
+                          {t("orders.account")}: {profit.accountName}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {order.profitAccountId && (
-                    <div className="text-slate-500">
-                      {t("orders.account")}:{" "}
-                      {accounts.find((acc) => acc.id === order.profitAccountId)?.name ||
-                        `Account #${order.profitAccountId}`}
+                  {profit.status === 'draft' && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (window.confirm(t("orders.confirmProfitQuestion") || "Confirm this profit?")) {
+                            try {
+                              await confirmProfit(profit.id).unwrap();
+                            } catch (error: any) {
+                              console.error("Error confirming profit:", error);
+                              const errorMessage = error?.data?.message || error?.message || t("orders.failedToConfirmProfit");
+                              alert(errorMessage);
+                            }
+                          }
+                        }}
+                        className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                      >
+                        {t("common.confirm")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (window.confirm(t("orders.deleteProfitQuestion") || "Delete this profit?")) {
+                            try {
+                              await deleteProfit(profit.id).unwrap();
+                            } catch (error: any) {
+                              console.error("Error deleting profit:", error);
+                              const errorMessage = error?.data?.message || error?.message || t("orders.failedToDeleteProfit");
+                              alert(errorMessage);
+                            }
+                          }
+                        }}
+                        className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                      >
+                        {t("common.delete")}
+                      </button>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+        )}
 
-        {order.serviceChargeAmount !== null &&
-          order.serviceChargeAmount !== undefined && (
-            <div className={summaryClass}>
-              <div className="p-3 border border-green-200 rounded-lg bg-green-50">
-                <h3 className="font-semibold text-green-900 mb-2">
-                  {t("orders.serviceCharges")}
-                </h3>
-                <div className="text-sm text-slate-600 space-y-1">
-                  <div>
-                    {t("orders.serviceChargeAmount")}:{" "}
-                    {order.serviceChargeAmount > 0 ? "+" : ""}
-                    {order.serviceChargeAmount.toFixed(2)}{" "}
-                    {order.serviceChargeCurrency || ""}
+        {/* Display service charge entries (draft and confirmed) */}
+        {orderDetails?.serviceCharges && orderDetails.serviceCharges.length > 0 && (
+          <div className={summaryClass}>
+            {orderDetails.serviceCharges.map((serviceCharge: any) => (
+              <div key={serviceCharge.id} className="p-3 border border-green-200 rounded-lg bg-green-50 mb-2 relative">
+                <div className="flex items-start gap-2 mb-2">
+                  {serviceCharge.status === 'draft' && (
+                    <span className="px-2 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
+                      Draft
+                    </span>
+                  )}
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-green-900 mb-2">
+                      {t("orders.serviceCharges")}
+                    </h3>
+                    <div className="text-sm text-slate-600 space-y-1">
+                      <div>
+                        {t("orders.serviceChargeAmount")}:{" "}
+                        {serviceCharge.amount > 0 ? "+" : ""}
+                        {serviceCharge.amount.toFixed(2)} {serviceCharge.currencyCode || ""}
+                      </div>
+                      {serviceCharge.accountName && (
+                        <div className="text-slate-500">
+                          {t("orders.account")}: {serviceCharge.accountName}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {order.serviceChargeAccountId && (
-                    <div className="text-slate-500">
-                      {t("orders.account")}:{" "}
-                      {accounts.find((acc) => acc.id === order.serviceChargeAccountId)?.name ||
-                        `Account #${order.serviceChargeAccountId}`}
+                  {serviceCharge.status === 'draft' && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (window.confirm(t("orders.confirmServiceChargeQuestion") || "Confirm this service charge?")) {
+                            try {
+                              await confirmServiceCharge(serviceCharge.id).unwrap();
+                            } catch (error: any) {
+                              console.error("Error confirming service charge:", error);
+                              const errorMessage = error?.data?.message || error?.message || t("orders.failedToConfirmServiceCharge");
+                              alert(errorMessage);
+                            }
+                          }
+                        }}
+                        className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors"
+                      >
+                        {t("common.confirm")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (window.confirm(t("orders.deleteServiceChargeQuestion") || "Delete this service charge?")) {
+                            try {
+                              await deleteServiceCharge(serviceCharge.id).unwrap();
+                            } catch (error: any) {
+                              console.error("Error deleting service charge:", error);
+                              const errorMessage = error?.data?.message || error?.message || t("orders.failedToDeleteServiceCharge");
+                              alert(errorMessage);
+                            }
+                          }
+                        }}
+                        className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                      >
+                        {t("common.delete")}
+                      </button>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+        )}
 
         {canEdit && (
           <div className={addWrapperClass}>
@@ -500,6 +601,8 @@ export default function OrdersPage() {
               orderId={viewModalOrderId}
               order={orderDetails?.order}
               accounts={accounts}
+              profits={orderDetails?.profits}
+              serviceCharges={orderDetails?.serviceCharges}
               profitAmount={profitAmount}
               setProfitAmount={setProfitAmount}
               profitCurrency={profitCurrency}
@@ -1487,7 +1590,7 @@ export default function OrdersPage() {
 
                     {/* Remarks Section for Flex Orders (under_process) */}
                     {isUnderProcess && (
-                      <div className="lg:col-span-3">
+                      <div className="lg:col-span-2">
                         <RemarksSection
                           remarks={remarks}
                           setRemarks={setRemarks}
