@@ -4,6 +4,7 @@ import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
 import ProfitSummaryDisplay from "../components/profit/ProfitSummaryDisplay";
+import { GroupAssignmentModal } from "../components/profit/GroupAssignmentModal";
 import {
   useGetAccountsQuery,
   useGetCurrenciesQuery,
@@ -68,6 +69,7 @@ export default function ProfitCalculationPage() {
     isOpen: false,
     groupName: null,
   });
+  const [groupAssignmentModalOpen, setGroupAssignmentModalOpen] = useState(false);
   // Track multiplier input values to allow empty state
   const [multiplierInputs, setMultiplierInputs] = useState<Map<number, string>>(new Map());
   
@@ -601,6 +603,116 @@ export default function ProfitCalculationPage() {
     }
   };
 
+  // Handler for creating group from modal
+  const handleModalCreateGroup = async (groupName: string) => {
+    if (!selectedCalculationId) {
+      throw new Error("No calculation selected");
+    }
+
+    const groupNameTrimmed = groupName.trim();
+    
+    // Check if group already exists
+    const existingGroups = new Set<string>();
+    if (calculationDetails?.groups) {
+      calculationDetails.groups.forEach((g) => existingGroups.add(g));
+    }
+    calculationDetails?.multipliers.forEach((m) => {
+      if (m.groupName) {
+        existingGroups.add(m.groupName);
+      }
+    });
+    createdGroups.forEach((g) => existingGroups.add(g));
+    
+    if (existingGroups.has(groupNameTrimmed)) {
+      const error = new Error(t("profit.groupAlreadyExists") || `Group "${groupNameTrimmed}" already exists.`);
+      setAlertModal({
+        isOpen: true,
+        message: error.message,
+        type: "warning",
+      });
+      throw error;
+    }
+    
+    // Get current groups from database
+    const currentGroups = calculationDetails?.groups || [];
+    const updatedGroups = [...currentGroups, groupNameTrimmed];
+    
+    // Save to database
+    await updateCalculation({
+      id: selectedCalculationId,
+      data: { groups: updatedGroups },
+    }).unwrap();
+  };
+
+  // Handler for applying group assignments from modal
+  const handleModalApplyGroup = async (groupId: string, groupName: string, accountIds: number[]) => {
+    if (!selectedCalculationId) {
+      throw new Error("No calculation selected");
+    }
+
+    try {
+      // Get all accounts that should be in this group
+      const accountsToAssign = new Set(accountIds);
+      
+      // Get all accounts currently in this group
+      const currentAccountsInGroup = calculationDetails?.multipliers
+        .filter((m: ProfitAccountMultiplier) => m.groupId === groupId || m.groupName === groupName)
+        .map((m: ProfitAccountMultiplier) => m.accountId) || [];
+      
+      // Assign new accounts or update existing ones
+      const promises: Promise<any>[] = [];
+      
+      // Process all accounts - assign or unassign as needed
+      for (const account of accounts) {
+        const shouldBeInGroup = accountsToAssign.has(account.id);
+        const isCurrentlyInGroup = currentAccountsInGroup.includes(account.id);
+        
+        if (shouldBeInGroup && !isCurrentlyInGroup) {
+          // Assign to group
+          const multiplier = multiplierMap.get(account.id);
+          const mult = multiplier?.multiplier ?? 1.0;
+          promises.push(
+            updateMultiplier({
+              calculationId: selectedCalculationId,
+              accountId: account.id,
+              multiplier: mult,
+              groupId,
+              groupName,
+            }).unwrap()
+          );
+        } else if (!shouldBeInGroup && isCurrentlyInGroup) {
+          // Unassign from group
+          const multiplier = multiplierMap.get(account.id);
+          const mult = multiplier?.multiplier ?? 1.0;
+          promises.push(
+            updateMultiplier({
+              calculationId: selectedCalculationId,
+              accountId: account.id,
+              multiplier: mult,
+              groupId: undefined,
+              groupName: undefined,
+            }).unwrap()
+          );
+        }
+      }
+      
+      await Promise.all(promises);
+      
+      setAlertModal({
+        isOpen: true,
+        message: t("profit.groupAssignmentsSaved") || "Group assignments saved successfully",
+        type: "success",
+      });
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: error?.data?.message || t("profit.errorSaving") || "Error saving group assignments",
+        type: "error",
+      });
+      throw error;
+    }
+  };
+
   // Find default calculation
   const defaultCalculation = calculations.find((calc) => calc.isDefault === 1 || calc.isDefault === true);
   const { data: defaultCalculationDetails } = useGetProfitCalculationQuery(
@@ -739,6 +851,14 @@ export default function ProfitCalculationPage() {
           <SectionCard
             title={t("profit.accountsWithMultipliers")}
             description={t("profit.accountsWithMultipliersDesc")}
+            actions={
+              <button
+                onClick={() => setGroupAssignmentModalOpen(true)}
+                className="px-3 py-1 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                {t("profit.assignUnassignGroup") || "Assign/Unassign Group"}
+              </button>
+            }
           >
             {isLoadingAccounts ? (
               <div className="text-sm text-slate-500">{t("common.loading")}</div>
@@ -1222,6 +1342,19 @@ export default function ProfitCalculationPage() {
         cancelText={t("common.cancel")}
         type="warning"
       />
+
+      {selectedCalculationId && calculationDetails && (
+        <GroupAssignmentModal
+          isOpen={groupAssignmentModalOpen}
+          onClose={() => setGroupAssignmentModalOpen(false)}
+          accounts={accounts}
+          availableGroups={availableGroups}
+          calculationId={selectedCalculationId}
+          multipliers={calculationDetails.multipliers}
+          onCreateGroup={handleModalCreateGroup}
+          onApply={handleModalApplyGroup}
+        />
+      )}
     </div>
   );
 }
