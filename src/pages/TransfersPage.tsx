@@ -8,6 +8,7 @@ import { TagSelectionModal } from "../components/common/TagSelectionModal";
 import { TransfersFilters } from "../components/transfers/TransfersFilters";
 import { ImportTransfersModal } from "../components/transfers/ImportTransfersModal";
 import Badge from "../components/common/Badge";
+import { AccountSelect } from "../components/common/AccountSelect";
 import { useTransfersTable } from "../hooks/transfers/useTransfersTable";
 import { useTransfersFilters } from "../hooks/transfers/useTransfersFilters";
 import { useTransfersImportExport } from "../hooks/transfers/useTransfersImportExport";
@@ -28,7 +29,6 @@ import {
 import { useAppSelector } from "../app/hooks";
 import { formatDate, formatDateTime } from "../utils/format";
 import { hasActionPermission } from "../utils/permissions";
-import type { Account } from "../types";
 
 // Helper function to format currency with proper number formatting
 const formatCurrency = (amount: number, currencyCode: string) => {
@@ -138,10 +138,6 @@ export default function TransfersPage() {
     handleColumnDragLeave,
   } = useTransfersTable();
   
-  // Searchable dropdown states
-  const [fromAccountSearchQuery, setFromAccountSearchQuery] = useState("");
-  const [isFromAccountDropdownOpen, setIsFromAccountDropdownOpen] = useState(false);
-  const fromAccountDropdownRef = useRef<HTMLDivElement>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -166,26 +162,6 @@ export default function TransfersPage() {
   const { data: transferChanges = [], isLoading: isLoadingChanges } = 
     useGetTransferChangesQuery(viewAuditTrailTransferId || 0, { skip: !viewAuditTrailTransferId });
 
-  // Favorite accounts management (stored in localStorage)
-  const [favoriteAccountIds, setFavoriteAccountIds] = useState<number[]>(() => {
-    const stored = localStorage.getItem("favoriteAccountIds");
-    return stored ? JSON.parse(stored) : [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem("favoriteAccountIds", JSON.stringify(favoriteAccountIds));
-  }, [favoriteAccountIds]);
-
-  const toggleFavorite = (accountId: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setFavoriteAccountIds((prev) => {
-      if (prev.includes(accountId)) {
-        return prev.filter((id) => id !== accountId);
-      } else {
-        return [...prev, accountId];
-      }
-    });
-  };
 
   const [form, setForm] = useState({
     fromAccountId: "",
@@ -203,8 +179,6 @@ export default function TransfersPage() {
       description: "",
       transactionFee: "",
     });
-    setFromAccountSearchQuery("");
-    setIsFromAccountDropdownOpen(false);
     setEditingTransferId(null);
   };
 
@@ -269,57 +243,6 @@ export default function TransfersPage() {
   // Get selected accounts for validation
   const fromAccount = accounts.find((a) => a.id === Number(form.fromAccountId));
   const toAccount = accounts.find((a) => a.id === Number(form.toAccountId));
-
-  // Filter accounts for "to" dropdown based on "from" account currency
-  const availableToAccounts = form.fromAccountId
-    ? accounts.filter(
-        (acc) =>
-          acc.id !== Number(form.fromAccountId) &&
-          acc.currencyCode === fromAccount?.currencyCode
-      )
-    : [];
-
-  // Filter by search query for From Account
-  const filteredFromAccounts = useMemo(() => {
-    if (!fromAccountSearchQuery.trim()) return accounts;
-    const query = fromAccountSearchQuery.toLowerCase();
-    return accounts.filter(
-      (account) =>
-        account.name.toLowerCase().includes(query) ||
-        account.currencyCode.toLowerCase().includes(query) ||
-        account.currencyName?.toLowerCase().includes(query)
-    );
-  }, [accounts, fromAccountSearchQuery]);
-
-  // Sort accounts: favorites first, then alphabetically
-  const sortedFromAccounts = useMemo(() => {
-    const favorites = filteredFromAccounts.filter((a) => favoriteAccountIds.includes(a.id));
-    const nonFavorites = filteredFromAccounts.filter((a) => !favoriteAccountIds.includes(a.id));
-    
-    const sortByName = (a: Account, b: Account) => a.name.localeCompare(b.name);
-    
-    return [
-      ...favorites.sort(sortByName),
-      ...nonFavorites.sort(sortByName),
-    ];
-  }, [filteredFromAccounts, favoriteAccountIds]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        fromAccountDropdownRef.current &&
-        !fromAccountDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsFromAccountDropdownOpen(false);
-      }
-    };
-
-    if (isFromAccountDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isFromAccountDropdownOpen]);
 
   // Handle Esc key to close create/edit transfer modal
   useEffect(() => {
@@ -871,150 +794,36 @@ export default function TransfersPage() {
               </button>
             </div>
             <form className="grid gap-3" onSubmit={handleSubmit}>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {t("transfers.fromAccount")}
-                </label>
-                <div className="relative" ref={fromAccountDropdownRef}>
-                  <input
-                    type="text"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 pr-10"
-                    placeholder={t("transfers.selectFromAccount")}
-                    value={
-                      isFromAccountDropdownOpen
-                        ? fromAccountSearchQuery
-                        : form.fromAccountId
-                        ? accounts.find((a) => a.id === Number(form.fromAccountId))?.name || ""
-                        : ""
-                    }
-                    onFocus={() => {
-                      setIsFromAccountDropdownOpen(true);
-                      if (form.fromAccountId) {
-                        const selected = accounts.find((a) => a.id === Number(form.fromAccountId));
-                        setFromAccountSearchQuery(selected?.name || "");
-                      }
-                    }}
-                    onChange={(e) => {
-                      setFromAccountSearchQuery(e.target.value);
-                      setIsFromAccountDropdownOpen(true);
-                      if (!e.target.value) {
-                        setForm((p) => ({ ...p, fromAccountId: "", toAccountId: "" }));
-                      }
-                    }}
-                    required
-                  />
-                  <svg
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                  
-                  {isFromAccountDropdownOpen && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {sortedFromAccounts.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-slate-500">
-                          {t("transfers.noAccountsFound")}
-                        </div>
-                      ) : (
-                        sortedFromAccounts.map((account) => {
-                          const isFavorite = favoriteAccountIds.includes(account.id);
-                          const isSelected = form.fromAccountId === String(account.id);
-                          return (
-                            <div
-                              key={account.id}
-                              className={`px-3 py-2 cursor-pointer hover:bg-slate-50 flex items-center justify-between ${
-                                isSelected ? "bg-blue-50" : ""
-                              }`}
-                              onClick={() => {
-                                setForm((p) => ({ ...p, fromAccountId: String(account.id), toAccountId: "" }));
-                                setFromAccountSearchQuery("");
-                                setIsFromAccountDropdownOpen(false);
-                              }}
-                            >
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-slate-900 truncate">
-                                  {account.name}
-                                </div>
-                                <div className="text-xs text-slate-500">
-                                  {formatCurrency(account.balance, account.currencyCode)}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => toggleFavorite(account.id, e)}
-                                className="ml-2 flex-shrink-0 p-1 hover:bg-slate-100 rounded transition-colors"
-                                title={isFavorite ? t("transfers.removeFavorite") : t("transfers.addFavorite")}
-                              >
-                                <svg
-                                  className={`w-5 h-5 ${
-                                    isFavorite
-                                      ? "text-amber-500 fill-amber-500"
-                                      : "text-slate-300"
-                                  }`}
-                                  fill="currentColor"
-                                  viewBox="0 0 20 20"
-                                >
-                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                </svg>
-                              </button>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
-                {fromAccount && (
-                  <div className="mt-1 text-xs text-slate-500">
-                    {t("transfers.currentBalance")}:{" "}
-                    <span className={fromAccount.balance < 0 ? "text-red-600" : "text-slate-900"}>
-                      {formatCurrency(fromAccount.balance, fromAccount.currencyCode)}
-                    </span>
-                  </div>
-                )}
-              </div>
+              <AccountSelect
+                value={form.fromAccountId}
+                onChange={(accountId) => {
+                  setForm((p) => ({ 
+                    ...p, 
+                    fromAccountId: accountId, 
+                    toAccountId: "" // Clear toAccount when fromAccount changes
+                  }));
+                }}
+                accounts={accounts}
+                label={t("transfers.fromAccount")}
+                placeholder={t("transfers.selectFromAccount")}
+                required
+                showBalance={true}
+                t={t}
+              />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {t("transfers.toAccount")}
-                </label>
-                <select
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                  value={form.toAccountId}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, toAccountId: e.target.value }))
-                  }
-                  required
-                  disabled={!form.fromAccountId}
-                >
-                  <option value="">
-                    {form.fromAccountId
-                      ? t("transfers.selectToAccount")
-                      : t("transfers.selectFromAccountFirst")}
-                  </option>
-                  {availableToAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name} ({formatCurrency(account.balance, account.currencyCode)})
-                    </option>
-                  ))}
-                </select>
-                {toAccount && (
-                  <div className="mt-1 text-xs text-slate-500">
-                    {t("transfers.currentBalance")}:{" "}
-                    <span className={toAccount.balance < 0 ? "text-red-600" : "text-slate-900"}>
-                      {formatCurrency(toAccount.balance, toAccount.currencyCode)}
-                    </span>
-                  </div>
-                )}
-              </div>
+              <AccountSelect
+                value={form.toAccountId}
+                onChange={(accountId) => setForm((p) => ({ ...p, toAccountId: accountId }))}
+                accounts={accounts}
+                label={t("transfers.toAccount")}
+                placeholder={form.fromAccountId ? t("transfers.selectToAccount") : t("transfers.selectFromAccountFirst")}
+                required
+                disabled={!form.fromAccountId}
+                showBalance={true}
+                filterByCurrency={fromAccount?.currencyCode}
+                excludeAccountIds={form.fromAccountId ? [Number(form.fromAccountId)] : []}
+                t={t}
+              />
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
