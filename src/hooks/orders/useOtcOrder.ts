@@ -380,7 +380,8 @@ export function useOtcOrder(
     try {
       let orderId: number;
       
-      // Prepare order data with remarks
+      // Prepare order data with remarks, profit, and service charges
+      // Include all fields in one call, matching the amountBuy/amountSell pattern
       const orderData: any = {
         customerId: Number(otcForm.customerId),
         fromCurrency: otcForm.fromCurrency,
@@ -400,16 +401,39 @@ export function useOtcOrder(
         // If section is shown but remarks are empty, set to null to remove from database
         orderData.remarks = null;
       }
+      
+      // Include profit and service charges in the same call (like amountBuy/amountSell)
+      if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
+        orderData.profitAmount = Number(otcProfitAmount);
+        orderData.profitCurrency = otcProfitCurrency;
+        orderData.profitAccountId = Number(otcProfitAccountId);
+      }
+      
+      if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
+        orderData.serviceChargeAmount = Number(otcServiceChargeAmount);
+        orderData.serviceChargeCurrency = otcServiceChargeCurrency;
+        orderData.serviceChargeAccountId = Number(otcServiceChargeAccountId);
+      }
 
       if (otcEditingOrderId) {
         // Update existing order
-        await updateOrder({
+        const updateResult = await updateOrder({
           id: otcEditingOrderId,
           data: orderData,
         }).unwrap();
         orderId = otcEditingOrderId;
+        
+        // Confirm profit/service charge if they were created (for OTC orders)
+        // The backend now returns createdProfitId and createdServiceChargeId
+        if ((updateResult as any).createdProfitId) {
+          await confirmProfit((updateResult as any).createdProfitId).unwrap();
+        }
+        if ((updateResult as any).createdServiceChargeId) {
+          await confirmServiceCharge((updateResult as any).createdServiceChargeId).unwrap();
+        }
       } else {
         // Create new OTC order
+        // Profit and service charges are handled in createOrder backend (creates confirmed entries directly)
         const newOrder = await addOrder({
           ...orderData,
           status: "pending",
@@ -474,79 +498,9 @@ export function useOtcOrder(
         }
       }
 
-      // Add profit if provided - create draft via updateOrder and immediately confirm for OTC orders
-      if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
-        // Create draft profit via updateOrder
-        await updateOrder({
-          id: orderId,
-          data: {
-            profitAmount: Number(otcProfitAmount),
-            profitCurrency: otcProfitCurrency,
-            profitAccountId: Number(otcProfitAccountId),
-          },
-        }).unwrap();
-        
-        // Get the draft profit ID and confirm it
-        // Use a small delay to ensure the draft is committed, then fetch order details
-        await new Promise(resolve => setTimeout(resolve, 100));
-        try {
-          const response = await fetch(`/api/orders/${orderId}/details`);
-          if (response.ok) {
-            const orderDetails = await response.json();
-            if (orderDetails && orderDetails.profits && Array.isArray(orderDetails.profits)) {
-              const draftProfit = orderDetails.profits.find((p: any) => p.status === 'draft');
-              if (draftProfit && draftProfit.id) {
-                await confirmProfit(draftProfit.id).unwrap();
-              } else {
-                console.error("Draft profit not found for order:", orderId, orderDetails.profits);
-              }
-            } else {
-              console.error("Order details profits not found or invalid:", orderId, orderDetails);
-            }
-          } else {
-            console.error("Failed to fetch order details for profit confirmation:", response.status);
-          }
-        } catch (error) {
-          console.error("Error fetching order details for profit confirmation:", error);
-        }
-      }
-
-      // Add service charges if provided - create draft via updateOrder and immediately confirm for OTC orders
-      if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
-        // Create draft service charge via updateOrder
-        await updateOrder({
-          id: orderId,
-          data: {
-            serviceChargeAmount: Number(otcServiceChargeAmount),
-            serviceChargeCurrency: otcServiceChargeCurrency,
-            serviceChargeAccountId: Number(otcServiceChargeAccountId),
-          },
-        }).unwrap();
-        
-        // Get the draft service charge ID and confirm it
-        // Use a small delay to ensure the draft is committed, then fetch order details
-        await new Promise(resolve => setTimeout(resolve, 100));
-        try {
-          const response = await fetch(`/api/orders/${orderId}/details`);
-          if (response.ok) {
-            const orderDetails = await response.json();
-            if (orderDetails && orderDetails.serviceCharges && Array.isArray(orderDetails.serviceCharges)) {
-              const draftServiceCharge = orderDetails.serviceCharges.find((sc: any) => sc.status === 'draft');
-              if (draftServiceCharge && draftServiceCharge.id) {
-                await confirmServiceCharge(draftServiceCharge.id).unwrap();
-              } else {
-                console.error("Draft service charge not found for order:", orderId, orderDetails.serviceCharges);
-              }
-            } else {
-              console.error("Order details service charges not found or invalid:", orderId, orderDetails);
-            }
-          } else {
-            console.error("Failed to fetch order details for service charge confirmation:", response.status);
-          }
-        } catch (error) {
-          console.error("Error fetching order details for service charge confirmation:", error);
-        }
-      }
+      // Profit and service charges are now handled in the addOrder/updateOrder call above
+      // The backend will create confirmed entries directly for OTC orders
+      // This matches the amountBuy/amountSell pattern - all in one call!
 
       // Ensure remarks are saved before completing (in case they weren't saved earlier)
       if (otcRemarks && otcRemarks.trim() !== "") {

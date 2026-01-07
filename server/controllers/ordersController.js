@@ -711,6 +711,86 @@ export const createOrder = (req, res, next) => {
     
     const orderId = result.lastInsertRowid;
     
+    // For OTC orders, create confirmed profit/service charge entries in separate tables if provided
+    // This matches the pattern of amountBuy/amountSell - all handled in one call
+    if (orderData.orderType === "otc") {
+      // Create confirmed profit entry if provided
+      if (orderData.profitAmount !== null && orderData.profitAmount !== undefined && 
+          orderData.profitCurrency && orderData.profitAccountId) {
+        const profitAmount = Number(orderData.profitAmount);
+        if (!isNaN(profitAmount) && profitAmount > 0) {
+          // Create confirmed profit entry directly
+          db.prepare(
+            `INSERT INTO order_profits (orderId, amount, currencyCode, accountId, status, createdAt)
+             VALUES (?, ?, ?, ?, 'confirmed', ?);`
+          ).run(orderId, profitAmount, orderData.profitCurrency, orderData.profitAccountId, new Date().toISOString());
+          
+          // Update account balance and create transaction
+          const profitAccount = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(orderData.profitAccountId);
+          if (profitAccount) {
+            const newBalance = profitAccount.balance + profitAmount;
+            db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.profitAccountId);
+            db.prepare(
+              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+               VALUES (?, 'add', ?, ?, ?);`
+            ).run(
+              orderData.profitAccountId,
+              profitAmount,
+              `Order #${orderId} - Profit`,
+              new Date().toISOString()
+            );
+          }
+        }
+      }
+      
+      // Create confirmed service charge entry if provided
+      if (orderData.serviceChargeAmount !== null && orderData.serviceChargeAmount !== undefined && 
+          orderData.serviceChargeCurrency && orderData.serviceChargeAccountId) {
+        const serviceChargeAmount = Number(orderData.serviceChargeAmount);
+        if (!isNaN(serviceChargeAmount) && serviceChargeAmount !== 0) {
+          // Create confirmed service charge entry directly
+          db.prepare(
+            `INSERT INTO order_service_charges (orderId, amount, currencyCode, accountId, status, createdAt)
+             VALUES (?, ?, ?, ?, 'confirmed', ?);`
+          ).run(orderId, serviceChargeAmount, orderData.serviceChargeCurrency, orderData.serviceChargeAccountId, new Date().toISOString());
+          
+          // Update account balance and create transaction
+          const scAccount = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(orderData.serviceChargeAccountId);
+          if (scAccount) {
+            const oldBalance = scAccount.balance;
+            if (serviceChargeAmount > 0) {
+              // Positive service charge: add to account
+              const newBalance = oldBalance + serviceChargeAmount;
+              db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.serviceChargeAccountId);
+              db.prepare(
+                `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+                 VALUES (?, 'add', ?, ?, ?);`
+              ).run(
+                orderData.serviceChargeAccountId,
+                serviceChargeAmount,
+                `Order #${orderId} - Service charge`,
+                new Date().toISOString()
+              );
+            } else {
+              // Negative service charge: subtract from account
+              const absAmount = Math.abs(serviceChargeAmount);
+              const newBalance = oldBalance - absAmount;
+              db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.serviceChargeAccountId);
+              db.prepare(
+                `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+                 VALUES (?, 'withdraw', ?, ?, ?);`
+              ).run(
+                orderData.serviceChargeAccountId,
+                absAmount,
+                `Order #${orderId} - Service charge paid by us`,
+                new Date().toISOString()
+              );
+            }
+          }
+        }
+      }
+    }
+    
     // Handle tag assignments if provided
     if (Array.isArray(tagIds) && tagIds.length > 0) {
       const tagAssignmentStmt = db.prepare(
@@ -932,6 +1012,8 @@ export const updateOrder = (req, res, next) => {
     
     let profitDraftCreated = false;
     let serviceChargeDraftCreated = false;
+    let createdProfitId = null;
+    let createdServiceChargeId = null;
     
     // If profit fields are provided, create a draft profit entry
     if (profitAmount !== undefined || profitAccountId !== undefined || profitCurrency !== undefined) {
@@ -942,11 +1024,12 @@ export const updateOrder = (req, res, next) => {
       if (profitAmount !== null && profitAmount !== undefined && profitCurrency && profitAccountId) {
         const amount = Number(profitAmount);
         if (!isNaN(amount) && amount > 0) {
-          db.prepare(
+          const profitResult = db.prepare(
             `INSERT INTO order_profits (orderId, amount, currencyCode, accountId, status, createdAt)
              VALUES (?, ?, ?, ?, 'draft', ?);`
           ).run(id, amount, profitCurrency, profitAccountId, new Date().toISOString());
           profitDraftCreated = true;
+          createdProfitId = profitResult.lastInsertRowid;
         }
       }
     }
@@ -960,11 +1043,12 @@ export const updateOrder = (req, res, next) => {
       if (serviceChargeAmount !== null && serviceChargeAmount !== undefined && serviceChargeCurrency && serviceChargeAccountId) {
         const amount = Number(serviceChargeAmount);
         if (!isNaN(amount) && amount !== 0) {
-          db.prepare(
+          const serviceChargeResult = db.prepare(
             `INSERT INTO order_service_charges (orderId, amount, currencyCode, accountId, status, createdAt)
              VALUES (?, ?, ?, ?, 'draft', ?);`
           ).run(id, amount, serviceChargeCurrency, serviceChargeAccountId, new Date().toISOString());
           serviceChargeDraftCreated = true;
+          createdServiceChargeId = serviceChargeResult.lastInsertRowid;
         }
       }
     }
@@ -1042,6 +1126,15 @@ export const updateOrder = (req, res, next) => {
       )
       .get(id);
     
+    // Include created profit/service charge IDs in response (for OTC orders to confirm immediately)
+    const responseData = { ...row };
+    if (createdProfitId) {
+      responseData.createdProfitId = createdProfitId;
+    }
+    if (createdServiceChargeId) {
+      responseData.createdServiceChargeId = createdServiceChargeId;
+    }
+    
     // Get tags for the order
     const tags = db
       .prepare(
@@ -1054,7 +1147,7 @@ export const updateOrder = (req, res, next) => {
       .all(id);
     
     res.json({
-      ...row,
+      ...responseData,
       tags: tags.length > 0 ? tags : [],
     });
   } catch (error) {
@@ -1091,7 +1184,22 @@ export const updateOrderStatus = (req, res, next) => {
          WHERE o.id = ?;`,
       )
       .get(id);
-    res.json(row);
+    
+    // Get tags for the order
+    const tags = db
+      .prepare(
+        `SELECT t.id, t.name, t.color 
+         FROM tags t
+         INNER JOIN order_tag_assignments ota ON ota.tagId = t.id
+         WHERE ota.orderId = ?
+         ORDER BY t.name ASC;`
+      )
+      .all(id);
+    
+    res.json({
+      ...row,
+      tags: tags.length > 0 ? tags : [],
+    });
   } catch (error) {
     next(error);
   }
