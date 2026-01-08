@@ -45,7 +45,9 @@
     "orders": "Orders",
     "transfers": "Internal Transfers",
     "accounts": "Accounts",
-    "expenses": "Expenses"
+    "expenses": "Expenses",
+    "profit": "Profit Calculation",
+    "tags": "Tags"
   },
   "app": {
     "testSystem": "Test System",
@@ -184,6 +186,9 @@
     "deleteAccount": "Delete account",
     "deleteTransfer": "Delete internal transfer",
     "createFlexOrder": "Create flex order",
+    "manageAccountsDisplay": "Manage accounts display settings",
+    "createTag": "Create tag",
+    "deleteTag": "Delete tag",
     "confirmDelete": "Are you sure you want to delete this role?",
     "cannotDeleteReferenced": "Cannot delete role because it is referenced by other records.",
     "cannotDeleteRoleWithUsers": "Cannot delete role \"{{roleName}}\" because it is assigned to {{count}} user(s). Please reassign or remove those users first.",

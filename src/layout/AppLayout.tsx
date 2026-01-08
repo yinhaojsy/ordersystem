@@ -136,7 +136,7 @@ export default function AppLayout() {
     { to: "/currencies", labelKey: "nav.currencies", section: "currencies" },
     { to: "/users", labelKey: "nav.users", section: "users" },
     { to: "/roles", labelKey: "nav.roles", section: "roles" },
-    { to: "/tags", labelKey: "nav.tags", section: "orders" },
+    { to: "/tags", labelKey: "nav.tags", section: "tags" },
     { to: "/profit", labelKey: "nav.profit", section: "profit" },
   ];
 

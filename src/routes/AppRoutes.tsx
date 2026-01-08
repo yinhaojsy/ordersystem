@@ -40,7 +40,7 @@ export default function AppRoutes() {
           <Route path="customers" element={<RequireAuth section="customers"><CustomersPage /></RequireAuth>} />
           <Route path="users" element={<RequireAuth section="users"><UsersPage /></RequireAuth>} />
           <Route path="roles" element={<RequireAuth section="roles"><RolesPage /></RequireAuth>} />
-          <Route path="tags" element={<RequireAuth section="orders"><TagsPage /></RequireAuth>} />
+          <Route path="tags" element={<RequireAuth section="tags"><TagsPage /></RequireAuth>} />
           <Route path="orders" element={<RequireAuth section="orders"><OrdersPage /></RequireAuth>} />
           <Route path="profit" element={<RequireAuth section="profit"><ProfitCalculationPage /></RequireAuth>} />
         </Route>

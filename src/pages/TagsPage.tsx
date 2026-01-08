@@ -11,6 +11,8 @@ import {
   useDeleteTagMutation,
 } from "../services/api";
 import type { Tag, TagInput } from "../types";
+import { useAppSelector } from "../app/hooks";
+import { hasActionPermission } from "../utils/permissions";
 
 export default function TagsPage() {
   const { t } = useTranslation();
@@ -18,6 +20,9 @@ export default function TagsPage() {
   const [createTag, { isLoading: isCreating }] = useCreateTagMutation();
   const [updateTag, { isLoading: isUpdating }] = useUpdateTagMutation();
   const [deleteTag, { isLoading: isDeleting }] = useDeleteTagMutation();
+  const authUser = useAppSelector((s) => s.auth.user);
+  const canCreate = hasActionPermission(authUser, "createTag");
+  const canDelete = hasActionPermission(authUser, "deleteTag");
 
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean;
@@ -49,6 +54,14 @@ export default function TagsPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!canCreate) {
+      setAlertModal({
+        isOpen: true,
+        message: t("roles.actions") || "Not allowed",
+        type: "error",
+      });
+      return;
+    }
     if (!form.name || !form.color) {
       setAlertModal({
         isOpen: true,
@@ -76,6 +89,7 @@ export default function TagsPage() {
   };
 
   const startEdit = (id: number) => {
+    if (!canCreate) return;
     const current = tags.find((t) => t.id === id);
     if (!current) return;
     setEditingId(id);
@@ -92,6 +106,7 @@ export default function TagsPage() {
 
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!canCreate) return;
     if (!editingId || !editForm) return;
     if (!editForm.name || !editForm.color) {
       setAlertModal({
@@ -120,6 +135,7 @@ export default function TagsPage() {
   };
 
   const handleDeleteClick = (id: number) => {
+    if (!canDelete) return;
     const tag = tags.find((t) => t.id === id);
     if (!tag) return;
 
@@ -131,6 +147,7 @@ export default function TagsPage() {
   };
 
   const remove = async (id: number) => {
+    if (!canDelete) return;
     try {
       const result = await deleteTag(id).unwrap();
       setConfirmModal({ isOpen: false, message: "", tagId: null });
@@ -152,53 +169,55 @@ export default function TagsPage() {
   return (
     <div className="space-y-6">
       <SectionCard title={t("tags.title")}>
-        <form onSubmit={handleSubmit} className="space-y-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                {t("tags.name")}
-              </label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder={t("tags.namePlaceholder")}
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                {t("tags.color")}
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="color"
-                  value={form.color}
-                  onChange={(e) => setForm({ ...form, color: e.target.value })}
-                  className="h-10 w-20 border border-slate-300 rounded-lg cursor-pointer"
-                />
+        {canCreate && (
+          <form onSubmit={handleSubmit} className="space-y-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  {t("tags.name")}
+                </label>
                 <input
                   type="text"
-                  value={form.color}
-                  onChange={(e) => setForm({ ...form, color: e.target.value })}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="#3b82f6"
-                  pattern="^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={t("tags.namePlaceholder")}
+                  required
                 />
               </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  {t("tags.color")}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="color"
+                    value={form.color}
+                    onChange={(e) => setForm({ ...form, color: e.target.value })}
+                    className="h-10 w-20 border border-slate-300 rounded-lg cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={form.color}
+                    onChange={(e) => setForm({ ...form, color: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="#3b82f6"
+                    pattern="^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
+                  />
+                </div>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCreating ? t("tags.creating") : t("tags.create")}
+                </button>
+              </div>
             </div>
-            <div className="flex items-end">
-              <button
-                type="submit"
-                disabled={isCreating}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCreating ? t("tags.creating") : t("tags.create")}
-              </button>
-            </div>
-          </div>
-        </form>
+          </form>
+        )}
 
         {isLoading ? (
           <div className="text-center py-8 text-slate-500">
@@ -249,20 +268,24 @@ export default function TagsPage() {
                       />
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        type="submit"
-                        disabled={isUpdating}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {t("tags.save")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
-                      >
-                        {t("tags.cancel")}
-                      </button>
+                      {canCreate && (
+                        <button
+                          type="submit"
+                          disabled={isUpdating}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {t("tags.save")}
+                        </button>
+                      )}
+                      {canCreate && (
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+                        >
+                          {t("tags.cancel")}
+                        </button>
+                      )}
                     </div>
                   </form>
                 ) : (
@@ -277,18 +300,22 @@ export default function TagsPage() {
                       </Badge>
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => startEdit(tag.id)}
-                        className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
-                      >
-                        {t("tags.edit")}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(tag.id)}
-                        className="px-3 py-1 text-sm bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200"
-                      >
-                        {t("tags.delete")}
-                      </button>
+                      {canCreate && (
+                        <button
+                          onClick={() => startEdit(tag.id)}
+                          className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+                        >
+                          {t("tags.edit")}
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDeleteClick(tag.id)}
+                          className="px-3 py-1 text-sm bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200"
+                        >
+                          {t("tags.delete")}
+                        </button>
+                      )}
                     </div>
                   </>
                 )}

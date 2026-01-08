@@ -47,7 +47,8 @@
     "transfers": "内部转账",
     "accounts": "账户",
     "expenses": "开支",
-    "profit": "利润计算"
+    "profit": "利润计算",
+    "tags": "标签"
   },
   "app": {
     "testSystem": "测试系统",
@@ -187,6 +188,8 @@
     "deleteTransfer": "删除内部转账",
     "createFlexOrder": "创建灵活订单",
     "manageAccountsDisplay": "管理账户显示设置",
+    "createTag": "创建标签",
+    "deleteTag": "删除标签",
     "confirmDelete": "您确定要删除此角色吗？",
     "cannotDeleteReferenced": "无法删除角色，因为它被其他记录引用。",
     "cannotDeleteRoleWithUsers": "无法删除角色 \"{{roleName}}\"，因为它已分配给 {{count}} 个用户。请先重新分配或删除这些用户。",
