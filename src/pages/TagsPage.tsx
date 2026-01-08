@@ -22,7 +22,7 @@ export default function TagsPage() {
   const [deleteTag, { isLoading: isDeleting }] = useDeleteTagMutation();
   const authUser = useAppSelector((s) => s.auth.user);
   const canCreate = hasActionPermission(authUser, "createTag");
-  const canDelete = hasActionPermission(authUser, "deleteTag");
+  const canEditDelete = hasActionPermission(authUser, "deleteTag");
 
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean;
@@ -89,7 +89,7 @@ export default function TagsPage() {
   };
 
   const startEdit = (id: number) => {
-    if (!canCreate) return;
+    if (!canEditDelete) return;
     const current = tags.find((t) => t.id === id);
     if (!current) return;
     setEditingId(id);
@@ -106,7 +106,7 @@ export default function TagsPage() {
 
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!canCreate) return;
+    if (!canEditDelete) return;
     if (!editingId || !editForm) return;
     if (!editForm.name || !editForm.color) {
       setAlertModal({
@@ -135,7 +135,7 @@ export default function TagsPage() {
   };
 
   const handleDeleteClick = (id: number) => {
-    if (!canDelete) return;
+    if (!canEditDelete) return;
     const tag = tags.find((t) => t.id === id);
     if (!tag) return;
 
@@ -147,7 +147,7 @@ export default function TagsPage() {
   };
 
   const remove = async (id: number) => {
-    if (!canDelete) return;
+    if (!canEditDelete) return;
     try {
       const result = await deleteTag(id).unwrap();
       setConfirmModal({ isOpen: false, message: "", tagId: null });
@@ -268,7 +268,7 @@ export default function TagsPage() {
                       />
                     </div>
                     <div className="flex gap-2">
-                      {canCreate && (
+                      {canEditDelete && (
                         <button
                           type="submit"
                           disabled={isUpdating}
@@ -277,7 +277,7 @@ export default function TagsPage() {
                           {t("tags.save")}
                         </button>
                       )}
-                      {canCreate && (
+                      {canEditDelete && (
                         <button
                           type="button"
                           onClick={cancelEdit}
@@ -300,7 +300,7 @@ export default function TagsPage() {
                       </Badge>
                     </div>
                     <div className="flex gap-2">
-                      {canCreate && (
+                      {canEditDelete && (
                         <button
                           onClick={() => startEdit(tag.id)}
                           className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
@@ -308,7 +308,7 @@ export default function TagsPage() {
                           {t("tags.edit")}
                         </button>
                       )}
-                      {canDelete && (
+                      {canEditDelete && (
                         <button
                           onClick={() => handleDeleteClick(tag.id)}
                           className="px-3 py-1 text-sm bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200"

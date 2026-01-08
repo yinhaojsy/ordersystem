@@ -41,7 +41,7 @@ export default function RolesPage() {
     { key: "createFlexOrder", labelKey: "roles.createFlexOrder" },
     { key: "manageAccountsDisplay", labelKey: "roles.manageAccountsDisplay" },
     { key: "createTag", labelKey: "roles.createTag" },
-    { key: "deleteTag", labelKey: "roles.deleteTag" },
+    { key: "deleteTag", labelKey: "roles.deleteTag" }, // edit/delete tag
   ];
   const [addRole, { isLoading: isSaving }] = useAddRoleMutation();
   const [updateRole] = useUpdateRoleMutation();

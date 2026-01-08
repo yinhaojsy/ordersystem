@@ -189,7 +189,7 @@
     "createFlexOrder": "创建灵活订单",
     "manageAccountsDisplay": "管理账户显示设置",
     "createTag": "创建标签",
-    "deleteTag": "删除标签",
+    "deleteTag": "编辑/删除标签",
     "confirmDelete": "您确定要删除此角色吗？",
     "cannotDeleteReferenced": "无法删除角色，因为它被其他记录引用。",
     "cannotDeleteRoleWithUsers": "无法删除角色 \"{{roleName}}\"，因为它已分配给 {{count}} 个用户。请先重新分配或删除这些用户。",
