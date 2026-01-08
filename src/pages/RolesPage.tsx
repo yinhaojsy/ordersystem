@@ -40,6 +40,10 @@ export default function RolesPage() {
     { key: "deleteAccount", labelKey: "roles.deleteAccount" },
     { key: "deleteTransfer", labelKey: "roles.deleteTransfer" },
     { key: "createFlexOrder", labelKey: "roles.createFlexOrder" },
+    { key: "createOtcOrder", labelKey: "roles.createOtcOrder" },
+    { key: "importOrder", labelKey: "roles.importOrder" },
+    { key: "exportOrder", labelKey: "roles.exportOrder" },
+    { key: "assignUnassignOrderTag", labelKey: "roles.assignUnassignOrderTag" },
     { key: "manageAccountsDisplay", labelKey: "roles.manageAccountsDisplay" },
     { key: "createTag", labelKey: "roles.createTag" },
     { key: "deleteTag", labelKey: "roles.deleteTag" }, // edit/delete tag

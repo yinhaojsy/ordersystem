@@ -1300,41 +1300,16 @@ export default function OrdersPage() {
                 {t("orders.createFlexOrder")}
               </button>
             )}
-            <button
-              onClick={() => {
-                setIsOtcOrderModalOpen(true);
-              }}
-              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-green-700 transition-colors"
-            >
-              {t("orders.otcOrder")}
-            </button>
-            <button
-              onClick={async () => {
-                if (!isBatchTagMode) {
-                  // Enable batch tag mode
-                  setIsBatchTagMode(true);
-                  setIsBatchDeleteMode(false); // Exit batch delete mode if active
-                  setSelectedOrderIds([]);
-                } else {
-                  // If no orders selected, exit batch tag mode
-                  if (!selectedOrderIds.length) {
-                    setIsBatchTagMode(false);
-                    setSelectedOrderIds([]);
-                    return;
-                  }
-                  // Open tag selection modal
-                  setIsTagModalOpen(true);
-                }
-              }}
-              disabled={isTagging}
-              className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
-            >
-              {isTagging 
-                ? t("orders.tagging")
-                : isBatchTagMode 
-                  ? (selectedOrderIds.length > 0 ? t("orders.addTags") : t("common.cancel"))
-                  : t("orders.addTag")}
-            </button>
+            {hasActionPermission(authUser, "createOtcOrder") && (
+              <button
+                onClick={() => {
+                  setIsOtcOrderModalOpen(true);
+                }}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-green-700 transition-colors"
+              >
+                {t("orders.otcOrder")}
+              </button>
+            )}
             {canDeleteManyOrders && (
               <button
                 onClick={() => {
@@ -1357,25 +1332,56 @@ export default function OrdersPage() {
                     : t("orders.batchDelete")}
               </button>
             )}
-            <button
-              onClick={() => setImportModalOpen(true)}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {hasActionPermission(authUser, "assignUnassignOrderTag") && (
+              <button
+                onClick={async () => {
+                  if (!isBatchTagMode) {
+                    // Enable batch tag mode
+                    setIsBatchTagMode(true);
+                    setIsBatchDeleteMode(false); // Exit batch delete mode if active
+                    setSelectedOrderIds([]);
+                  } else {
+                    // If no orders selected, exit batch tag mode
+                    if (!selectedOrderIds.length) {
+                      setIsBatchTagMode(false);
+                      setSelectedOrderIds([]);
+                      return;
+                    }
+                    // Open tag selection modal
+                    setIsTagModalOpen(true);
+                  }
+                }}
+                disabled={isTagging}
+                className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                />
-              </svg>
-              {t("orders.import")}
-            </button>
+                {isTagging 
+                  ? t("orders.tagging")
+                  : isBatchTagMode 
+                    ? (selectedOrderIds.length > 0 ? t("orders.addTags") : t("common.cancel"))
+                    : t("orders.addTag")}
+              </button>
+            )}
+            {hasActionPermission(authUser, "importOrder") && (
+              <button
+                onClick={() => setImportModalOpen(true)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                {t("orders.import")}
+              </button>
+            )}
             <OrdersColumnDropdown
               isOpen={isColumnDropdownOpen}
               onToggle={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
@@ -1404,6 +1410,7 @@ export default function OrdersPage() {
           onClearFilters={handleClearFilters}
           onExport={handleExportOrders}
           isExporting={isExporting}
+          canExport={hasActionPermission(authUser, "exportOrder")}
           isTagFilterOpen={isTagFilterOpen}
           setIsTagFilterOpen={setIsTagFilterOpen}
           tagFilterHighlight={tagFilterHighlight}
