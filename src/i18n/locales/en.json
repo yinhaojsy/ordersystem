@@ -107,6 +107,7 @@
     "name": "Name",
     "email": "Email",
     "phone": "Phone",
+    "remarks": "Remarks",
     "actions": "Actions",
     "noCustomers": "No customers yet.",
     "noBeneficiaries": "No beneficiaries saved for this customer.",

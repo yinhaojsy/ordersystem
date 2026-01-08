@@ -109,6 +109,7 @@
     "name": "姓名",
     "email": "电子邮件",
     "phone": "电话",
+    "remarks": "备注",
     "actions": "操作",
     "noCustomers": "暂无客户。",
     "noBeneficiaries": "此客户尚无收款人。",

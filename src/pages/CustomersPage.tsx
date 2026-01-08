@@ -292,6 +292,7 @@ export default function CustomersPage() {
                 <th className="py-2">{t("customers.name")}</th>
                 <th className="py-2">{t("customers.email")}</th>
                 <th className="py-2">{t("customers.phone")}</th>
+                <th className="py-2">{t("customers.remarks") || "Remarks"}</th>
                 <th className="py-2">{t("customers.actions")}</th>
               </tr>
             </thead>
@@ -301,6 +302,9 @@ export default function CustomersPage() {
                   <td className="py-2 font-semibold">{customer.name}</td>
                   <td className="py-2">{customer.email}</td>
                   <td className="py-2">{customer.phone}</td>
+                  <td className="py-2 max-w-xs truncate" title={customer.remarks || undefined}>
+                    {customer.remarks || "—"}
+                  </td>
                   <td className="py-2">
                     <div className="flex gap-2 text-sm font-semibold">
                       <button
@@ -322,7 +326,7 @@ export default function CustomersPage() {
               ))}
               {!customers.length && (
                 <tr>
-                  <td className="py-4 text-sm text-slate-500" colSpan={4}>
+                  <td className="py-4 text-sm text-slate-500" colSpan={5}>
                     {t("customers.noCustomers")}
                   </td>
                 </tr>
