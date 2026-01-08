@@ -29,6 +29,7 @@ export default function RolesPage() {
     { key: "createCurrency", labelKey: "roles.createCurrency" },
     { key: "createCustomer", labelKey: "roles.createCustomer" },
     { key: "createUser", labelKey: "roles.createUser" },
+    { key: "editDeleteUser", labelKey: "roles.editDeleteUser" }, // edit/delete user
     { key: "createOrder", labelKey: "roles.createOrder" },
     { key: "editCurrency", labelKey: "roles.editCurrency" },
     { key: "processOrder", labelKey: "roles.processOrder" },

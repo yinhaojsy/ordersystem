@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppSelector } from "../app/hooks";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
@@ -11,6 +12,7 @@ import {
   useUpdateUserMutation,
   useGetRolesQuery,
 } from "../services/api";
+import { hasActionPermission } from "../utils/permissions";
 
 export default function UsersPage() {
   const { t } = useTranslation();
@@ -19,6 +21,9 @@ export default function UsersPage() {
   const [addUser, { isLoading: isSaving }] = useAddUserMutation();
   const [updateUser] = useUpdateUserMutation();
   const [deleteUser, { isLoading: isDeleting }] = useDeleteUserMutation();
+  const authUser = useAppSelector((s) => s.auth.user);
+  const canCreateUser = hasActionPermission(authUser, "createUser");
+  const canEditDeleteUser = hasActionPermission(authUser, "editDeleteUser");
 
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; type?: "error" | "warning" | "info" | "success" }>({
     isOpen: false,
@@ -52,6 +57,7 @@ export default function UsersPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!canCreateUser) return;
     if (!form.name || !form.email) return;
     await addUser(form);
     setForm({ name: "", email: "", password: "", role: "manager" });
@@ -61,6 +67,7 @@ export default function UsersPage() {
   const [editForm, setEditForm] = useState<typeof form | null>(null);
 
   const startEdit = (id: number) => {
+    if (!canEditDeleteUser) return;
     const current = users.find((u) => u.id === id);
     if (!current) return;
     setEditingId(id);
@@ -79,6 +86,7 @@ export default function UsersPage() {
 
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!canEditDeleteUser) return;
     if (!editingId || !editForm) return;
     const payload: any = { ...editForm };
     if (!payload.password) {
@@ -89,6 +97,7 @@ export default function UsersPage() {
   };
 
   const handleDeleteClick = (id: number) => {
+    if (!canEditDeleteUser) return;
     const user = users.find((u) => u.id === id);
     if (!user) return;
     
@@ -100,6 +109,7 @@ export default function UsersPage() {
   };
 
   const remove = async (id: number) => {
+    if (!canEditDeleteUser) return;
     try {
       await deleteUser(id).unwrap();
       setConfirmModal({ isOpen: false, message: "", userId: null });
@@ -139,39 +149,47 @@ export default function UsersPage() {
         actions={isLoading ? t("common.loading") : `${users.length} ${t("users.users")}`}
       >
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full table-fixed text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">{t("users.name")}</th>
-                <th className="py-2">{t("users.email")}</th>
-                <th className="py-2">{t("users.role")}</th>
-                <th className="py-2">{t("users.actions")}</th>
+                <th className="w-1/4 py-2">{t("users.name")}</th>
+                <th className="w-1/4 py-2">{t("users.email")}</th>
+                <th className="w-1/4 py-2">{t("users.role")}</th>
+                <th className="w-1/4 py-2">{t("users.actions")}</th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
                 <tr key={user.id} className="border-b border-slate-100">
-                  <td className="py-2 font-semibold">{user.name}</td>
-                  <td className="py-2">{user.email}</td>
-                  <td className="py-2">
+                  <td className="w-1/4 py-2 font-semibold truncate" title={user.name}>
+                    {user.name}
+                  </td>
+                  <td className="w-1/4 py-2 truncate" title={user.email || undefined}>
+                    {user.email}
+                  </td>
+                  <td className="w-1/4 py-2 truncate" title={user.role || undefined}>
                     <Badge tone="slate">{user.role}</Badge>
                   </td>
-                  <td className="py-2">
-                    <div className="flex gap-2 text-sm font-semibold">
-                      <button
-                        className="text-amber-600 hover:text-amber-700"
-                        onClick={() => startEdit(user.id)}
-                      >
-                        {t("common.edit")}
-                      </button>
-                      <button
-                        className="text-rose-600 hover:text-rose-700"
-                        onClick={() => handleDeleteClick(user.id)}
-                        disabled={isDeleting}
-                      >
-                        {t("common.delete")}
-                      </button>
-                    </div>
+                  <td className="w-1/4 py-2">
+                    {canEditDeleteUser ? (
+                      <div className="flex gap-2 text-sm font-semibold">
+                        <button
+                          className="text-amber-600 hover:text-amber-700"
+                          onClick={() => startEdit(user.id)}
+                        >
+                          {t("common.edit")}
+                        </button>
+                        <button
+                          className="text-rose-600 hover:text-rose-700"
+                          onClick={() => handleDeleteClick(user.id)}
+                          disabled={isDeleting}
+                        >
+                          {t("common.delete")}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-slate-400">-</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -187,7 +205,7 @@ export default function UsersPage() {
         </div>
       </SectionCard>
 
-      {editingId && editForm && (
+      {editingId && editForm && canEditDeleteUser && (
         <SectionCard
           title={t("users.editTitle")}
           actions={<button onClick={cancelEdit} className="text-sm text-slate-600">{t("common.cancel")}</button>}
@@ -244,59 +262,61 @@ export default function UsersPage() {
         </SectionCard>
       )}
 
-      <SectionCard title={t("users.addTitle")}>
-        <form className="grid gap-3 md:grid-cols-3" onSubmit={handleSubmit}>
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder={t("users.namePlaceholder")}
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            required
-          />
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder={t("users.emailPlaceholder")}
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-            required
-          />
-          <select
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            value={form.role}
-            onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
-          >
-            {roles.length
-              ? roles.map((role) => (
-                  <option key={role.id} value={role.name}>
-                    {role.displayName}
-                  </option>
-                ))
-              : (
-                  <>
-                    <option value="admin">{t("users.admin")}</option>
-                    <option value="manager">{t("users.manager")}</option>
-                    <option value="viewer">{t("users.viewer")}</option>
-                  </>
-                )}
-          </select>
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder={t("users.passwordPlaceholder") ?? "Password"}
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-            required
-          />
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="col-span-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
-          >
-            {isSaving ? t("common.saving") : t("users.saveUser")}
-          </button>
-        </form>
-      </SectionCard>
+      {canCreateUser && (
+        <SectionCard title={t("users.addTitle")}>
+          <form className="grid gap-3 md:grid-cols-3" onSubmit={handleSubmit}>
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2"
+              placeholder={t("users.namePlaceholder")}
+              value={form.name}
+              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+              required
+            />
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2"
+              placeholder={t("users.emailPlaceholder")}
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+              required
+            />
+            <select
+              className="rounded-lg border border-slate-200 px-3 py-2"
+              value={form.role}
+              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+            >
+              {roles.length
+                ? roles.map((role) => (
+                    <option key={role.id} value={role.name}>
+                      {role.displayName}
+                    </option>
+                  ))
+                : (
+                    <>
+                      <option value="admin">{t("users.admin")}</option>
+                      <option value="manager">{t("users.manager")}</option>
+                      <option value="viewer">{t("users.viewer")}</option>
+                    </>
+                  )}
+            </select>
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2"
+              placeholder={t("users.passwordPlaceholder") ?? "Password"}
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+              required
+            />
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="col-span-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
+            >
+              {isSaving ? t("common.saving") : t("users.saveUser")}
+            </button>
+          </form>
+        </SectionCard>
+      )}
 
       <AlertModal
         isOpen={alertModal.isOpen}
