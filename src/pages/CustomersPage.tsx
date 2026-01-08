@@ -286,26 +286,32 @@ export default function CustomersPage() {
         actions={isLoading ? t("common.loading") : `${customers.length} ${t("customers.records")}`}
       >
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full table-fixed text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">{t("customers.name")}</th>
-                <th className="py-2">{t("customers.email")}</th>
-                <th className="py-2">{t("customers.phone")}</th>
-                <th className="py-2">{t("customers.remarks") || "Remarks"}</th>
-                <th className="py-2">{t("customers.actions")}</th>
+                <th className="py-2 w-1/5">{t("customers.name")}</th>
+                <th className="py-2 w-1/5">{t("customers.email")}</th>
+                <th className="py-2 w-1/5">{t("customers.phone")}</th>
+                <th className="py-2 w-1/5">{t("customers.remarks") || "Remarks"}</th>
+                <th className="py-2 w-1/5">{t("customers.actions")}</th>
               </tr>
             </thead>
             <tbody>
               {customers.map((customer: Customer) => (
                 <tr key={customer.id} className="border-b border-slate-100">
-                  <td className="py-2 font-semibold">{customer.name}</td>
-                  <td className="py-2">{customer.email}</td>
-                  <td className="py-2">{customer.phone}</td>
-                  <td className="py-2 max-w-xs truncate" title={customer.remarks || undefined}>
+                  <td className="py-2 w-1/5 font-semibold truncate" title={customer.name}>
+                    {customer.name}
+                  </td>
+                  <td className="py-2 w-1/5 truncate" title={customer.email || undefined}>
+                    {customer.email}
+                  </td>
+                  <td className="py-2 w-1/5 truncate" title={customer.phone || undefined}>
+                    {customer.phone}
+                  </td>
+                  <td className="py-2 w-1/5 truncate" title={customer.remarks || undefined}>
                     {customer.remarks || "—"}
                   </td>
-                  <td className="py-2">
+                  <td className="py-2 w-1/5">
                     <div className="flex gap-2 text-sm font-semibold">
                       <button
                         className="text-amber-600 hover:text-amber-700"
