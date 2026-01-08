@@ -282,7 +282,8 @@ export default function CustomersPage() {
     <div className="space-y-6">
       <SectionCard
         title={t("customers.title")}
-        description={t("customers.description")}
+        // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("customers.titledescription")}
         actions={isLoading ? t("common.loading") : `${customers.length} ${t("customers.records")}`}
       >
         <div className="overflow-x-auto">

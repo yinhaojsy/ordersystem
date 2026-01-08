@@ -738,7 +738,8 @@ export default function ExpensesPage() {
     <div className="space-y-6">
       <SectionCard
         title={t("expenses.title")}
-        description={t("expenses.description")}
+        // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        //  description={t("expenses.titledescription")}
         actions={
           <div className="flex items-center gap-4">
             {isLoading ? t("common.loading") : `${expenses.length} ${t("expenses.expenses")}`}

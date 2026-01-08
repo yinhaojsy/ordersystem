@@ -729,7 +729,9 @@ export default function ProfitCalculationPage() {
       {defaultCalculation && defaultSummary && (
         <SectionCard
           title={t("profit.defaultCalculationSummary") || `Default Calculation: ${defaultCalculation.name}`}
-          description={t("profit.defaultCalculationSummaryDesc") || "Summary of the default profit calculation"}
+             // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+          // description={t("profit.defaultCalculationSummaryDesc") || "Summary of the default profit calculation"}
+          
         >
           <ProfitSummaryDisplay summary={defaultSummary} />
         </SectionCard>
@@ -738,7 +740,8 @@ export default function ProfitCalculationPage() {
       {/* Calculation Selection */}
       <SectionCard
         title={t("profit.calculationSelection")}
-        description={t("profit.calculationSelectionDesc")}
+           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("profit.calculationSelectionDesc")}
       >
         <div className="grid gap-4 md:grid-cols-2">
           <div>
@@ -850,7 +853,8 @@ export default function ProfitCalculationPage() {
           {/* Accounts with Multipliers */}
           <SectionCard
             title={t("profit.accountsWithMultipliers")}
-            description={t("profit.accountsWithMultipliersDesc")}
+               // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+            // description={t("profit.accountsWithMultipliersDesc")}
             actions={
               <button
                 onClick={() => setGroupAssignmentModalOpen(true)}
@@ -1005,7 +1009,8 @@ export default function ProfitCalculationPage() {
           {/* Groups Section */}
           <SectionCard
             title={t("profit.groups")}
-            description={t("profit.groupsDesc")}
+               // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+            // description={t("profit.groupsDesc")}
             actions={
               <div className="flex gap-2">
                 {!showNewGroupInput ? (
@@ -1162,7 +1167,8 @@ export default function ProfitCalculationPage() {
           {/* Currency Conversion */}
           <SectionCard
             title={t("profit.currencyConversion")}
-            description={t("profit.currencyConversionDesc")}
+               // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+            // description={t("profit.currencyConversionDesc")}
           >
             <div className="space-y-4">
               {uniqueCurrencies.map((currency) => {
@@ -1239,7 +1245,8 @@ export default function ProfitCalculationPage() {
           {/* Final Profit Calculation */}
           <SectionCard
             title={t("profit.finalProfit")}
-            description={t("profit.finalProfitDesc")}
+               // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+            // description={t("profit.finalProfitDesc")}
           >
             <div className="space-y-4">
               <div>

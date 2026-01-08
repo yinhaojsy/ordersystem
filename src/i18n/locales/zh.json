@@ -104,7 +104,8 @@
   },
   "customers": {
     "title": "客户",
-    "description": "CRM 风格的列表，持久化在 SQLite 中。",
+    "titledescription": "CRM 风格的列表，持久化在 SQLite 中。",
+    "description": "说明",
     "records": "条记录",
     "name": "姓名",
     "email": "电子邮件",
@@ -197,7 +198,8 @@
   },
   "orders": {
     "title": "订单",
-    "description": "实时订单，快速状态更新。",
+    "description": "说明",
+    "titledescription": "实时订单，快速状态更新。",
     "orders": "订单",
     "customer": "客户",
     "pair": "货币对",
@@ -520,7 +522,8 @@
   },
   "transfers": {
     "title": "内部转账",
-    "description": "查看和管理内部账户之间的资金转账",
+    "titledescription": "查看和管理内部账户之间的资金转账",
+    "description": "说明",
     "transfers": "转账",
     "filters": "筛选",
     "datePreset": "日期范围",
@@ -614,7 +617,8 @@
   },
   "expenses": {
     "title": "开支",
-    "description": "查看和管理业务开支",
+    "description": "说明",
+    "titledescription": "查看和管理业务开支",
     "expenses": "开支",
     "filters": "筛选",
     "datePreset": "日期范围",

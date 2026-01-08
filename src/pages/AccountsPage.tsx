@@ -655,7 +655,8 @@ export default function AccountsPage() {
       {/* Summary Section */}
       <SectionCard
         title={t("accounts.summaryTitle")}
-        description={t("accounts.summaryDescription")}
+        // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("accounts.summaryDescription")}
         actions={
           hasActionPermission(authUser, "manageAccountsDisplay") ? (
             <div className="flex items-center gap-2">
@@ -723,7 +724,8 @@ export default function AccountsPage() {
       {/* Currency Pools */}
       <SectionCard
         title={t("accounts.currencyPoolsTitle")}
-        description={t("accounts.currencyPoolsDescription")}
+           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("accounts.currencyPoolsDescription")}
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -932,7 +934,8 @@ export default function AccountsPage() {
       {/* Create Account Form */}
       <SectionCard
         title={t("accounts.createAccountTitle")}
-        description={t("accounts.createAccountDescription")}
+           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("accounts.createAccountDescription")} 
       >
         <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSubmit}>
           <select

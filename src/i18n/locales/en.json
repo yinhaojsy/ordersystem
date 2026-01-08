@@ -102,7 +102,8 @@
   },
   "customers": {
     "title": "Customers",
-    "description": "CRM-style list persisted in SQLite.",
+    "description": "Description",
+    "titledescription": "CRM-style list persisted in SQLite.",
     "records": "records",
     "name": "Name",
     "email": "Email",
@@ -194,7 +195,8 @@
   },
   "orders": {
     "title": "Orders",
-    "description": "Live orders with quick status updates.",
+    "titledescription": "Live orders with quick status updates.",
+    "description": "Description",
     "orders": "orders",
     "customer": "Customer",
     "pair": "Pair",
@@ -526,7 +528,7 @@
   },
   "transfers": {
     "title": "Internal Transfers",
-    "description": "View and manage internal fund transfers between accounts",
+    "titledescription": "View and manage internal fund transfers between accounts",
     "transfers": "transfers",
     "filters": "Filters",
     "datePreset": "Date Range",
@@ -621,7 +623,7 @@
   },
   "expenses": {
     "title": "Expenses",
-    "description": "View and manage business expenses",
+    "titledescription": "View and manage business expenses",
     "expenses": "expenses",
     "filters": "Filters",
     "datePreset": "Date Range",
@@ -665,7 +667,6 @@
     "descriptionPlaceholder": "Optional description for this expense",
     "viewProof": "View",
     "removeImage": "Remove image",
-    "invalidImageFile": "Please select a valid image file",
     "errorCreating": "Error creating expense",
     "errorDeleting": "Error deleting expense",
     "confirmDelete": "Are you sure you want to delete this expense?",
@@ -675,7 +676,6 @@
     "noAccountsFound": "No accounts found",
     "addFavorite": "Add to favorites",
     "removeFavorite": "Remove from favorites",
-    "description": "Description",
     "columns": "Columns",
     "showColumns": "Show Columns",
     "expenseId": "Expense ID",

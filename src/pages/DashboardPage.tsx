@@ -74,7 +74,8 @@ export default function DashboardPage() {
 
       <SectionCard
         title={t("dashboard.recentOrders")}
-        description={t("dashboard.recentOrdersDesc")}
+           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("dashboard.recentOrdersDesc")}
         actions={isLoading ? t("common.loading") : `${recentOrders.length} ${t("dashboard.shown")}`}
       >
         <div className="overflow-x-auto">

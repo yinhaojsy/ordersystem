@@ -161,7 +161,8 @@ export default function CurrenciesPage() {
     <div className="space-y-6">
       <SectionCard
         title={t("currencies.title")}
-        description={t("currencies.description")}
+           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("currencies.description")}
         actions={isLoading ? t("common.loading") : `${currencies.length} ${t("currencies.items")}`}
       >
         <div className="overflow-x-auto">
@@ -228,7 +229,8 @@ export default function CurrenciesPage() {
       {editingId && editForm && (
         <SectionCard
           title={t("currencies.editTitle")}
-          description={t("currencies.editDesc")}
+             // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+          // description={t("currencies.editDesc")}
           actions={<button onClick={cancelEdit} className="text-sm text-slate-600">{t("common.cancel")}</button>}
         >
           <form className="grid gap-3 md:grid-cols-2" onSubmit={submitEdit}>
@@ -314,7 +316,8 @@ export default function CurrenciesPage() {
 
       <SectionCard
         title={t("currencies.addTitle")}
-        description={t("currencies.addDesc")}
+           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("currencies.addDesc")}
       >
         <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSubmit}>
           <input

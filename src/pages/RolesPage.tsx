@@ -238,7 +238,8 @@ export default function RolesPage() {
     <div className="space-y-6">
       <SectionCard
         title={t("roles.title")}
-        description={t("roles.description")}
+           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("roles.description")}
         actions={isLoading ? t("common.loading") : `${roles.length} ${t("roles.roles")}`}
       >
         <div className="overflow-x-auto">

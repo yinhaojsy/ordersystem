@@ -134,7 +134,8 @@ export default function UsersPage() {
     <div className="space-y-6">
       <SectionCard
         title={t("users.title")}
-        description={t("users.description")}
+           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+        // description={t("users.description")}
         actions={isLoading ? t("common.loading") : `${users.length} ${t("users.users")}`}
       >
         <div className="overflow-x-auto">
