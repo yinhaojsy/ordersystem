@@ -55,15 +55,12 @@ export function renderOrderCell({
             )} */}
             
             {/* 我 TAGS DISPLAY NEXT TO CUSTOMER NAME */} 
-            {order.tags && Array.isArray(order.tags) && order.tags.length > 0 ? (
+            {order.tags && Array.isArray(order.tags) && order.tags.length > 0 &&
               order.tags.map((tag: { id: number; name: string; color: string }) => (
                 <Badge key={tag.id} tone="slate" backgroundColor={tag.color} lightStyle={true}>
                   {tag.name}
                 </Badge>
-              ))
-            ) : (
-              <span className="text-slate-400 text-xs">-</span>
-            )}
+              ))}
           </div>
         </td>
       );
