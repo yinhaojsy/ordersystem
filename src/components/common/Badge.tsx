@@ -57,11 +57,13 @@ export default function Badge({
   tone = "slate",
   backgroundColor,
   lightStyle = false,
+  onRemove,
 }: {
   children: ReactNode;
   tone?: Tone;
   backgroundColor?: string;
   lightStyle?: boolean;
+  onRemove?: () => void;
 }) {
   let style: React.CSSProperties = {};
   let ringColor: string;
@@ -94,10 +96,34 @@ export default function Badge({
 
   return (
     <span
-      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${ringColor}`}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${ringColor} ${onRemove ? 'pr-1' : ''}`}
       style={style}
     >
       {children}
+      {onRemove && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="ml-1 rounded-full p-0.5 hover:bg-black/10 focus:outline-none focus:ring-1 focus:ring-white/50"
+          aria-label="Remove"
+        >
+          <svg
+            className="h-3 w-3"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      )}
     </span>
   );
 }

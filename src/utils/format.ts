@@ -16,4 +16,14 @@ export const formatDateTime = (value: string) => {
   return `${month}/${day}/${year}, ${hours}:${minutes}`;
 };
 
+export const formatCurrency = (amount: number): string => {
+  if (typeof amount !== 'number' || Number.isNaN(amount)) {
+    return '0.00';
+  }
+  return amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
 

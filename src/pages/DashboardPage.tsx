@@ -1,15 +1,13 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import Badge from "../components/common/Badge";
-import SectionCard from "../components/common/SectionCard";
 import StatCard from "../components/common/StatCard";
+import DashboardStatistics from "../components/dashboard/DashboardStatistics";
 import {
   useGetCurrenciesQuery,
   useGetCustomersQuery,
   useGetOrdersQuery,
   useGetUsersQuery,
 } from "../services/api";
-import { formatDate } from "../utils/format";
 import { OrderStatus } from "../types";
 
 export default function DashboardPage() {
@@ -46,20 +44,6 @@ export default function DashboardPage() {
     };
   }, [orders, totalOrders, currencies.length, customers.length, users.length]);
 
-  const recentOrders = Array.isArray(orders) ? orders.slice(0, 5) : [];
-
-  const getStatusTone = (status: OrderStatus) => {
-    switch (status) {
-      case "pending":
-      case "under_process":
-        return "amber";
-      case "completed":
-        return "emerald";
-      default:
-        return "rose";
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -72,58 +56,7 @@ export default function DashboardPage() {
         <StatCard label={t("dashboard.cancelled")} value={stats.cancelled} tone="rose" />
       </div>
 
-      <SectionCard
-        title={t("dashboard.recentOrders")}
-           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
-        // description={t("dashboard.recentOrdersDesc")}
-        actions={isLoading ? t("common.loading") : `${recentOrders.length} ${t("dashboard.shown")}`}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">{t("dashboard.customer")}</th>
-                <th className="py-2">{t("dashboard.pair")}</th>
-                <th className="py-2">{t("dashboard.buy")}</th>
-                <th className="py-2">{t("dashboard.sell")}</th>
-                <th className="py-2">{t("dashboard.rate")}</th>
-                <th className="py-2">{t("dashboard.date")}</th>
-                <th className="py-2">{t("dashboard.status")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentOrders.map((order) => (
-                <tr key={order.id} className="border-b border-slate-100">
-                  <td className="py-2 font-semibold">
-                    {order.customerName || order.customerId}
-                  </td>
-                  <td className="py-2">
-                    {order.fromCurrency} → {order.toCurrency}
-                  </td>
-                  <td className="py-2">{order.amountBuy}</td>
-                  <td className="py-2">{order.amountSell}</td>
-                  <td className="py-2">{order.rate}</td>
-                  <td className="py-2">{formatDate(order.createdAt)}</td>
-                  <td className="py-2">
-                    <Badge
-                      tone={getStatusTone(order.status)}
-                    >
-                      {t(`orders.${order.status}`)}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-              {!recentOrders.length && (
-                <tr>
-                  <td className="py-4 text-sm text-slate-500" colSpan={7}>
-                    {t("dashboard.noOrders")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+      {/* <DashboardStatistics /> */}
     </div>
   );
 }
