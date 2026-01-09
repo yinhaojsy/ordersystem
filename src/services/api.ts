@@ -1312,6 +1312,57 @@ export const api = createApi({
         { type: "Setting", id: key },
       ],
     }),
+    createBackup: builder.mutation<Blob, { includeFiles: boolean }>({
+      query: (body) => ({
+        url: "settings/backup",
+        method: "POST",
+        body,
+        responseHandler: (response) => response.blob(),
+      }),
+    }),
+    restoreBackup: builder.mutation<{ message: string; safetyBackup?: string }, FormData>({
+      query: (formData) => ({
+        url: "settings/restore",
+        method: "POST",
+        body: formData,
+      }),
+      invalidatesTags: ["Currency", "Customer", "User", "Role", "Order", "Account", "Transfer", "Expense", "ProfitCalculation", "Tag"],
+    }),
+    resetTableIds: builder.mutation<
+      { results: Array<{ table: string; success: boolean; message: string; currentMaxId?: number }> },
+      { tables: string[] }
+    >({
+      query: (body) => ({
+        url: "settings/reset-ids",
+        method: "POST",
+        body,
+      }),
+    }),
+    getDbSchema: builder.query<{
+      schema: Array<{
+        name: string;
+        rowCount: number;
+        columns: Array<{
+          name: string;
+          type: string;
+          notNull: boolean;
+          defaultValue: string | null;
+          primaryKey: boolean;
+        }>;
+      }>;
+    }, void>({
+      query: () => "settings/debug/schema",
+    }),
+    executeQuery: builder.mutation<
+      { success: boolean; rowCount?: number; results?: any[]; message?: string },
+      { sql: string }
+    >({
+      query: (body) => ({
+        url: "settings/debug/query",
+        method: "POST",
+        body,
+      }),
+    }),
     getTags: builder.query<Tag[], void>({
       query: () => "tags",
       providesTags: (result) =>
@@ -1475,6 +1526,11 @@ export const {
   useUnsetDefaultProfitCalculationMutation,
     useGetSettingQuery,
     useSetSettingMutation,
+    useCreateBackupMutation,
+    useRestoreBackupMutation,
+    useResetTableIdsMutation,
+    useGetDbSchemaQuery,
+    useExecuteQueryMutation,
     useGetTagsQuery,
     useCreateTagMutation,
     useUpdateTagMutation,

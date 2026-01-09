@@ -41,7 +41,8 @@
     "roles": "角色",
     "orders": "订单",
     "profit": "利润计算",
-    "tags": "标签"
+    "tags": "标签",
+    "settings": "设置"
   },
   "sections": {
     "dashboard": "仪表板",
@@ -54,7 +55,8 @@
     "accounts": "账户",
     "expenses": "开支",
     "profit": "利润计算",
-    "tags": "标签"
+    "tags": "标签",
+    "settings": "设置"
   },
   "app": {
     "testSystem": "测试系统",
@@ -860,5 +862,76 @@
     "updateError": "更新标签失败",
     "deleteError": "删除标签失败",
     "confirmDelete": "您确定要删除标签 \"{{tagName}}\" 吗？"
+  },
+  "settings": {
+    "title": "设置",
+    "backupRestore": {
+      "title": "备份与恢复",
+      "description": "创建数据库备份并从以前的备份中恢复",
+      "createBackup": "创建备份",
+      "creatingBackup": "创建备份中...",
+      "backupOptions": "备份选项",
+      "databaseOnly": "仅数据库",
+      "databaseOnlyDesc": "仅备份 SQLite 数据库（快速，文件较小）",
+      "databaseAndFiles": "数据库 + 上传文件",
+      "databaseAndFilesDesc": "完整备份，包括所有收据、付款和费用图片",
+      "restore": "从备份恢复",
+      "restoring": "恢复中...",
+      "chooseFile": "选择备份文件",
+      "restoreWarning": "警告：恢复将替换所有当前数据。系统将自动创建安全备份。",
+      "restoreConfirm": "您确定要从此备份恢复吗？此操作无法撤消。",
+      "backupSuccess": "备份创建成功",
+      "restoreSuccess": "数据库恢复成功。已创建安全备份。",
+      "backupError": "创建备份失败",
+      "restoreError": "恢复备份失败"
+    },
+    "resetIds": {
+      "title": "重置 ID 计数器",
+      "description": "重置表的自动递增 ID 计数器。表必须为空。",
+      "orders": "订单",
+      "expenses": "开支",
+      "transfers": "内部转账",
+      "currentMaxId": "当前最大 ID",
+      "nextId": "下一个 ID",
+      "status": "状态",
+      "rowCount": "行数",
+      "resetSelected": "重置所选",
+      "resetting": "重置中...",
+      "selectTables": "选择要重置的表",
+      "resetWarning": "只能重置空表。包含数据的表将被跳过。",
+      "resetSuccess": "ID 计数器重置成功",
+      "resetError": "重置 ID 计数器失败",
+      "tableEmpty": "空",
+      "tableHasData": "有 {{count}} 行",
+      "canReset": "可以重置",
+      "cannotReset": "无法重置（有数据）",
+      "resetComplete": "重置为 1",
+      "resetFailed": "重置失败"
+    },
+    "debug": {
+      "title": "数据库调试",
+      "description": "查看数据库架构并执行只读 SQL 查询",
+      "schema": "数据库架构",
+      "viewSchema": "查看架构",
+      "hideSchema": "隐藏架构",
+      "tableName": "表",
+      "rowCount": "行数",
+      "columns": "列",
+      "columnName": "列",
+      "type": "类型",
+      "nullable": "可为空",
+      "primaryKey": "主键",
+      "defaultValue": "默认值",
+      "queryExecutor": "SQL 查询执行器",
+      "queryPlaceholder": "输入 SELECT 查询（例如：SELECT * FROM orders LIMIT 10）",
+      "executeQuery": "执行查询",
+      "executing": "执行中...",
+      "queryResults": "查询结果",
+      "noResults": "无结果",
+      "querySuccess": "查询执行成功（{{count}} 行）",
+      "queryError": "查询失败：{{message}}",
+      "onlySelectAllowed": "出于安全原因，仅允许 SELECT 和 PRAGMA 查询"
+    },
+    "adminOnly": "此页面仅供管理员访问"
   }
 }

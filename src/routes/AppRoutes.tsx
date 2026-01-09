@@ -13,6 +13,7 @@ import TagsPage from "../pages/TagsPage";
 import OrdersPage from "../pages/OrdersPage";
 import LoginPage from "../pages/LoginPage";
 import ProfitCalculationPage from "../pages/ProfitCalculationPage";
+import SettingsPage from "../pages/SettingsPage";
 import { useAppSelector } from "../app/hooks";
 import { hasSectionAccess } from "../utils/permissions";
 
@@ -22,6 +23,17 @@ function RequireAuth({ children, section }: { children: ReactElement; section?: 
     return <Navigate to="/login" replace />;
   }
   if (section && !hasSectionAccess(user, section)) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
+function RequireAdmin({ children }: { children: ReactElement }) {
+  const user = useAppSelector((s) => s.auth.user);
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  if (user.role !== "admin") {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -43,6 +55,7 @@ export default function AppRoutes() {
           <Route path="tags" element={<RequireAuth section="tags"><TagsPage /></RequireAuth>} />
           <Route path="orders" element={<RequireAuth section="orders"><OrdersPage /></RequireAuth>} />
           <Route path="profit" element={<RequireAuth section="profit"><ProfitCalculationPage /></RequireAuth>} />
+          <Route path="settings" element={<RequireAdmin><SettingsPage /></RequireAdmin>} />
         </Route>
         <Route path="/login" element={<LoginPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

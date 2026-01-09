@@ -41,7 +41,8 @@
     "roles": "Roles",
     "orders": "Orders",
     "profit": "Profit Calculation",
-    "tags": "Tags"
+    "tags": "Tags",
+    "settings": "Settings"
   },
   "sections": {
     "dashboard": "Dashboard",
@@ -54,7 +55,8 @@
     "accounts": "Accounts",
     "expenses": "Expenses",
     "profit": "Profit Calculation",
-    "tags": "Tags"
+    "tags": "Tags",
+    "settings": "Settings"
   },
   "app": {
     "testSystem": "Test System",
@@ -868,5 +870,76 @@
     "updateError": "Failed to update tag",
     "deleteError": "Failed to delete tag",
     "confirmDelete": "Are you sure you want to delete the tag \"{{tagName}}\"?"
+  },
+  "settings": {
+    "title": "Settings",
+    "backupRestore": {
+      "title": "Backup & Restore",
+      "description": "Create backups of your database and restore from previous backups",
+      "createBackup": "Create Backup",
+      "creatingBackup": "Creating Backup...",
+      "backupOptions": "Backup Options",
+      "databaseOnly": "Database Only",
+      "databaseOnlyDesc": "Backup only the SQLite database (fast, smaller file)",
+      "databaseAndFiles": "Database + Uploaded Files",
+      "databaseAndFilesDesc": "Complete backup including all receipts, payments, and expense images",
+      "restore": "Restore from Backup",
+      "restoring": "Restoring...",
+      "chooseFile": "Choose backup file",
+      "restoreWarning": "Warning: Restoring will replace all current data. A safety backup will be created automatically.",
+      "restoreConfirm": "Are you sure you want to restore from this backup? This action cannot be undone.",
+      "backupSuccess": "Backup created successfully",
+      "restoreSuccess": "Database restored successfully. A safety backup was created.",
+      "backupError": "Failed to create backup",
+      "restoreError": "Failed to restore backup"
+    },
+    "resetIds": {
+      "title": "Reset ID Counters",
+      "description": "Reset auto-increment ID counters for tables. Tables must be empty.",
+      "orders": "Orders",
+      "expenses": "Expenses",
+      "transfers": "Internal Transfers",
+      "currentMaxId": "Current Max ID",
+      "nextId": "Next ID",
+      "status": "Status",
+      "rowCount": "Row Count",
+      "resetSelected": "Reset Selected",
+      "resetting": "Resetting...",
+      "selectTables": "Select tables to reset",
+      "resetWarning": "Only empty tables can be reset. Tables with data will be skipped.",
+      "resetSuccess": "ID counters reset successfully",
+      "resetError": "Failed to reset ID counters",
+      "tableEmpty": "Empty",
+      "tableHasData": "Has {{count}} rows",
+      "canReset": "Can reset",
+      "cannotReset": "Cannot reset (has data)",
+      "resetComplete": "Reset to 1",
+      "resetFailed": "Reset failed"
+    },
+    "debug": {
+      "title": "Database Debugging",
+      "description": "View database schema and execute read-only SQL queries",
+      "schema": "Database Schema",
+      "viewSchema": "View Schema",
+      "hideSchema": "Hide Schema",
+      "tableName": "Table",
+      "rowCount": "Rows",
+      "columns": "Columns",
+      "columnName": "Column",
+      "type": "Type",
+      "nullable": "Nullable",
+      "primaryKey": "Primary Key",
+      "defaultValue": "Default",
+      "queryExecutor": "SQL Query Executor",
+      "queryPlaceholder": "Enter SELECT query (e.g., SELECT * FROM orders LIMIT 10)",
+      "executeQuery": "Execute Query",
+      "executing": "Executing...",
+      "queryResults": "Query Results",
+      "noResults": "No results",
+      "querySuccess": "Query executed successfully ({{count}} rows)",
+      "queryError": "Query failed: {{message}}",
+      "onlySelectAllowed": "Only SELECT and PRAGMA queries are allowed for security reasons"
+    },
+    "adminOnly": "This page is only accessible to administrators"
   }
 }

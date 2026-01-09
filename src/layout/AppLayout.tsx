@@ -126,7 +126,7 @@ export default function AppLayout() {
 
   useIdleTimeout(handleIdleTimeout, !!user);
 
-  const navItems: Array<{ to: string; labelKey: string; end?: boolean; section: string }> = [
+  const navItems: Array<{ to: string; labelKey: string; end?: boolean; section?: string; adminOnly?: boolean }> = [
     { to: "/", labelKey: "nav.dashboard", end: true, section: "dashboard" },
     { to: "/orders", labelKey: "nav.orders", section: "orders" },
     { to: "/expenses", labelKey: "nav.expenses", section: "expenses" },
@@ -138,6 +138,7 @@ export default function AppLayout() {
     { to: "/roles", labelKey: "nav.roles", section: "roles" },
     { to: "/tags", labelKey: "nav.tags", section: "tags" },
     { to: "/profit", labelKey: "nav.profit", section: "profit" },
+    { to: "/settings", labelKey: "nav.settings", adminOnly: true },
   ];
 
   const matched = navItems.find(item =>
@@ -164,7 +165,17 @@ export default function AppLayout() {
         </div>
         <nav className="flex flex-wrap gap-2 lg:flex-col">
           {navItems
-            .filter((item) => hasSectionAccess(user, item.section))
+            .filter((item) => {
+              // Admin-only items
+              if (item.adminOnly) {
+                return user?.role === "admin";
+              }
+              // Section-based items
+              if (item.section) {
+                return hasSectionAccess(user, item.section);
+              }
+              return true;
+            })
             .map((item) => (
               <NavLink
                 key={item.to}

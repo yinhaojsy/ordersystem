@@ -102,7 +102,15 @@ import {
   setDefaultCalculation,
   unsetDefaultCalculation,
 } from "../controllers/profitController.js";
-import { getSetting, setSetting } from "../controllers/settingsController.js";
+import { 
+  getSetting, 
+  setSetting, 
+  createBackup, 
+  restoreBackup, 
+  resetTableIds, 
+  getDbSchema, 
+  executeQuery 
+} from "../controllers/settingsController.js";
 import {
   listTags,
   createTag,
@@ -214,6 +222,11 @@ router.put("/profit-calculations/:id/unset-default", unsetDefaultCalculation);
 
 router.get("/settings/:key", getSetting);
 router.put("/settings", setSetting);
+router.post("/settings/backup", createBackup);
+router.post("/settings/restore", upload.single("file"), restoreBackup);
+router.post("/settings/reset-ids", resetTableIds);
+router.get("/settings/debug/schema", getDbSchema);
+router.post("/settings/debug/query", executeQuery);
 
 router.get("/tags", listTags);
 router.post("/tags", createTag);
