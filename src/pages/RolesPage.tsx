@@ -31,7 +31,7 @@ export default function RolesPage() {
     { key: "createUser", labelKey: "roles.createUser" },
     { key: "editDeleteUser", labelKey: "roles.editDeleteUser" }, // edit/delete user
     { key: "createOrder", labelKey: "roles.createOrder" },
-    { key: "editCurrency", labelKey: "roles.editCurrency" },
+    { key: "updateCurrency", labelKey: "roles.updateCurrency" },
     { key: "processOrder", labelKey: "roles.processOrder" },
     { key: "cancelOrder", labelKey: "roles.cancelOrder" },
     { key: "deleteOrder", labelKey: "roles.deleteOrder" },

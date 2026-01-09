@@ -178,7 +178,7 @@
     "createUser": "Create user",
     "editDeleteUser": "Edit/Delete user",
     "createOrder": "Create order",
-    "editCurrency": "Edit currency",
+    "updateCurrency": "Update currency",
     "processOrder": "Process order",
     "cancelOrder": "Cancel order",
     "deleteOrder": "Delete order",

@@ -10,10 +10,16 @@ import {
   useUpdateCurrencyMutation,
   useDeleteCurrencyMutation,
 } from "../services/api";
+import { useAppSelector } from "../app/hooks";
+import { hasActionPermission } from "../utils/permissions";
 
 export default function CurrenciesPage() {
   const { t } = useTranslation();
+  const currentUser = useAppSelector((s) => s.auth.user);
   const { data: currencies = [], isLoading } = useGetCurrenciesQuery();
+  
+  const canCreateCurrency = hasActionPermission(currentUser, "createCurrency");
+  const canUpdateCurrency = hasActionPermission(currentUser, "updateCurrency");
   const [addCurrency, { isLoading: isSaving }] = useAddCurrencyMutation();
   const [updateCurrency] = useUpdateCurrencyMutation();
   const [deleteCurrency, { isLoading: isDeleting }] = useDeleteCurrencyMutation();
@@ -174,7 +180,7 @@ export default function CurrenciesPage() {
                 <th className="py-2">{t("currencies.buy")}</th>
                 <th className="py-2">{t("currencies.sell")}</th>
                 <th className="py-2">{t("currencies.status")}</th>
-                <th className="py-2">{t("currencies.action")}</th>
+                {canUpdateCurrency && <th className="py-2">{t("currencies.action")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -189,34 +195,36 @@ export default function CurrenciesPage() {
                       {currency.active ? t("common.active") : t("common.inactive")}
                     </Badge>
                   </td>
-                  <td className="py-2">
-                    <div className="flex gap-3 text-sm font-semibold">
-                      <button
-                        className="text-blue-600 hover:text-blue-700"
-                        onClick={() => toggleActive(currency.id, Boolean(currency.active))}
-                      >
-                        {currency.active ? t("currencies.setInactive") : t("currencies.setActive")}
-                      </button>
-                      <button
-                        className="text-amber-600 hover:text-amber-700"
-                        onClick={() => startEdit(currency.id)}
-                      >
-                        {t("common.edit")}
-                      </button>
-                      <button
-                        className="text-rose-600 hover:text-rose-700"
-                        onClick={() => handleDeleteClick(currency.id)}
-                        disabled={isDeleting}
-                      >
-                        {t("common.delete")}
-                      </button>
-                    </div>
-                  </td>
+                  {canUpdateCurrency && (
+                    <td className="py-2">
+                      <div className="flex gap-3 text-sm font-semibold">
+                        <button
+                          className="text-blue-600 hover:text-blue-700"
+                          onClick={() => toggleActive(currency.id, Boolean(currency.active))}
+                        >
+                          {currency.active ? t("currencies.setInactive") : t("currencies.setActive")}
+                        </button>
+                        <button
+                          className="text-amber-600 hover:text-amber-700"
+                          onClick={() => startEdit(currency.id)}
+                        >
+                          {t("common.edit")}
+                        </button>
+                        <button
+                          className="text-rose-600 hover:text-rose-700"
+                          onClick={() => handleDeleteClick(currency.id)}
+                          disabled={isDeleting}
+                        >
+                          {t("common.delete")}
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {!currencies.length && (
                 <tr>
-                  <td className="py-4 text-sm text-slate-500" colSpan={6}>
+                  <td className="py-4 text-sm text-slate-500" colSpan={canUpdateCurrency ? 6 : 5}>
                     {t("currencies.noCurrencies")}
                   </td>
                 </tr>
@@ -314,12 +322,13 @@ export default function CurrenciesPage() {
         </SectionCard>
       )}
 
-      <SectionCard
-        title={t("currencies.addTitle")}
-           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
-        // description={t("currencies.addDesc")}
-      >
-        <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSubmit}>
+      {canCreateCurrency && (
+        <SectionCard
+          title={t("currencies.addTitle")}
+             // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+          // description={t("currencies.addDesc")}
+        >
+          <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSubmit}>
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
             placeholder={t("currencies.codePlaceholder")}
@@ -392,7 +401,8 @@ export default function CurrenciesPage() {
             {isSaving ? t("common.saving") : t("currencies.saveCurrency")}
           </button>
         </form>
-      </SectionCard>
+        </SectionCard>
+      )}
 
       <AlertModal
         isOpen={alertModal.isOpen}

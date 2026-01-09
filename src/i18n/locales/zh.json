@@ -179,7 +179,7 @@
     "createUser": "创建用户",
     "editDeleteUser": "编辑/删除用户",
     "createOrder": "创建订单",
-    "editCurrency": "编辑货币",
+    "updateCurrency": "更新货币",
     "processOrder": "处理订单",
     "cancelOrder": "取消订单",
     "deleteOrder": "删除订单",
