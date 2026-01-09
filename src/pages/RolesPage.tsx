@@ -54,6 +54,12 @@ export default function RolesPage() {
     { key: "manageAccountsDisplay", labelKey: "roles.manageAccountsDisplay" },
     { key: "createTag", labelKey: "roles.createTag" },
     { key: "deleteTag", labelKey: "roles.deleteTag" }, // edit/delete tag
+    { key: "createExpense", labelKey: "roles.createExpense" },
+    { key: "editExpense", labelKey: "roles.editExpense" },
+    { key: "viewExpenseAuditTrail", labelKey: "roles.viewExpenseAuditTrail" },
+    { key: "assignUnassignExpenseTag", labelKey: "roles.assignUnassignExpenseTag" },
+    { key: "importExpense", labelKey: "roles.importExpense" },
+    { key: "exportExpense", labelKey: "roles.exportExpense" },
   ];
   const [addRole, { isLoading: isSaving }] = useAddRoleMutation();
   const [updateRole] = useUpdateRoleMutation();
