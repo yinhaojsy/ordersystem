@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { OrdersTableRow } from "./OrdersTableRow";
-import { OrdersPagination } from "./OrdersPagination";
+import { Pagination } from "../common/Pagination";
 import { getStatusTone } from "../../utils/orders/orderFormatters";
 import type { Order, Account } from "../../types";
 
@@ -142,10 +142,10 @@ export function OrdersTable({
         </table>
       </div>
 
-      <OrdersPagination
+      <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
-        totalOrders={totalOrders}
+        totalItems={totalOrders}
         onPageChange={onPageChange}
         t={t}
       />

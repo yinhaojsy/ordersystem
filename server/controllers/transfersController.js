@@ -10,6 +10,8 @@ export const listTransfers = (req, res) => {
     createdBy,
     tagId,
     tagIds,
+    page,
+    limit,
   } = req.query;
   
   // Build WHERE conditions
@@ -63,6 +65,19 @@ export const listTransfers = (req, res) => {
   
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   
+  // Pagination
+  const pageNum = parseInt(page, 10) || 1;
+  const pageSize = parseInt(limit, 10) || 20;
+  const offset = (pageNum - 1) * pageSize;
+  const usePagination = page && limit;
+
+  // Get total count
+  let countQuery = `SELECT COUNT(*) as total
+       FROM internal_transfers t
+       ${whereClause};`;
+  const countResult = db.prepare(countQuery).get(params);
+  const total = countResult.total;
+  
   let query = `SELECT 
         t.id,
         t.fromAccountId,
@@ -85,7 +100,16 @@ export const listTransfers = (req, res) => {
        LEFT JOIN users creator ON creator.id = t.createdBy
        LEFT JOIN users updater ON updater.id = t.updatedBy
        ${whereClause}
-       ORDER BY t.createdAt DESC;`;
+       ORDER BY t.createdAt DESC`;
+  
+  // Add pagination if requested
+  if (usePagination) {
+    query += ` LIMIT @limit OFFSET @offset;`;
+    params.limit = pageSize;
+    params.offset = offset;
+  } else {
+    query += `;`;
+  }
   
   const rows = db.prepare(query).all(params);
   
@@ -107,7 +131,17 @@ export const listTransfers = (req, res) => {
     };
   });
   
-  res.json(transfers);
+  // Return with pagination info if requested
+  if (usePagination) {
+    res.json({
+      transfers,
+      total,
+      page: pageNum,
+      limit: pageSize,
+    });
+  } else {
+    res.json(transfers);
+  }
 };
 
 export const exportTransfers = (req, res) => {

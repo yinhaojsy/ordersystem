@@ -21,6 +21,8 @@ export interface TransferQueryParams {
   currencyCode?: string;
   createdBy?: number;
   tagIds?: string;
+  page?: number;
+  limit?: number;
 }
 
 const defaultFilters: TransferFilters = {
@@ -34,7 +36,10 @@ const defaultFilters: TransferFilters = {
   tagIds: [],
 };
 
-export function useTransfersFilters() {
+export function useTransfersFilters(
+  currentPage: number,
+  setCurrentPage: (page: number) => void
+) {
   const [filters, setFilters] = useState<TransferFilters>(defaultFilters);
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
   const [tagFilterHighlight, setTagFilterHighlight] = useState<number>(-1);
@@ -42,7 +47,9 @@ export function useTransfersFilters() {
 
   // Helper function to build query parameters from filters
   const buildQueryParams = useCallback((
-    filterState: TransferFilters
+    filterState: TransferFilters,
+    includePagination = false,
+    page?: number
   ): TransferQueryParams => {
     const params: TransferQueryParams = {};
 
@@ -54,8 +61,13 @@ export function useTransfersFilters() {
     if (filterState.createdBy !== null) params.createdBy = filterState.createdBy;
     if (filterState.tagIds.length > 0) params.tagIds = filterState.tagIds.join(',');
 
+    if (includePagination) {
+      params.page = page ?? currentPage;
+      params.limit = 20;
+    }
+
     return params;
-  }, []);
+  }, [currentPage]);
 
   // Handle date preset changes
   const handleDatePresetChange = useCallback((preset: DatePreset) => {
@@ -89,12 +101,14 @@ export function useTransfersFilters() {
       dateFrom,
       dateTo,
     }));
-  }, []);
+    setCurrentPage(1); // Reset to first page when filter changes
+  }, [setCurrentPage]);
 
   // Clear all filters
   const handleClearFilters = useCallback(() => {
     setFilters(defaultFilters);
-  }, []);
+    setCurrentPage(1);
+  }, [setCurrentPage]);
 
   // Update a filter field
   const updateFilter = useCallback(<K extends keyof TransferFilters>(
@@ -102,10 +116,14 @@ export function useTransfersFilters() {
     value: TransferFilters[K]
   ) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-  }, []);
+    setCurrentPage(1);
+  }, [setCurrentPage]);
 
   // Build query parameters for API
-  const queryParams = useMemo(() => buildQueryParams(filters), [filters, buildQueryParams]);
+  const queryParams = useMemo(() => buildQueryParams(filters, true, currentPage), [filters, currentPage, buildQueryParams]);
+
+  // Build export query parameters (same as queryParams but without pagination)
+  const exportQueryParams = useMemo(() => buildQueryParams(filters, false), [filters, buildQueryParams]);
 
   return {
     filters,
@@ -115,6 +133,7 @@ export function useTransfersFilters() {
     handleClearFilters,
     buildQueryParams,
     queryParams,
+    exportQueryParams,
     // Tag filter state
     isTagFilterOpen,
     setIsTagFilterOpen,

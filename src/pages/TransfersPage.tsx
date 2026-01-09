@@ -7,6 +7,7 @@ import { ColumnDropdown } from "../components/common/ColumnDropdown";
 import { TagSelectionModal } from "../components/common/TagSelectionModal";
 import { TransfersFilters } from "../components/transfers/TransfersFilters";
 import { ImportTransfersModal } from "../components/transfers/ImportTransfersModal";
+import { Pagination } from "../components/common/Pagination";
 import Badge from "../components/common/Badge";
 import { AccountSelect } from "../components/common/AccountSelect";
 import { useTransfersTable } from "../hooks/transfers/useTransfersTable";
@@ -42,6 +43,7 @@ export default function TransfersPage() {
   const { t } = useTranslation();
   const authUser = useAppSelector((s) => s.auth.user);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Filter state and handlers
   const {
@@ -50,14 +52,18 @@ export default function TransfersPage() {
     handleDatePresetChange,
     handleClearFilters,
     queryParams,
+    exportQueryParams,
     isTagFilterOpen,
     setIsTagFilterOpen,
     tagFilterHighlight,
     setTagFilterHighlight,
     tagFilterListRef,
-  } = useTransfersFilters();
+  } = useTransfersFilters(currentPage, setCurrentPage);
 
-  const { data: transfers = [], isLoading, refetch: refetchTransfers } = useGetTransfersQuery(queryParams);
+  const { data: transfersData, isLoading, refetch: refetchTransfers } = useGetTransfersQuery(queryParams);
+  const transfers = transfersData?.transfers || transfersData || [];
+  const totalTransfers = transfersData?.total || transfers.length;
+  const totalPages = Math.ceil(totalTransfers / 20);
   const { data: accounts = [] } = useGetAccountsQuery();
   const { data: tags = [] } = useGetTagsQuery();
   const { data: users = [] } = useGetUsersQuery();
@@ -148,7 +154,7 @@ export default function TransfersPage() {
     handleDownloadTemplate,
     handleImportFile,
   } = useTransfersImportExport({
-    exportQueryParams: queryParams,
+    exportQueryParams: exportQueryParams,
     accounts,
     tags,
     users,
@@ -536,7 +542,7 @@ export default function TransfersPage() {
         // description={t("transfers.titledescription")}
         actions={
           <div className="flex items-center gap-4">
-            {isLoading ? t("common.loading") : `${transfers.length} ${t("transfers.transfers")}`}
+            {isLoading ? t("common.loading") : `${totalTransfers} ${t("transfers.transfers")}`}
             {hasActionPermission(authUser, "createTransfer") && (
               <button
                 onClick={() => setIsModalOpen(true)}
@@ -786,6 +792,16 @@ export default function TransfersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalTransfers}
+          onPageChange={setCurrentPage}
+          t={t}
+          entityName={t("transfers.transfers")}
+        />
       </SectionCard>
 
       {/* Create/Edit Transfer Modal */}

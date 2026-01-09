@@ -1,29 +1,37 @@
 import React from "react";
 
-interface OrdersPaginationProps {
+interface PaginationProps {
   currentPage: number;
   totalPages: number;
-  totalOrders: number;
+  totalItems: number;
+  itemsPerPage?: number;
   onPageChange: (page: number) => void;
   t: (key: string) => string;
+  entityName?: string; // e.g., "orders", "expenses", "transfers"
 }
 
 /**
- * Pagination component for orders table
+ * Generic pagination component
  */
-export function OrdersPagination({
+export function Pagination({
   currentPage,
   totalPages,
-  totalOrders,
+  totalItems,
+  itemsPerPage = 20,
   onPageChange,
   t,
-}: OrdersPaginationProps) {
+  entityName = "items",
+}: PaginationProps) {
   if (totalPages <= 1) return null;
+
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
   return (
     <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
       <div className="text-sm text-slate-600">
-        {t("orders.showing") || "Showing"} {(currentPage - 1) * 20 + 1} {t("orders.to") || "to"} {Math.min(currentPage * 20, totalOrders)} {t("orders.of") || "of"} {totalOrders} {t("orders.orders") || "orders"}
+        {t("common.showing") || "Showing"} {startItem} {t("common.to") || "to"}{" "}
+        {endItem} {t("common.of") || "of"} {"("}{totalItems} {entityName}{")"}
       </div>
       <div className="flex items-center gap-2">
         <button
@@ -31,20 +39,20 @@ export function OrdersPagination({
           disabled={currentPage === 1}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {t("orders.previous") || "Previous"}
+          {t("common.previous") || "Previous"}
         </button>
         <span className="text-sm text-slate-600">
-          {t("orders.page") || "Page"} {currentPage} {t("orders.of") || "of"} {totalPages}
+          {t("common.page") || "Page"} {currentPage} {t("common.of") || "of"}{" "}
+          {totalPages}
         </span>
         <button
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {t("orders.next") || "Next"}
+          {t("common.next") || "Next"}
         </button>
       </div>
     </div>
   );
 }
-

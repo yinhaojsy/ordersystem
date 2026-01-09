@@ -7,6 +7,7 @@ import { ColumnDropdown } from "../components/common/ColumnDropdown";
 import { TagSelectionModal } from "../components/common/TagSelectionModal";
 import { ExpensesFilters } from "../components/expenses/ExpensesFilters";
 import { ImportExpensesModal } from "../components/expenses/ImportExpensesModal";
+import { Pagination } from "../components/common/Pagination";
 import Badge from "../components/common/Badge";
 import { AccountSelect } from "../components/common/AccountSelect";
 import { useExpensesTable } from "../hooks/expenses/useExpensesTable";
@@ -42,6 +43,7 @@ export default function ExpensesPage() {
   const { t } = useTranslation();
   const authUser = useAppSelector((s) => s.auth.user);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Filter state and handlers
   const {
@@ -50,14 +52,18 @@ export default function ExpensesPage() {
     handleDatePresetChange,
     handleClearFilters,
     queryParams,
+    exportQueryParams,
     isTagFilterOpen,
     setIsTagFilterOpen,
     tagFilterHighlight,
     setTagFilterHighlight,
     tagFilterListRef,
-  } = useExpensesFilters();
+  } = useExpensesFilters(currentPage, setCurrentPage);
 
-  const { data: expenses = [], isLoading, refetch: refetchExpenses } = useGetExpensesQuery(queryParams);
+  const { data: expensesData, isLoading, refetch: refetchExpenses } = useGetExpensesQuery(queryParams);
+  const expenses = expensesData?.expenses || expensesData || [];
+  const totalExpenses = expensesData?.total || expenses.length;
+  const totalPages = Math.ceil(totalExpenses / 20);
   const { data: accounts = [] } = useGetAccountsQuery();
   const { data: tags = [] } = useGetTagsQuery();
   const { data: users = [] } = useGetUsersQuery();
@@ -132,7 +138,7 @@ export default function ExpensesPage() {
     handleDownloadTemplate,
     handleImportFile,
   } = useExpensesImportExport({
-    exportQueryParams: queryParams,
+    exportQueryParams: exportQueryParams,
     accounts,
     tags,
     users,
@@ -747,7 +753,7 @@ export default function ExpensesPage() {
         //  description={t("expenses.titledescription")}
         actions={
           <div className="flex items-center gap-4">
-            {isLoading ? t("common.loading") : `${expenses.length} ${t("expenses.expenses")}`}
+            {isLoading ? t("common.loading") : `${totalExpenses} ${t("expenses.expenses")}`}
             {hasActionPermission(authUser, "createExpense") && (
               <button
                 onClick={() => setIsModalOpen(true)}
@@ -986,6 +992,16 @@ export default function ExpensesPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalExpenses}
+          onPageChange={setCurrentPage}
+          t={t}
+          entityName={t("expenses.expenses")}
+        />
       </SectionCard>
 
       {/* Create/Edit Expense Modal */}

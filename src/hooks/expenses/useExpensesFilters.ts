@@ -19,6 +19,8 @@ export interface ExpenseQueryParams {
   currencyCode?: string;
   createdBy?: number;
   tagIds?: string;
+  page?: number;
+  limit?: number;
 }
 
 const defaultFilters: ExpenseFilters = {
@@ -31,7 +33,10 @@ const defaultFilters: ExpenseFilters = {
   tagIds: [],
 };
 
-export function useExpensesFilters() {
+export function useExpensesFilters(
+  currentPage: number,
+  setCurrentPage: (page: number) => void
+) {
   const [filters, setFilters] = useState<ExpenseFilters>(defaultFilters);
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
   const [tagFilterHighlight, setTagFilterHighlight] = useState<number>(-1);
@@ -39,7 +44,9 @@ export function useExpensesFilters() {
 
   // Helper function to build query parameters from filters
   const buildQueryParams = useCallback((
-    filterState: ExpenseFilters
+    filterState: ExpenseFilters,
+    includePagination = false,
+    page?: number
   ): ExpenseQueryParams => {
     const params: ExpenseQueryParams = {};
 
@@ -50,8 +57,13 @@ export function useExpensesFilters() {
     if (filterState.createdBy !== null) params.createdBy = filterState.createdBy;
     if (filterState.tagIds.length > 0) params.tagIds = filterState.tagIds.join(',');
 
+    if (includePagination) {
+      params.page = page ?? currentPage;
+      params.limit = 20;
+    }
+
     return params;
-  }, []);
+  }, [currentPage]);
 
   // Handle date preset changes
   const handleDatePresetChange = useCallback((preset: DatePreset) => {
@@ -85,12 +97,14 @@ export function useExpensesFilters() {
       dateFrom,
       dateTo,
     }));
-  }, []);
+    setCurrentPage(1); // Reset to first page when filter changes
+  }, [setCurrentPage]);
 
   // Clear all filters
   const handleClearFilters = useCallback(() => {
     setFilters(defaultFilters);
-  }, []);
+    setCurrentPage(1);
+  }, [setCurrentPage]);
 
   // Update a filter field
   const updateFilter = useCallback(<K extends keyof ExpenseFilters>(
@@ -98,10 +112,14 @@ export function useExpensesFilters() {
     value: ExpenseFilters[K]
   ) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-  }, []);
+    setCurrentPage(1);
+  }, [setCurrentPage]);
 
   // Build query parameters for API
-  const queryParams = useMemo(() => buildQueryParams(filters), [filters, buildQueryParams]);
+  const queryParams = useMemo(() => buildQueryParams(filters, true, currentPage), [filters, currentPage, buildQueryParams]);
+
+  // Build export query parameters (same as queryParams but without pagination)
+  const exportQueryParams = useMemo(() => buildQueryParams(filters, false), [filters, buildQueryParams]);
 
   return {
     filters,
@@ -111,6 +129,7 @@ export function useExpensesFilters() {
     handleClearFilters,
     buildQueryParams,
     queryParams,
+    exportQueryParams,
     // Tag filter state
     isTagFilterOpen,
     setIsTagFilterOpen,

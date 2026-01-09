@@ -21,7 +21,14 @@
     "unknownError": "Unknown error",
     "clear": "Clear",
     "done": "Done",
-    "remove": "Remove"
+    "remove": "Remove",
+    "showing": "Showing",
+    "to": "to",
+    "of": "of",
+    "page": "Page",
+    "previous": "Previous",
+    "next": "Next",
+    "optional": "Optional"
   },
   "nav": {
     "dashboard": "Dashboard",
