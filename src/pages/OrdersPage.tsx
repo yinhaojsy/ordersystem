@@ -750,6 +750,7 @@ export default function OrdersPage() {
     setShowOtcRemarks,
     otcOrderDetails,
     isOtcCompleted,
+    isOtcSaving,
     handleOtcOrderSave,
     handleOtcOrderComplete,
     closeOtcModal,
@@ -1972,7 +1973,7 @@ export default function OrdersPage() {
 
       <OtcOrderModal
         isOpen={isOtcOrderModalOpen}
-        isSaving={isSaving}
+        isSaving={isOtcSaving}
         isOtcCompleted={isOtcCompleted}
         otcEditingOrderId={otcEditingOrderId}
         otcOrderDetails={otcOrderDetails}

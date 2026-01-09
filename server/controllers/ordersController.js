@@ -1164,7 +1164,9 @@ export const updateOrderStatus = (req, res, next) => {
     }
     
     // Get the current status before updating
-    const currentOrder = db.prepare("SELECT status, buyAccountId, sellAccountId FROM orders WHERE id = ?;").get(id);
+    const currentOrder = db
+      .prepare("SELECT status, buyAccountId, sellAccountId, orderType FROM orders WHERE id = ?;")
+      .get(id);
     if (!currentOrder) {
       return res.status(404).json({ message: "Order not found" });
     }
@@ -1174,7 +1176,20 @@ export const updateOrderStatus = (req, res, next) => {
     
     // If status is being changed to "completed" and accounts are set, update account balances
     if (status === "completed" && currentOrder.status !== "completed" && (currentOrder.buyAccountId || currentOrder.sellAccountId)) {
-      updateAccountBalancesOnCompletion(id, false);
+      // Avoid double-counting when receipts/payments were already confirmed
+      const hasConfirmedReceipt = db
+        .prepare("SELECT id FROM order_receipts WHERE orderId = ? AND status = 'confirmed' LIMIT 1;")
+        .get(id);
+      const hasConfirmedPayment = db
+        .prepare("SELECT id FROM order_payments WHERE orderId = ? AND status = 'confirmed' LIMIT 1;")
+        .get(id);
+      const isOtcOrder = currentOrder.orderType === "otc";
+
+      // Only run the direct balance update when there are no confirmed receipt/payment entries
+      // (typical for imported orders without detailed entries) and it's not an OTC order
+      if (!hasConfirmedReceipt && !hasConfirmedPayment && !isOtcOrder) {
+        updateAccountBalancesOnCompletion(id, false);
+      }
     }
     
     const row = db

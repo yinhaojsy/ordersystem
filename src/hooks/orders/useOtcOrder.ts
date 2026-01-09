@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { FormEvent } from "react";
 import {
   useAddOrderMutation,
@@ -44,6 +44,8 @@ export function useOtcOrder(
 ) {
   const [isOtcOrderModalOpen, setIsOtcOrderModalOpen] = useState(false);
   const [otcEditingOrderId, setOtcEditingOrderId] = useState<number | null>(null);
+  const [isOtcSaving, setIsOtcSaving] = useState(false);
+  const isSubmittingRef = useRef(false); // Use ref to prevent race conditions
   
   const [otcForm, setOtcForm] = useState<OtcForm>({
     customerId: "",
@@ -177,10 +179,16 @@ export function useOtcOrder(
     resetOtcForm();
     setIsOtcOrderModalOpen(false);
     setOtcEditingOrderId(null);
+    isSubmittingRef.current = false;
+    setIsOtcSaving(false);
   };
 
   const handleOtcOrderSave = async (event: FormEvent) => {
     event.preventDefault();
+    
+    // Double-guard against concurrent submissions
+    if (isOtcSaving || isSubmittingRef.current) return;
+    
     if (!otcForm.customerId || !otcForm.fromCurrency || !otcForm.toCurrency) return;
     const handlerId = Number(otcForm.handlerId);
     if (!otcForm.handlerId || Number.isNaN(handlerId)) {
@@ -196,6 +204,8 @@ export function useOtcOrder(
     const buyAccountIdValue: number | undefined = buyAccountId === null ? undefined : buyAccountId;
     const sellAccountIdValue: number | undefined = sellAccountId === null ? undefined : sellAccountId;
 
+    isSubmittingRef.current = true;
+    setIsOtcSaving(true);
     try {
       let orderId: number;
       
@@ -314,11 +324,18 @@ export function useOtcOrder(
       console.error("Error saving OTC order:", error);
       const errorMessage = error?.data?.message || error?.message || "Failed to save OTC order";
       alert(errorMessage);
+    } finally {
+      isSubmittingRef.current = false;
+      setIsOtcSaving(false);
     }
   };
 
   const handleOtcOrderComplete = async (event: FormEvent) => {
     event.preventDefault();
+    
+    // Double-guard against concurrent submissions
+    if (isOtcSaving || isSubmittingRef.current) return;
+    
     if (!otcForm.customerId || !otcForm.fromCurrency || !otcForm.toCurrency) return;
 
     // Validate handler is assigned
@@ -377,6 +394,8 @@ export function useOtcOrder(
       return;
     }
 
+    isSubmittingRef.current = true;
+    setIsOtcSaving(true);
     try {
       let orderId: number;
       
@@ -515,7 +534,8 @@ export function useOtcOrder(
         await updateOrder({
           id: orderId,
           data: {
-            remarks: null,
+            // API expects null to clear remarks; cast to satisfy typing
+            remarks: null as unknown as string,
           },
         }).unwrap();
       }
@@ -531,6 +551,9 @@ export function useOtcOrder(
       console.error("Error completing OTC order:", error);
       const errorMessage = error?.data?.message || error?.message || "Failed to complete OTC order";
       alert(errorMessage);
+    } finally {
+      isSubmittingRef.current = false;
+      setIsOtcSaving(false);
     }
   };
 
@@ -540,6 +563,7 @@ export function useOtcOrder(
     setIsOtcOrderModalOpen,
     otcEditingOrderId,
     setOtcEditingOrderId,
+    isOtcSaving,
     otcForm,
     setOtcForm,
     otcReceipts,
