@@ -728,25 +728,31 @@ export default function AccountsPage() {
         // description={t("accounts.currencyPoolsDescription")}
         actions={
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleImportClick}
-              className="px-3 py-1 text-sm rounded bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
-            >
-              {t("accounts.importAccounts") || "Import Accounts"}
-            </button>
-            <button
-              onClick={handleExportClick}
-              className="px-3 py-1 text-sm rounded bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
-            >
-              {t("accounts.exportAccounts") || "Export Accounts"}
-            </button>
-            <button
-              onClick={handleClearLogsClick}
-              className="px-3 py-1 text-sm rounded bg-rose-200 text-rose-700 hover:bg-rose-300 transition-colors"
-            >
-              {t("accounts.clearTransactionLogs") || "Clear Transaction Logs"}
-            </button>
-            {hasActionPermission(authUser, "deleteAccount") && (
+            {hasActionPermission(authUser, "importAccount") && (
+              <button
+                onClick={handleImportClick}
+                className="px-3 py-1 text-sm rounded bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
+              >
+                {t("accounts.importAccounts") || "Import Accounts"}
+              </button>
+            )}
+            {hasActionPermission(authUser, "exportAccount") && (
+              <button
+                onClick={handleExportClick}
+                className="px-3 py-1 text-sm rounded bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
+              >
+                {t("accounts.exportAccounts") || "Export Accounts"}
+              </button>
+            )}
+            {hasActionPermission(authUser, "clearTransactionLogs") && (
+              <button
+                onClick={handleClearLogsClick}
+                className="px-3 py-1 text-sm rounded bg-rose-200 text-rose-700 hover:bg-rose-300 transition-colors"
+              >
+                {t("accounts.clearTransactionLogs") || "Clear Transaction Logs"}
+              </button>
+            )}
+            {hasActionPermission(authUser, "deleteManyAccounts") && (
               <button
                 onClick={async () => {
                   if (!isBatchDeleteMode) {
