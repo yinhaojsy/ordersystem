@@ -5,6 +5,8 @@ import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
 import { ColumnDropdown } from "../components/common/ColumnDropdown";
 import { TagSelectionModal } from "../components/common/TagSelectionModal";
+import { ActionsMenu } from "../components/common/ActionsMenu";
+import type { ActionMenuItem } from "../components/common/ActionsMenu";
 import { ExpensesFilters } from "../components/expenses/ExpensesFilters";
 import { ImportExpensesModal } from "../components/expenses/ImportExpensesModal";
 import { Pagination } from "../components/common/Pagination";
@@ -618,6 +620,42 @@ export default function ExpensesPage() {
     }
   }, [isTagFilterOpen, tags, tagFilterHighlight, filters.tagIds, updateFilter, setIsTagFilterOpen, setTagFilterHighlight]);
 
+  // Helper function to get action menu items for an expense
+  const getExpenseActions = (expense: typeof expenses[0]): ActionMenuItem[] => {
+    const actions: ActionMenuItem[] = [];
+
+    if (canViewExpenseAuditTrail) {
+      actions.push({
+        key: "audit",
+        label: t("expenses.auditTrail"),
+        onClick: () => setViewAuditTrailExpenseId(expense.id),
+        color: "blue",
+      });
+    }
+
+    if (canEditExpense) {
+      actions.push({
+        key: "edit",
+        label: t("common.edit"),
+        onClick: () => startEdit(expense.id),
+        color: "amber",
+      });
+    }
+
+    if (canDeleteExpense) {
+      actions.push({
+        key: "delete",
+        label: t("common.delete"),
+        onClick: () => handleDeleteClick(expense.id),
+        color: "rose",
+        disabled: isDeleting,
+        separator: true, // Add separator before delete
+      });
+    }
+
+    return actions;
+  };
+
   // Helper function to render cell content for a column
   const renderCellContent = (columnKey: string, expense: typeof expenses[0]) => {
     switch (columnKey) {
@@ -943,34 +981,12 @@ export default function ExpensesPage() {
                   )}
                   {!isBatchDeleteMode && !isBatchTagMode && hasAnyActionPermission && (
                     <td className="py-2">
-                      <div className="flex gap-2">
-                        {canViewExpenseAuditTrail && (
-                          <button
-                            onClick={() => setViewAuditTrailExpenseId(expense.id)}
-                            className="text-blue-600 hover:text-blue-700 text-sm"
-                            title={t("expenses.viewAuditTrail")}
-                          >
-                            {t("expenses.auditTrail")}
-                          </button>
-                        )}
-                        {canEditExpense && (
-                          <button
-                            onClick={() => startEdit(expense.id)}
-                            className="text-amber-600 hover:text-amber-700 text-sm"
-                          >
-                            {t("common.edit")}
-                          </button>
-                        )}
-                        {canDeleteExpense && (
-                          <button
-                            onClick={() => handleDeleteClick(expense.id)}
-                            disabled={isDeleting}
-                            className="text-rose-600 hover:text-rose-700 text-sm disabled:opacity-60"
-                          >
-                            {t("common.delete")}
-                          </button>
-                        )}
-                      </div>
+                      <ActionsMenu
+                        actions={getExpenseActions(expense)}
+                        entityId={expense.id}
+                        t={t}
+                        buttonAriaLabel={t("expenses.actions")}
+                      />
                     </td>
                   )}
                 </tr>

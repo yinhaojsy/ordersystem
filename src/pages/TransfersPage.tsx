@@ -5,6 +5,8 @@ import AlertModal from "../components/common/AlertModal";
 import ConfirmModal from "../components/common/ConfirmModal";
 import { ColumnDropdown } from "../components/common/ColumnDropdown";
 import { TagSelectionModal } from "../components/common/TagSelectionModal";
+import { ActionsMenu } from "../components/common/ActionsMenu";
+import type { ActionMenuItem } from "../components/common/ActionsMenu";
 import { TransfersFilters } from "../components/transfers/TransfersFilters";
 import { ImportTransfersModal } from "../components/transfers/ImportTransfersModal";
 import { Pagination } from "../components/common/Pagination";
@@ -452,6 +454,42 @@ export default function TransfersPage() {
     }
   }, [isTagFilterOpen, tags, tagFilterHighlight, filters.tagIds, updateFilter, setIsTagFilterOpen, setTagFilterHighlight]);
 
+  // Helper function to get action menu items for a transfer
+  const getTransferActions = (transfer: typeof transfers[0]): ActionMenuItem[] => {
+    const actions: ActionMenuItem[] = [];
+
+    if (canViewTransferAuditTrail) {
+      actions.push({
+        key: "audit",
+        label: t("transfers.auditTrail"),
+        onClick: () => setViewAuditTrailTransferId(transfer.id),
+        color: "blue",
+      });
+    }
+
+    if (canEditTransfer) {
+      actions.push({
+        key: "edit",
+        label: t("common.edit"),
+        onClick: () => startEdit(transfer.id),
+        color: "amber",
+      });
+    }
+
+    if (canDeleteTransfer) {
+      actions.push({
+        key: "delete",
+        label: t("common.delete"),
+        onClick: () => handleDeleteClick(transfer.id),
+        color: "rose",
+        disabled: isDeleting,
+        separator: true, // Add separator before delete
+      });
+    }
+
+    return actions;
+  };
+
   // Helper function to render cell content for a column
   const renderCellContent = (columnKey: string, transfer: typeof transfers[0]) => {
     switch (columnKey) {
@@ -755,34 +793,12 @@ export default function TransfersPage() {
                   )}
                   {!isBatchDeleteMode && !isBatchTagMode && hasAnyActionPermission && (
                     <td className="py-2">
-                      <div className="flex gap-2">
-                        {canViewTransferAuditTrail && (
-                          <button
-                            onClick={() => setViewAuditTrailTransferId(transfer.id)}
-                            className="text-blue-600 hover:text-blue-700 text-sm"
-                            title={t("transfers.viewAuditTrail")}
-                          >
-                            {t("transfers.auditTrail")}
-                          </button>
-                        )}
-                        {canEditTransfer && (
-                          <button
-                            onClick={() => startEdit(transfer.id)}
-                            className="text-amber-600 hover:text-amber-700 text-sm"
-                          >
-                            {t("common.edit")}
-                          </button>
-                        )}
-                        {canDeleteTransfer && (
-                          <button
-                            onClick={() => handleDeleteClick(transfer.id)}
-                            disabled={isDeleting}
-                            className="text-rose-600 hover:text-rose-700 text-sm disabled:opacity-60"
-                          >
-                            {t("common.delete")}
-                          </button>
-                        )}
-                      </div>
+                      <ActionsMenu
+                        actions={getTransferActions(transfer)}
+                        entityId={transfer.id}
+                        t={t}
+                        buttonAriaLabel={t("transfers.actions")}
+                      />
                     </td>
                   )}
                 </tr>
