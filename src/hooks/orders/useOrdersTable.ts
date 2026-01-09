@@ -2,6 +2,9 @@ import { useTableColumns, type ColumnDefinition } from "../useTableColumns";
 
 const COLUMN_KEYS = ["id", "date", "handler", "customer", "pair", "buy", "sell", "rate", "status", "orderType", "buyAccount", "sellAccount", "profit", "serviceCharges", "tags"];
 
+// Default visible columns (excluding profit, serviceCharges, and tags)
+const DEFAULT_VISIBLE_COLUMNS = ["id", "date", "handler", "customer", "pair", "buy", "sell", "rate", "status", "orderType", "buyAccount", "sellAccount"];
+
 export type { ColumnDefinition };
 
 export function useOrdersTable() {
@@ -25,6 +28,7 @@ export function useOrdersTable() {
       { key: "tags", label: t("orders.tags") },
     ],
     storagePrefix: "ordersPage",
+    defaultVisibleColumns: DEFAULT_VISIBLE_COLUMNS,
   });
 }
 

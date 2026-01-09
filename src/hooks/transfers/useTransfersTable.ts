@@ -1,6 +1,9 @@
 import { useTableColumns, type ColumnDefinition } from "../useTableColumns";
 
-const COLUMN_KEYS = ["id", "date", "description", "fromAccount", "toAccount", "amount", "transactionFee", "currency", "tags", "createdBy"];
+const COLUMN_KEYS = ["id", "date", "description", "fromAccount", "toAccount", "amount", "transactionFee", "currency", "tags", "createdBy", "updatedBy", "updatedAt"];
+
+// Default visible columns (excluding updatedBy, updatedAt, and tags)
+const DEFAULT_VISIBLE_COLUMNS = ["id", "date", "description", "fromAccount", "toAccount", "amount", "transactionFee", "currency", "createdBy"];
 
 export type { ColumnDefinition };
 
@@ -18,8 +21,11 @@ export function useTransfersTable() {
       { key: "currency", label: t("transfers.currency") },
       { key: "tags", label: t("transfers.tags") },
       { key: "createdBy", label: t("transfers.createdBy") },
+      { key: "updatedBy", label: t("transfers.updatedBy") },
+      { key: "updatedAt", label: t("transfers.updatedAt") },
     ],
     storagePrefix: "transfersPage",
+    defaultVisibleColumns: DEFAULT_VISIBLE_COLUMNS,
   });
 }
 

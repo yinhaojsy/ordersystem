@@ -2,6 +2,9 @@ import { useTableColumns, type ColumnDefinition } from "../useTableColumns";
 
 const COLUMN_KEYS = ["id", "date", "description", "account", "amount", "currency", "proof", "tags", "createdBy", "updatedBy", "updatedAt"];
 
+// Default visible columns (excluding updatedBy, updatedAt, and tags)
+const DEFAULT_VISIBLE_COLUMNS = ["id", "date", "description", "account", "amount", "currency", "proof", "createdBy"];
+
 export type { ColumnDefinition };
 
 export function useExpensesTable() {
@@ -21,6 +24,7 @@ export function useExpensesTable() {
       { key: "updatedAt", label: t("expenses.updatedAt") },
     ],
     storagePrefix: "expensesPage",
+    defaultVisibleColumns: DEFAULT_VISIBLE_COLUMNS,
   });
 }
 

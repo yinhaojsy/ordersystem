@@ -13,12 +13,15 @@ export interface UseTableColumnsOptions {
   getColumnDefinitions: (t: (key: string) => string) => ColumnDefinition[];
   /** Prefix for localStorage keys (e.g., "ordersPage", "expensesPage") */
   storagePrefix: string;
+  /** Optional array of column keys that should be visible by default for first-time users. If not provided, all columns are visible. */
+  defaultVisibleColumns?: string[];
 }
 
 export function useTableColumns({
   columnKeys,
   getColumnDefinitions,
   storagePrefix,
+  defaultVisibleColumns,
 }: UseTableColumnsOptions) {
   const { t } = useTranslation();
   const [isColumnDropdownOpen, setIsColumnDropdownOpen] = useState(false);
@@ -62,14 +65,14 @@ export function useTableColumns({
     }).filter(col => col);
   }, [columnOrder, getAvailableColumns]);
   
-  // Initialize column visibility from localStorage or default to all visible
+  // Initialize column visibility from localStorage or default to specified visible columns
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
     const saved = localStorage.getItem(`${storagePrefix}_visibleColumns`);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (!Array.isArray(parsed)) {
-          return new Set<string>(columnKeys);
+          return new Set<string>(defaultVisibleColumns || columnKeys);
         }
         const savedSet = new Set<string>(parsed.filter((item): item is string => typeof item === "string"));
         // Merge with current columnKeys to ensure new columns are included
@@ -82,12 +85,12 @@ export function useTableColumns({
         });
         return merged;
       } catch {
-        // If parsing fails, return all columns visible
-        return new Set<string>(columnKeys);
+        // If parsing fails, return default visible columns
+        return new Set<string>(defaultVisibleColumns || columnKeys);
       }
     }
-    // Default: all columns visible
-    return new Set<string>(columnKeys);
+    // Default: use specified visible columns, or all columns if not specified
+    return new Set<string>(defaultVisibleColumns || columnKeys);
   });
 
   // Save column order to localStorage when it changes

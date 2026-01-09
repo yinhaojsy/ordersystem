@@ -529,6 +529,18 @@ export default function TransfersPage() {
             {transfer.createdByName || "-"}
           </td>
         );
+      case "updatedBy":
+        return (
+          <td key={columnKey} className="py-2 text-slate-600">
+            {transfer.updatedByName || "-"}
+          </td>
+        );
+      case "updatedAt":
+        return (
+          <td key={columnKey} className="py-2 text-slate-600 text-xs">
+            {transfer.updatedAt ? formatDate(transfer.updatedAt) : "-"}
+          </td>
+        );
       default:
         return null;
     }
