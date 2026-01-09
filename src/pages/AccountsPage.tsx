@@ -314,6 +314,9 @@ export default function AccountsPage() {
 
   const selectedAccount = accounts.find((a) => a.id === transactionsModalAccountId);
 
+  // Check if user has any account action permissions (updateAccount or viewAccountTransaction)
+  const hasAccountActions = hasActionPermission(authUser, "updateAccount") || hasActionPermission(authUser, "viewAccountTransaction");
+
   // Handle Esc key to close edit account modal
   useEffect(() => {
     const handleEscKey = (event: KeyboardEvent) => {
@@ -847,7 +850,7 @@ export default function AccountsPage() {
                           )}
                           <th className="py-2">{t("accounts.accountName")}</th>
                           <th className="py-2">{t("accounts.balance")}</th>
-                          {!isBatchDeleteMode && <th className="py-2">{t("accounts.actions")}</th>}
+                          {!isBatchDeleteMode && hasAccountActions && <th className="py-2">{t("accounts.actions")}</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -881,40 +884,44 @@ export default function AccountsPage() {
                                 {formatCurrency(account.balance, currencyCode)}
                               </span>
                             </td>
-                            {!isBatchDeleteMode && (
+                            {!isBatchDeleteMode && hasAccountActions && (
                               <td className="py-2">
                                 <div className="flex gap-2 text-sm">
-                                  <button
-                                    className="text-blue-600 hover:text-blue-700"
-                                    onClick={() => openFundsModal(account.id, "add")}
-                                  >
-                                    {t("accounts.addFunds")}
-                                  </button>
-                                  <button
-                                    className="text-amber-600 hover:text-amber-700"
-                                    onClick={() => openFundsModal(account.id, "withdraw")}
-                                  >
-                                    {t("accounts.withdrawFunds")}
-                                  </button>
-                                  <button
-                                    className="text-purple-600 hover:text-purple-700"
-                                    onClick={() => setTransactionsModalAccountId(account.id)}
-                                  >
-                                    {t("accounts.transactions")}
-                                  </button>
-                                  <button
-                                    className="text-amber-600 hover:text-amber-700"
-                                    onClick={() => startEdit(account.id)}
-                                  >
-                                    {t("common.edit")}
-                                  </button>
-                                  {hasActionPermission(authUser, "deleteAccount") && (
+                                  {hasActionPermission(authUser, "updateAccount") && (
+                                    <>
+                                      <button
+                                        className="text-blue-600 hover:text-blue-700"
+                                        onClick={() => openFundsModal(account.id, "add")}
+                                      >
+                                        {t("accounts.addFunds")}
+                                      </button>
+                                      <button
+                                        className="text-amber-600 hover:text-amber-700"
+                                        onClick={() => openFundsModal(account.id, "withdraw")}
+                                      >
+                                        {t("accounts.withdrawFunds")}
+                                      </button>
+                                      <button
+                                        className="text-amber-600 hover:text-amber-700"
+                                        onClick={() => startEdit(account.id)}
+                                      >
+                                        {t("common.edit")}
+                                      </button>
+                                      <button
+                                        className="text-rose-600 hover:text-rose-700"
+                                        onClick={() => handleDeleteClick(account.id)}
+                                        disabled={isDeleting}
+                                      >
+                                        {t("common.delete")}
+                                      </button>
+                                    </>
+                                  )}
+                                  {hasActionPermission(authUser, "viewAccountTransaction") && (
                                     <button
-                                      className="text-rose-600 hover:text-rose-700"
-                                      onClick={() => handleDeleteClick(account.id)}
-                                      disabled={isDeleting}
+                                      className="text-purple-600 hover:text-purple-700"
+                                      onClick={() => setTransactionsModalAccountId(account.id)}
                                     >
-                                      {t("common.delete")}
+                                      {t("accounts.transactions")}
                                     </button>
                                   )}
                                 </div>
@@ -938,52 +945,54 @@ export default function AccountsPage() {
       </SectionCard>
 
       {/* Create Account Form */}
-      <SectionCard
-        title={t("accounts.createAccountTitle")}
-           // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
-        // description={t("accounts.createAccountDescription")} 
-      >
-        <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSubmit}>
-          <select
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            value={form.currencyCode}
-            onChange={(e) => setForm((p) => ({ ...p, currencyCode: e.target.value }))}
-            required
-          >
-            <option value="">{t("accounts.selectCurrency")}</option>
-            {currencies
-              .filter((c) => Boolean(c.active))
-              .map((currency) => (
-                <option key={currency.id} value={currency.code}>
-                  {currency.code} - {currency.name}
-                </option>
-              ))}
-          </select>
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder={t("accounts.accountNamePlaceholder")}
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            required
-          />
-          <input
-            className="rounded-lg border border-slate-200 px-3 py-2"
-            placeholder={t("accounts.initialFundsPlaceholder")}
-            value={form.initialFunds}
-            onChange={(e) => setForm((p) => ({ ...p, initialFunds: e.target.value }))}
-            type="number"
-            step="0.01"
-            onWheel={(e) => (e.target as HTMLInputElement).blur()}
-          />
-          <button
-            type="submit"
-            disabled={isCreating}
-            className="col-span-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
-          >
-            {isCreating ? t("common.saving") : t("accounts.createAccount")}
-          </button>
-        </form>
-      </SectionCard>
+      {hasActionPermission(authUser, "createAccount") && (
+        <SectionCard
+          title={t("accounts.createAccountTitle")}
+             // 我 REMOVED DESCRIPTION UNDER THE TITLE BEING DISPLAYED
+          // description={t("accounts.createAccountDescription")} 
+        >
+          <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSubmit}>
+            <select
+              className="rounded-lg border border-slate-200 px-3 py-2"
+              value={form.currencyCode}
+              onChange={(e) => setForm((p) => ({ ...p, currencyCode: e.target.value }))}
+              required
+            >
+              <option value="">{t("accounts.selectCurrency")}</option>
+              {currencies
+                .filter((c) => Boolean(c.active))
+                .map((currency) => (
+                  <option key={currency.id} value={currency.code}>
+                    {currency.code} - {currency.name}
+                  </option>
+                ))}
+            </select>
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2"
+              placeholder={t("accounts.accountNamePlaceholder")}
+              value={form.name}
+              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+              required
+            />
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2"
+              placeholder={t("accounts.initialFundsPlaceholder")}
+              value={form.initialFunds}
+              onChange={(e) => setForm((p) => ({ ...p, initialFunds: e.target.value }))}
+              type="number"
+              step="0.01"
+              onWheel={(e) => (e.target as HTMLInputElement).blur()}
+            />
+            <button
+              type="submit"
+              disabled={isCreating}
+              className="col-span-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
+            >
+              {isCreating ? t("common.saving") : t("accounts.createAccount")}
+            </button>
+          </form>
+        </SectionCard>
+      )}
 
       {/* Edit Account Form */}
       {editingId && (
