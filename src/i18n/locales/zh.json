@@ -221,7 +221,9 @@
     "forceLogout": "强制登出",
     "confirmForceLogout": "您确定要强制登出所有具有此角色的用户吗？",
     "forceLogoutSuccess": "用户将立即被登出。",
-    "forceLogoutError": "强制登出用户失败。"
+    "forceLogoutError": "强制登出用户失败。",
+    "selectAll": "全选",
+    "deselectAll": "取消全选"
   },
   "orders": {
     "title": "订单",
