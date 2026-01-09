@@ -1234,6 +1234,9 @@ export const deleteOrder = (req, res, next) => {
     const receipts = db.prepare("SELECT accountId, amount, imagePath, status FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(id);
     // Get all confirmed payments with accountId and amount for reversing balances (only reverse confirmed ones)
     const payments = db.prepare("SELECT accountId, amount, imagePath, status FROM order_payments WHERE orderId = ? AND status = 'confirmed';").all(id);
+    // Get confirmed profits/service charges (regular orders keep them in child tables)
+    const confirmedProfits = db.prepare("SELECT accountId, amount FROM order_profits WHERE orderId = ? AND status = 'confirmed';").all(id);
+    const confirmedServiceCharges = db.prepare("SELECT accountId, amount FROM order_service_charges WHERE orderId = ? AND status = 'confirmed';").all(id);
     
     // For imported/completed orders, also check for direct account transactions
     // These are created when orders are imported or completed without receipts/payments
@@ -1344,36 +1347,48 @@ export const deleteOrder = (req, res, next) => {
       }
     }
     
-    // Reverse profit transaction if it exists
-    if (order.profitAmount !== null && order.profitAmount !== undefined && order.profitAccountId) {
-      const profitAmount = Number(order.profitAmount);
-      if (!isNaN(profitAmount) && profitAmount > 0) {
+    // Reverse profit transactions (use confirmed entries; fall back to order-level data)
+    const profitReversals = confirmedProfits.length > 0
+      ? confirmedProfits
+      : (order.profitAmount !== null && order.profitAmount !== undefined && order.profitAccountId
+        ? [{ accountId: order.profitAccountId, amount: Number(order.profitAmount) }]
+        : []);
+    
+    profitReversals.forEach((profit) => {
+      const profitAmount = Number(profit.amount);
+      if (profit.accountId && !isNaN(profitAmount) && profitAmount > 0) {
         // Profit was added to account, so we need to subtract it
-        db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(profitAmount, order.profitAccountId);
+        db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(profitAmount, profit.accountId);
         db.prepare(
           `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
            VALUES (?, 'withdraw', ?, ?, ?);`
         ).run(
-          order.profitAccountId,
+          profit.accountId,
           profitAmount,
           `Order #${id} - Reversal of profit (Order deleted)`,
           new Date().toISOString()
         );
       }
-    }
+    });
     
-    // Reverse service charge transaction if it exists
-    if (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined && order.serviceChargeAccountId) {
-      const serviceChargeAmount = Number(order.serviceChargeAmount);
-      if (!isNaN(serviceChargeAmount) && serviceChargeAmount !== 0) {
+    // Reverse service charge transactions (use confirmed entries; fall back to order-level data)
+    const serviceChargeReversals = confirmedServiceCharges.length > 0
+      ? confirmedServiceCharges
+      : (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined && order.serviceChargeAccountId
+        ? [{ accountId: order.serviceChargeAccountId, amount: Number(order.serviceChargeAmount) }]
+        : []);
+    
+    serviceChargeReversals.forEach((serviceCharge) => {
+      const serviceChargeAmount = Number(serviceCharge.amount);
+      if (serviceCharge.accountId && !isNaN(serviceChargeAmount) && serviceChargeAmount !== 0) {
         if (serviceChargeAmount > 0) {
           // Positive service charge was added to account, so we need to subtract it
-          db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(serviceChargeAmount, order.serviceChargeAccountId);
+          db.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ?;").run(serviceChargeAmount, serviceCharge.accountId);
           db.prepare(
             `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
              VALUES (?, 'withdraw', ?, ?, ?);`
           ).run(
-            order.serviceChargeAccountId,
+            serviceCharge.accountId,
             serviceChargeAmount,
             `Order #${id} - Reversal of service charge (Order deleted)`,
             new Date().toISOString()
@@ -1381,19 +1396,19 @@ export const deleteOrder = (req, res, next) => {
         } else {
           // Negative service charge was subtracted from account, so we need to add it back
           const absAmount = Math.abs(serviceChargeAmount);
-          db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(absAmount, order.serviceChargeAccountId);
+          db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(absAmount, serviceCharge.accountId);
           db.prepare(
             `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
              VALUES (?, 'add', ?, ?, ?);`
           ).run(
-            order.serviceChargeAccountId,
+            serviceCharge.accountId,
             absAmount,
             `Order #${id} - Reversal of service charge paid by us (Order deleted)`,
             new Date().toISOString()
           );
         }
       }
-    }
+    });
     
     // Delete associated files (including drafts)
     allReceipts.forEach((receipt) => deleteFile(receipt.imagePath));
@@ -1411,13 +1426,17 @@ export const deleteOrder = (req, res, next) => {
         affectedAccountIds.add(payment.accountId);
       }
     });
-    // Add profit and service charge account IDs if they exist
-    if (order.profitAccountId) {
-      affectedAccountIds.add(order.profitAccountId);
-    }
-    if (order.serviceChargeAccountId) {
-      affectedAccountIds.add(order.serviceChargeAccountId);
-    }
+    // Add profit and service charge account IDs if they exist (from confirmed entries or fallback)
+    profitReversals.forEach((profit) => {
+      if (profit.accountId) {
+        affectedAccountIds.add(profit.accountId);
+      }
+    });
+    serviceChargeReversals.forEach((serviceCharge) => {
+      if (serviceCharge.accountId) {
+        affectedAccountIds.add(serviceCharge.accountId);
+      }
+    });
     
     // Delete the order (this will cascade delete receipts and payments due to foreign key constraints)
     const stmt = db.prepare(`DELETE FROM orders WHERE id = ?;`);
