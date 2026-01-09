@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { OrderFilters, OrderQueryParams, DatePreset } from "../../types/orders";
 import { getCurrentWeekRange, getLastWeekRange, getCurrentMonthRange, getLastMonthRange } from "../../utils/orders/datePresets";
 
@@ -16,8 +16,27 @@ const defaultFilters: OrderFilters = {
   tagIds: [],
 };
 
-export function useOrdersFilters(currentPage: number, setCurrentPage: (page: number) => void) {
-  const [filters, setFilters] = useState<OrderFilters>(defaultFilters);
+export function useOrdersFilters(
+  currentPage: number,
+  setCurrentPage: (page: number) => void,
+  initialFilters?: Partial<OrderFilters>
+) {
+  const [filters, setFilters] = useState<OrderFilters>(() => ({
+    ...defaultFilters,
+    ...initialFilters,
+  }));
+
+  // Apply initial filters if provided after mount
+  useEffect(() => {
+    if (initialFilters && Object.keys(initialFilters).length > 0) {
+      setFilters((prev) => ({
+        ...prev,
+        ...initialFilters,
+      }));
+      setCurrentPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
   const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
   const [tagFilterHighlight, setTagFilterHighlight] = useState<number>(-1);
   const tagFilterListRef = useRef<HTMLDivElement | null>(null);

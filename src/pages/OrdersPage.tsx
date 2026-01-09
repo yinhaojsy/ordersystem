@@ -1,5 +1,6 @@
 import React, { useState, type FormEvent, useEffect, useRef, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import Badge from "../components/common/Badge";
 import SectionCard from "../components/common/SectionCard";
 import AlertModal from "../components/common/AlertModal";
@@ -84,8 +85,18 @@ import { formatDate } from "../utils/format";
 
 export default function OrdersPage() {
   const { t } = useTranslation();
+  const location = useLocation();
   const authUser = useAppSelector((s) => s.auth.user);
   const { data: roles = [] } = useGetRolesQuery();
+
+  // Get initial filters from location state
+  const initialFilters = useMemo(() => {
+    const state = location.state as { initialFilters?: Partial<import("../types/orders").OrderFilters & { includeUnderProcess?: boolean }> } | null;
+    return state?.initialFilters;
+  }, [location.state]);
+
+  // Check if we need to include under_process orders (for pending orders filter)
+  const includeUnderProcess = initialFilters?.includeUnderProcess ?? false;
 
   // Page state
   const [currentPage, setCurrentPage] = useState(1);
@@ -106,12 +117,54 @@ export default function OrdersPage() {
     tagFilterHighlight,
     setTagFilterHighlight,
     tagFilterListRef,
-  } = useOrdersFilters(currentPage, setCurrentPage);
+  } = useOrdersFilters(currentPage, setCurrentPage, initialFilters);
 
-  const { data: ordersData, isLoading, refetch: refetchOrders } = useGetOrdersQuery(queryParams);
-  const orders = ordersData?.orders || [];
-  const totalOrders = ordersData?.total || 0;
-  const totalPages = ordersData?.totalPages || 1;
+  // For pending orders, we need to fetch both pending and under_process
+  // Since API only accepts one status, we'll fetch under_process separately and combine
+  const { data: ordersData, isLoading: isLoadingPending, refetch: refetchOrders } = useGetOrdersQuery(queryParams);
+  
+  // Build query for under_process orders (only when needed)
+  const shouldFetchUnderProcess = includeUnderProcess && filters.status === "pending";
+  const underProcessQueryParams = useMemo(() => {
+    if (shouldFetchUnderProcess) {
+      return { ...queryParams, status: "under_process" as OrderStatus };
+    }
+    return { limit: 1, page: 1 }; // Dummy params when not needed
+  }, [shouldFetchUnderProcess, queryParams]);
+
+  // Only fetch under_process orders when needed
+  const { data: underProcessOrdersData, isLoading: isLoadingUnderProcess } = useGetOrdersQuery(
+    underProcessQueryParams,
+    { skip: !shouldFetchUnderProcess }
+  );
+
+  const isLoading = isLoadingPending || (includeUnderProcess && filters.status === "pending" && isLoadingUnderProcess);
+
+  // Combine orders if we need both pending and under_process
+  const orders = useMemo(() => {
+    if (includeUnderProcess && filters.status === "pending") {
+      const pendingOrders = ordersData?.orders || [];
+      const underProcessOrders = underProcessOrdersData?.orders || [];
+      // Combine and remove duplicates
+      const combined = [...pendingOrders, ...underProcessOrders];
+      const uniqueOrders = combined.filter((order, index, self) =>
+        index === self.findIndex((o) => o.id === order.id)
+      );
+      return uniqueOrders;
+    }
+    return ordersData?.orders || [];
+  }, [ordersData, underProcessOrdersData, includeUnderProcess, filters.status]);
+
+  const totalOrders = useMemo(() => {
+    if (includeUnderProcess && filters.status === "pending") {
+      return orders.length;
+    }
+    return ordersData?.total || 0;
+  }, [orders.length, ordersData, includeUnderProcess, filters.status]);
+
+  const totalPages = useMemo(() => {
+    return Math.ceil(totalOrders / 20);
+  }, [totalOrders]);
 
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: currencies = [] } = useGetCurrenciesQuery();

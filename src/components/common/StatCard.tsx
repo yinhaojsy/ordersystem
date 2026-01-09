@@ -12,16 +12,24 @@ export default function StatCard({
   label,
   value,
   tone = "slate",
+  onClick,
 }: {
   label: string;
   value: string | number;
   tone?: Tone;
+  onClick?: () => void;
 }) {
+  const Component = onClick ? "button" : "div";
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <Component
+      onClick={onClick}
+      className={`rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm ${
+        onClick ? "cursor-pointer transition-all hover:shadow-md hover:border-slate-300 active:scale-[0.98]" : ""
+      }`}
+    >
       <div className="text-sm text-slate-600">{label}</div>
       <div className={`mt-2 text-2xl font-semibold ${toneMap[tone]}`}>{value}</div>
-    </div>
+    </Component>
   );
 }
 

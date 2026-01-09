@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import StatCard from "../components/common/StatCard";
 import DashboardStatistics from "../components/dashboard/DashboardStatistics";
 import {
@@ -12,6 +13,7 @@ import { OrderStatus } from "../types";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: users = [] } = useGetUsersQuery();
@@ -44,16 +46,100 @@ export default function DashboardPage() {
     };
   }, [orders, totalOrders, currencies.length, customers.length, users.length]);
 
+  const handleTotalOrdersClick = () => {
+    navigate("/orders");
+  };
+
+  const handlePendingOrdersClick = () => {
+    navigate("/orders", {
+      state: {
+        initialFilters: {
+          status: "pending" as OrderStatus,
+          // Special flag to indicate we want both pending and under_process
+          includeUnderProcess: true,
+        },
+      },
+    });
+  };
+
+  const handleCompletedOrdersClick = () => {
+    navigate("/orders", {
+      state: {
+        initialFilters: {
+          status: "completed" as OrderStatus,
+        },
+      },
+    });
+  };
+
+  const handleCancelledOrdersClick = () => {
+    navigate("/orders", {
+      state: {
+        initialFilters: {
+          status: "cancelled" as OrderStatus,
+        },
+      },
+    });
+  };
+
+  const handleCurrenciesClick = () => {
+    navigate("/currencies");
+  };
+
+  const handleCustomersClick = () => {
+    navigate("/customers");
+  };
+
+  const handleUsersClick = () => {
+    navigate("/users");
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <StatCard label={t("dashboard.currencies")} value={stats.currencies} tone="blue" />
-        <StatCard label={t("dashboard.customers")} value={stats.customers} tone="emerald" />
-        <StatCard label={t("dashboard.users")} value={stats.users} tone="slate" />
-        <StatCard label={t("dashboard.orders")} value={stats.orders} tone="amber" />
-        <StatCard label={t("dashboard.pending")} value={stats.pending} tone="amber" />
-        <StatCard label={t("dashboard.completed")} value={stats.completed} tone="emerald" />
-        <StatCard label={t("dashboard.cancelled")} value={stats.cancelled} tone="rose" />
+        {/*我 remove the currencies customers and users cards */}
+        {/* <StatCard
+          label={t("dashboard.currencies")}
+          value={stats.currencies}
+          tone="blue"
+          onClick={handleCurrenciesClick}
+        />
+        <StatCard
+          label={t("dashboard.customers")}
+          value={stats.customers}
+          tone="emerald"
+          onClick={handleCustomersClick}
+        />
+        <StatCard
+          label={t("dashboard.users")}
+          value={stats.users}
+          tone="slate"
+          onClick={handleUsersClick} 
+        />*/}
+        <StatCard
+          label={t("dashboard.totalOrders")}
+          value={stats.orders}
+          tone="amber"
+          onClick={handleTotalOrdersClick}
+        />
+        <StatCard
+          label={t("dashboard.pendingOrders")}
+          value={stats.pending}
+          tone="amber"
+          onClick={handlePendingOrdersClick}
+        />
+        <StatCard
+          label={t("dashboard.completedOrders")}
+          value={stats.completed}
+          tone="emerald"
+          onClick={handleCompletedOrdersClick}
+        />
+        <StatCard
+          label={t("dashboard.cancelledOrders")}
+          value={stats.cancelled}
+          tone="rose"
+          onClick={handleCancelledOrdersClick}
+        />
       </div>
 
       {/* <DashboardStatistics /> */}
