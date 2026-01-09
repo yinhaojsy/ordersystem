@@ -162,6 +162,11 @@ export default function TransfersPage() {
   const { data: transferChanges = [], isLoading: isLoadingChanges } = 
     useGetTransferChangesQuery(viewAuditTrailTransferId || 0, { skip: !viewAuditTrailTransferId });
 
+  // Permission checks
+  const canDeleteTransfer = hasActionPermission(authUser, "deleteTransfer");
+  const canEditTransfer = hasActionPermission(authUser, "updateTransfer");
+  const canViewTransferAuditTrail = hasActionPermission(authUser, "viewTransferAuditTrail");
+  const hasAnyActionPermission = canDeleteTransfer || canEditTransfer || canViewTransferAuditTrail;
 
   const [form, setForm] = useState({
     fromAccountId: "",
@@ -532,40 +537,44 @@ export default function TransfersPage() {
         actions={
           <div className="flex items-center gap-4">
             {isLoading ? t("common.loading") : `${transfers.length} ${t("transfers.transfers")}`}
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
-            >
-              {t("transfers.createTransfer")}
-            </button>
-            <button
-              onClick={async () => {
-                if (!isBatchTagMode) {
-                  // Enable batch tag mode
-                  setIsBatchTagMode(true);
-                  setIsBatchDeleteMode(false); // Exit batch delete mode if active
-                  setSelectedTransferIds([]);
-                } else {
-                  // If no transfers selected, exit batch tag mode
-                  if (!selectedTransferIds.length) {
-                    setIsBatchTagMode(false);
+            {hasActionPermission(authUser, "createTransfer") && (
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 transition-colors"
+              >
+                {t("transfers.createTransfer")}
+              </button>
+            )}
+            {hasActionPermission(authUser, "assignUnassignTransferTag") && (
+              <button
+                onClick={async () => {
+                  if (!isBatchTagMode) {
+                    // Enable batch tag mode
+                    setIsBatchTagMode(true);
+                    setIsBatchDeleteMode(false); // Exit batch delete mode if active
                     setSelectedTransferIds([]);
-                    return;
+                  } else {
+                    // If no transfers selected, exit batch tag mode
+                    if (!selectedTransferIds.length) {
+                      setIsBatchTagMode(false);
+                      setSelectedTransferIds([]);
+                      return;
+                    }
+                    // Open tag selection modal
+                    setIsTagModalOpen(true);
                   }
-                  // Open tag selection modal
-                  setIsTagModalOpen(true);
-                }
-              }}
-              disabled={isTagging || isUntagging}
-              className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
-            >
-              {isTagging || isUntagging
-                ? t("transfers.tagging")
-                : isBatchTagMode
-                  ? (selectedTransferIds.length > 0 ? t("transfers.addTags") : t("common.cancel"))
-                  : t("transfers.addTag")}
-            </button>
-            {hasActionPermission(authUser, "deleteTransfer") && (
+                }}
+                disabled={isTagging || isUntagging}
+                className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+              >
+                {isTagging || isUntagging
+                  ? t("transfers.tagging")
+                  : isBatchTagMode
+                    ? (selectedTransferIds.length > 0 ? t("transfers.addTags") : t("common.cancel"))
+                    : t("transfers.addTag")}
+              </button>
+            )}
+            {canDeleteTransfer && (
               <button
                 onClick={async () => {
                   if (!isBatchDeleteMode) {
@@ -599,25 +608,27 @@ export default function TransfersPage() {
                     : t("transfers.batchDelete")}
               </button>
             )}
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {hasActionPermission(authUser, "importTransfer") && (
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                />
-              </svg>
-              {t("transfers.import")}
-            </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                {t("transfers.import")}
+              </button>
+            )}
             <ColumnDropdown
               isOpen={isColumnDropdownOpen}
               onToggle={() => setIsColumnDropdownOpen(!isColumnDropdownOpen)}
@@ -650,6 +661,7 @@ export default function TransfersPage() {
           onClearFilters={handleClearFilters}
           onExport={handleExportTransfers}
           isExporting={isExporting}
+          canExport={hasActionPermission(authUser, "exportTransfer")}
           isTagFilterOpen={isTagFilterOpen}
           setIsTagFilterOpen={setIsTagFilterOpen}
           tagFilterHighlight={tagFilterHighlight}
@@ -690,7 +702,9 @@ export default function TransfersPage() {
                     <th key={columnKey} className="py-2">{getColumnLabel(columnKey)}</th>
                   )
                 )}
-                {!isBatchDeleteMode && !isBatchTagMode && <th className="py-2">{t("transfers.actions")}</th>}
+                {!isBatchDeleteMode && !isBatchTagMode && hasAnyActionPermission && (
+                  <th className="py-2">{t("transfers.actions")}</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -721,29 +735,35 @@ export default function TransfersPage() {
                   {columnOrder.map((columnKey) => 
                     visibleColumns.has(columnKey) ? renderCellContent(columnKey, transfer) : null
                   )}
-                  {!isBatchDeleteMode && !isBatchTagMode && (
+                  {!isBatchDeleteMode && !isBatchTagMode && hasAnyActionPermission && (
                     <td className="py-2">
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => setViewAuditTrailTransferId(transfer.id)}
-                          className="text-blue-600 hover:text-blue-700 text-sm"
-                          title={t("transfers.viewAuditTrail")}
-                        >
-                          {t("transfers.auditTrail")}
-                        </button>
-                        <button
-                          onClick={() => startEdit(transfer.id)}
-                          className="text-amber-600 hover:text-amber-700 text-sm"
-                        >
-                          {t("common.edit")}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(transfer.id)}
-                          disabled={isDeleting}
-                          className="text-rose-600 hover:text-rose-700 text-sm disabled:opacity-60"
-                        >
-                          {t("common.delete")}
-                        </button>
+                        {canViewTransferAuditTrail && (
+                          <button
+                            onClick={() => setViewAuditTrailTransferId(transfer.id)}
+                            className="text-blue-600 hover:text-blue-700 text-sm"
+                            title={t("transfers.viewAuditTrail")}
+                          >
+                            {t("transfers.auditTrail")}
+                          </button>
+                        )}
+                        {canEditTransfer && (
+                          <button
+                            onClick={() => startEdit(transfer.id)}
+                            className="text-amber-600 hover:text-amber-700 text-sm"
+                          >
+                            {t("common.edit")}
+                          </button>
+                        )}
+                        {canDeleteTransfer && (
+                          <button
+                            onClick={() => handleDeleteClick(transfer.id)}
+                            disabled={isDeleting}
+                            className="text-rose-600 hover:text-rose-700 text-sm disabled:opacity-60"
+                          >
+                            {t("common.delete")}
+                          </button>
+                        )}
                       </div>
                     </td>
                   )}
@@ -751,7 +771,14 @@ export default function TransfersPage() {
               ))}
               {!transfers.length && (
                 <tr>
-                  <td className="py-4 text-sm text-slate-500" colSpan={(isBatchDeleteMode || isBatchTagMode) ? 9 : 10}>
+                  <td
+                    className="py-4 text-sm text-slate-500"
+                    colSpan={
+                      (isBatchDeleteMode || isBatchTagMode ? 1 : 0) +
+                      columnOrder.filter((key) => visibleColumns.has(key)).length +
+                      (hasAnyActionPermission && !isBatchDeleteMode && !isBatchTagMode ? 1 : 0)
+                    }
+                  >
                     {t("transfers.noTransfers")}
                   </td>
                 </tr>
