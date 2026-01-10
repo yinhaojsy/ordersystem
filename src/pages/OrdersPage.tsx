@@ -303,6 +303,9 @@ export default function OrdersPage() {
   const [batchUnassignTags, { isLoading: isUntagging }] = useBatchUnassignTagsMutation();
   const [addCustomer, { isLoading: isCreatingCustomer }] = useAddCustomerMutation();
 
+  // Allow new customers to be preselected in both online and OTC forms
+  const setOtcFormRef = useRef<((updater: (prev: any) => any) => void) | null>(null);
+
   // Customer creation functionality
   const {
     customerForm,
@@ -312,6 +315,7 @@ export default function OrdersPage() {
   } = useOrdersCustomer({
     addCustomer,
     setForm,
+    setOtcForm: (updater) => setOtcFormRef.current?.(updater),
     setIsCreateCustomerModalOpen,
   });
   const [processOrder] = useProcessOrderMutation();
@@ -755,6 +759,10 @@ export default function OrdersPage() {
     handleOtcOrderComplete,
     closeOtcModal,
   } = useOtcOrder(accounts, setOpenMenuId, setIsCreateCustomerModalOpen);
+  // Expose OTC form setter to the customer creation hook
+  useEffect(() => {
+    setOtcFormRef.current = setOtcForm;
+  }, [setOtcForm]);
 
   // Order actions (edit, delete, status updates, process)
   const {

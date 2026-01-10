@@ -3,12 +3,14 @@ import { useState, type FormEvent } from "react";
 interface UseOrdersCustomerParams {
   addCustomer: any;
   setForm: (updater: (prev: any) => any) => void;
+  setOtcForm?: (updater: (prev: any) => any) => void;
   setIsCreateCustomerModalOpen: (isOpen: boolean) => void;
 }
 
 export function useOrdersCustomer({
   addCustomer,
   setForm,
+  setOtcForm,
   setIsCreateCustomerModalOpen,
 }: UseOrdersCustomerParams) {
   const [customerForm, setCustomerForm] = useState({
@@ -42,7 +44,11 @@ export function useOrdersCustomer({
       
       // Select the newly created customer
       if (newCustomer?.id) {
-        setForm((p) => ({ ...p, customerId: String(newCustomer.id) }));
+        const newId = String(newCustomer.id);
+        setForm((p) => ({ ...p, customerId: newId }));
+        if (setOtcForm) {
+          setOtcForm((p) => ({ ...p, customerId: newId }));
+        }
       }
       
       resetCustomerForm();
