@@ -1328,6 +1328,25 @@ export const api = createApi({
       }),
       invalidatesTags: ["Currency", "Customer", "User", "Role", "Order", "Account", "Transfer", "Expense", "ProfitCalculation", "Tag"],
     }),
+    restoreSafetyBackup: builder.mutation<{ message: string; safetyBackup?: string }, { file?: string | null }>({
+      query: (body) => ({
+        url: "settings/restore/safety",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Currency", "Customer", "User", "Role", "Order", "Account", "Transfer", "Expense", "ProfitCalculation", "Tag"],
+    }),
+    listSafetyBackups: builder.query<{ backups: Array<{ file: string; path: string; modifiedAt: string; size: number }> }, void>({
+      query: () => "settings/restore/safety/list",
+    }),
+    deleteSafetyBackup: builder.mutation<{ message: string; file: string }, { file: string }>({
+      query: (body) => ({
+        url: "settings/restore/safety/delete",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Currency", "Customer", "User", "Role", "Order", "Account", "Transfer", "Expense", "ProfitCalculation", "Tag"],
+    }),
     resetTableIds: builder.mutation<
       { results: Array<{ table: string; success: boolean; message: string; currentMaxId?: number }> },
       { tables: string[] }
@@ -1528,6 +1547,9 @@ export const {
     useSetSettingMutation,
     useCreateBackupMutation,
     useRestoreBackupMutation,
+    useRestoreSafetyBackupMutation,
+    useListSafetyBackupsQuery,
+    useDeleteSafetyBackupMutation,
     useResetTableIdsMutation,
     useGetDbSchemaQuery,
     useExecuteQueryMutation,

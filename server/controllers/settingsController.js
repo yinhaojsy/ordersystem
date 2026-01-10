@@ -1,4 +1,4 @@
-import { db } from "../db.js";
+import { db, resetDbInstance, dbPath } from "../db.js";
 import fs from "fs";
 import path from "path";
 import archiver from "archiver";
@@ -8,9 +8,11 @@ import Database from "better-sqlite3";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const isSafetyBackup = (file) =>
+  typeof file === "string" && file.startsWith("pre-restore-") && file.endsWith(".db");
+
 // Get paths
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "server", "data");
-const dbPath = path.join(dataDir, "app.db");
 const uploadsDir = path.join(dataDir, "uploads");
 const backupsDir = path.join(dataDir, "backups");
 
@@ -67,7 +69,7 @@ export const createBackup = (req, res, next) => {
     
     if (includeFiles) {
       // Create zip with database and files
-      const zipFilename = `backup-${timestamp}.zip`;
+      const zipFilename = `backup-with-files-${timestamp}.zip`;
       const zipPath = path.join(backupsDir, zipFilename);
       
       res.setHeader("Content-Type", "application/zip");
@@ -100,14 +102,11 @@ export const createBackup = (req, res, next) => {
       res.setHeader("Content-Type", "application/x-sqlite3");
       res.setHeader("Content-Disposition", `attachment; filename="${dbFilename}"`);
       
-      // Create a backup using better-sqlite3's backup API
+      // Create a backup using better-sqlite3's backup API (expects a path string)
       const backupPath = path.join(backupsDir, dbFilename);
-      const backupDb = new Database(backupPath);
       
-      db.backup(backupDb)
+      db.backup(backupPath)
         .then(() => {
-          backupDb.close();
-          
           // Stream the backup file to response
           const stream = fs.createReadStream(backupPath);
           stream.pipe(res);
@@ -127,7 +126,6 @@ export const createBackup = (req, res, next) => {
         .catch((err) => {
           console.error("Backup error:", err);
           if (fs.existsSync(backupPath)) {
-            backupDb.close();
             fs.unlinkSync(backupPath);
           }
           if (!res.headersSent) {
@@ -141,7 +139,7 @@ export const createBackup = (req, res, next) => {
   }
 };
 
-// Restore from backup
+// Restore from uploaded backup
 export const restoreBackup = (req, res, next) => {
   try {
     if (!req.file) {
@@ -153,60 +151,159 @@ export const restoreBackup = (req, res, next) => {
     
     // Create safety backup of current database
     const safetyBackupPath = path.join(backupsDir, `pre-restore-${timestamp}.db`);
-    const safetyBackupDb = new Database(safetyBackupPath);
     
-    db.backup(safetyBackupDb)
+    db.backup(safetyBackupPath)
       .then(() => {
-        safetyBackupDb.close();
-        
         // Determine if uploaded file is zip or db
         const isZip = uploadedFile.originalname.endsWith(".zip") || uploadedFile.mimetype === "application/zip";
         
         if (isZip) {
           // TODO: Implement zip extraction and restore
-          // For now, return error
+          // For now, return error and clean up the upload
+          fs.unlinkSync(uploadedFile.path);
           return res.status(400).json({ 
             message: "Zip restore not yet implemented. Please use database-only backup for now." 
           });
         } else {
-          // Database only restore
-          // Close current connection temporarily
-          db.close();
-          
-          // Replace database file
-          fs.copyFileSync(uploadedFile.path, dbPath);
-          
-          // Reopen database
-          const Database = require("better-sqlite3");
-          const newDb = new Database(dbPath);
-          newDb.pragma("journal_mode = WAL");
-          newDb.pragma("foreign_keys = ON");
-          
-          // Update the db export reference
-          Object.assign(db, newDb);
-          
-          // Clean up uploaded file
-          fs.unlinkSync(uploadedFile.path);
-          
-          res.json({ 
-            message: "Database restored successfully",
-            safetyBackup: safetyBackupPath 
-          });
+      // Database only restore
+      // Close current connection temporarily and replace database file
+      db.close();
+      fs.copyFileSync(uploadedFile.path, dbPath);
+      
+      // Reopen database (updates exported binding via resetDbInstance)
+      resetDbInstance();
+      
+      // Clean up uploaded file
+      fs.unlinkSync(uploadedFile.path);
+      
+      res.json({ 
+        message: "Database restored successfully",
+        safetyBackup: safetyBackupPath 
+      });
         }
       })
       .catch((err) => {
         console.error("Restore error:", err);
         if (fs.existsSync(safetyBackupPath)) {
           try {
-            safetyBackupDb.close();
+            fs.unlinkSync(safetyBackupPath);
           } catch (e) {
-            // Ignore
+            // Ignore cleanup errors
           }
         }
+        // Ensure database is open after failure
+        resetDbInstance();
         res.status(500).json({ message: "Error restoring backup" });
       });
   } catch (error) {
     console.error("Restore error:", error);
+    next(error);
+  }
+};
+
+// Restore from latest safety backup (pre-restore-*.db)
+// List safety backups (pre-restore-*.db)
+export const listSafetyBackups = (_req, res, next) => {
+  try {
+    const backups = fs
+      .readdirSync(backupsDir)
+      .filter((file) => isSafetyBackup(file))
+      .map((file) => {
+        const fullPath = path.join(backupsDir, file);
+        const stats = fs.statSync(fullPath);
+        return { file, path: fullPath, modifiedAt: stats.mtime.toISOString(), size: stats.size };
+      })
+      .sort((a, b) => (a.modifiedAt < b.modifiedAt ? 1 : -1));
+    
+    res.json({ backups });
+  } catch (error) {
+    console.error("List safety backups error:", error);
+    next(error);
+  }
+};
+
+// Restore from safety backup (latest or specified file)
+export const restoreSafetyBackup = (req, res, next) => {
+  try {
+    const { file } = req.body || {};
+    let target;
+
+    const backups = fs.readdirSync(backupsDir).filter((name) => isSafetyBackup(name));
+
+    if (backups.length === 0) {
+      return res.status(404).json({ message: "No safety backup found" });
+    }
+
+    if (file) {
+      if (!isSafetyBackup(file)) {
+        return res.status(400).json({ message: "Invalid safety backup name" });
+      }
+      if (!backups.includes(file)) {
+        return res.status(404).json({ message: "Specified safety backup not found" });
+      }
+      target = path.join(backupsDir, file);
+    } else {
+      // Pick the most recent safety backup
+      const sorted = backups
+        .map((name) => {
+          const fullPath = path.join(backupsDir, name);
+          const stats = fs.statSync(fullPath);
+          return { name, fullPath, mtime: stats.mtimeMs };
+        })
+        .sort((a, b) => b.mtime - a.mtime);
+      target = sorted[0].fullPath;
+    }
+    
+    // Replace database with safety backup
+    db.close();
+    fs.copyFileSync(target, dbPath);
+    resetDbInstance();
+    
+    res.json({
+      message: "Database restored from safety backup",
+      safetyBackup: target,
+    });
+  } catch (error) {
+    console.error("Restore safety backup error:", error);
+    // Ensure database is open after failure
+    resetDbInstance();
+    next(error);
+  }
+};
+
+// Download a safety backup
+export const downloadSafetyBackup = (req, res, next) => {
+  try {
+    const { file } = req.query;
+    if (!isSafetyBackup(file)) {
+      return res.status(400).json({ message: "Invalid safety backup name" });
+    }
+    const target = path.join(backupsDir, file);
+    if (!fs.existsSync(target)) {
+      return res.status(404).json({ message: "Safety backup not found" });
+    }
+    res.download(target, file);
+  } catch (error) {
+    console.error("Download safety backup error:", error);
+    next(error);
+  }
+};
+
+// Delete a safety backup
+export const deleteSafetyBackup = (req, res, next) => {
+  try {
+    const { file } = req.body || {};
+    if (!isSafetyBackup(file)) {
+      return res.status(400).json({ message: "Invalid safety backup name" });
+    }
+    const target = path.join(backupsDir, file);
+    if (!fs.existsSync(target)) {
+      return res.status(404).json({ message: "Safety backup not found" });
+    }
+    fs.unlinkSync(target);
+    res.json({ message: "Safety backup deleted", file });
+  } catch (error) {
+    console.error("Delete safety backup error:", error);
     next(error);
   }
 };
@@ -220,7 +317,16 @@ export const resetTableIds = (req, res, next) => {
       return res.status(400).json({ message: "No tables specified" });
     }
     
-    const validTables = ["orders", "expenses", "internal_transfers"];
+    const validTables = [
+      "orders",
+      "expenses",
+      "internal_transfers",
+      "customers",
+      "accounts",
+      "users",
+      "tags",
+      "currencies",
+    ];
     const tablesToReset = tables.filter((t) => validTables.includes(t));
     
     if (tablesToReset.length === 0) {

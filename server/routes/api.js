@@ -58,7 +58,7 @@ import {
   deleteServiceCharge,
   confirmServiceCharge,
 } from "../controllers/ordersController.js";
-import { upload } from "../middleware/upload.js";
+import { upload, backupUpload } from "../middleware/upload.js";
 import {
   listAccounts,
   getAccountsSummary,
@@ -107,6 +107,10 @@ import {
   setSetting, 
   createBackup, 
   restoreBackup, 
+  listSafetyBackups,
+  restoreSafetyBackup,
+  downloadSafetyBackup,
+  deleteSafetyBackup,
   resetTableIds, 
   getDbSchema, 
   executeQuery 
@@ -223,7 +227,11 @@ router.put("/profit-calculations/:id/unset-default", unsetDefaultCalculation);
 router.get("/settings/:key", getSetting);
 router.put("/settings", setSetting);
 router.post("/settings/backup", createBackup);
-router.post("/settings/restore", upload.single("file"), restoreBackup);
+router.post("/settings/restore", backupUpload.single("file"), restoreBackup);
+router.get("/settings/restore/safety/list", listSafetyBackups);
+router.post("/settings/restore/safety", restoreSafetyBackup);
+router.get("/settings/restore/safety/download", downloadSafetyBackup);
+router.post("/settings/restore/safety/delete", deleteSafetyBackup);
 router.post("/settings/reset-ids", resetTableIds);
 router.get("/settings/debug/schema", getDbSchema);
 router.post("/settings/debug/query", executeQuery);

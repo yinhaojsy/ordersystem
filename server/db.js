@@ -4,13 +4,34 @@ import Database from "better-sqlite3";
 
 // Use Railway's persistent volume path, or fallback to local path
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "server", "data");
-const dbPath = path.join(dataDir, "app.db");
+export const dbPath = path.join(dataDir, "app.db");
 
 fs.mkdirSync(dataDir, { recursive: true });
 
-export const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+const applyPragmas = (instance) => {
+  instance.pragma("journal_mode = WAL");
+  instance.pragma("foreign_keys = ON");
+};
+
+export const createDbInstance = () => {
+  const instance = new Database(dbPath);
+  applyPragmas(instance);
+  return instance;
+};
+
+export let db = createDbInstance();
+
+export const resetDbInstance = () => {
+  try {
+    if (db && typeof db.close === "function") {
+      db.close();
+    }
+  } catch (e) {
+    // ignore close errors
+  }
+  db = createDbInstance();
+  return db;
+};
 
 const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit"];
 
@@ -463,7 +484,8 @@ const seedData = () => {
     insertMany(seed);
   }
 
-  const customerCount = db.prepare("SELECT COUNT(*) as count FROM customers").get().count;
+  {/*我 remove customers seed data*/}
+/*   const customerCount = db.prepare("SELECT COUNT(*) as count FROM customers").get().count;
   if (customerCount === 0) {
     const insert = db.prepare(
       `INSERT INTO customers (name, email, phone) VALUES (@name, @email, @phone);`,
@@ -475,7 +497,7 @@ const seedData = () => {
     ];
     const insertMany = db.transaction((rows) => rows.forEach((row) => insert.run(row)));
     insertMany(seed);
-  }
+  } */
 
   const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
   if (userCount === 0) {

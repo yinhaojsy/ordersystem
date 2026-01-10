@@ -8,7 +8,9 @@ export const store = configureStore({
     [api.reducerPath]: api.reducer,
   },
   middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware().concat(api.middleware),
+    getDefaultMiddleware({
+      serializableCheck: false, // RTK Query returns Blobs (backups) and other non-serializable payloads
+    }).concat(api.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

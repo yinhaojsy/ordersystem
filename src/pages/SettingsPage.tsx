@@ -5,6 +5,9 @@ import ConfirmModal from "../components/common/ConfirmModal";
 import {
   useCreateBackupMutation,
   useRestoreBackupMutation,
+  useRestoreSafetyBackupMutation,
+  useListSafetyBackupsQuery,
+  useDeleteSafetyBackupMutation,
   useResetTableIdsMutation,
   useGetDbSchemaQuery,
   useExecuteQueryMutation,
@@ -16,6 +19,11 @@ export default function SettingsPage() {
   // Backup/Restore state
   const [backupType, setBackupType] = useState<"db" | "full">("db");
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [showSafetyRestoreConfirm, setShowSafetyRestoreConfirm] = useState(false);
+  const [showSafetyModal, setShowSafetyModal] = useState(false);
+  const [selectedSafetyFile, setSelectedSafetyFile] = useState<string | null>(null);
+  const [showRestoreSuccess, setShowRestoreSuccess] = useState(false);
+  const [restoreSuccessMessage, setRestoreSuccessMessage] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,9 +39,12 @@ export default function SettingsPage() {
   // API hooks
   const [createBackup, { isLoading: isCreatingBackup }] = useCreateBackupMutation();
   const [restoreBackup, { isLoading: isRestoring }] = useRestoreBackupMutation();
+  const [restoreSafetyBackup, { isLoading: isRestoringSafety }] = useRestoreSafetyBackupMutation();
+  const [deleteSafetyBackup, { isLoading: isDeletingSafety }] = useDeleteSafetyBackupMutation();
   const [resetTableIds, { isLoading: isResetting }] = useResetTableIdsMutation();
   const { data: schemaData } = useGetDbSchemaQuery(undefined, { skip: !showSchema });
   const [executeQuery, { isLoading: isExecuting }] = useExecuteQueryMutation();
+  const { data: safetyListData, isFetching: isLoadingSafetyList, refetch: refetchSafetyList } = useListSafetyBackupsQuery(undefined, { skip: !showSafetyModal });
 
   // Backup handlers
   const handleCreateBackup = async () => {
@@ -46,14 +57,15 @@ export default function SettingsPage() {
       const a = document.createElement("a");
       a.href = url;
       a.download = backupType === "full" 
-        ? `backup-${new Date().toISOString().split("T")[0]}.zip`
+        ? `backup-with-files-${new Date().toISOString().split("T")[0]}.zip`
         : `backup-${new Date().toISOString().split("T")[0]}.db`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      alert(t("settings.backupRestore.backupSuccess"));
+      setRestoreSuccessMessage(t("settings.backupRestore.backupSuccess"));
+      setShowRestoreSuccess(true);
     } catch (error) {
       console.error("Backup error:", error);
       alert(t("settings.backupRestore.backupError"));
@@ -75,8 +87,11 @@ export default function SettingsPage() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      await restoreBackup(formData).unwrap();
-      alert(t("settings.backupRestore.restoreSuccess"));
+      const result = await restoreBackup(formData).unwrap();
+      setRestoreSuccessMessage(
+        (result as any)?.message || t("settings.backupRestore.restoreSuccess")
+      );
+      setShowRestoreSuccess(true);
       setShowRestoreConfirm(false);
       setSelectedFile(null);
       if (fileInputRef.current) {
@@ -84,7 +99,12 @@ export default function SettingsPage() {
       }
     } catch (error) {
       console.error("Restore error:", error);
-      alert(t("settings.backupRestore.restoreError"));
+      setShowRestoreConfirm(false);
+      const message =
+        (error as any)?.data?.message ||
+        (error as any)?.message ||
+        t("settings.backupRestore.restoreError");
+      alert(message);
     }
   };
 
@@ -93,6 +113,49 @@ export default function SettingsPage() {
     setSelectedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSafetyRestoreConfirm = async () => {
+    if (!selectedSafetyFile) {
+      alert(t("settings.backupRestore.selectSafetyBackup"));
+      return;
+    }
+    try {
+      const result = await restoreSafetyBackup({ file: selectedSafetyFile }).unwrap();
+      setRestoreSuccessMessage(
+        (result as any)?.message || t("settings.backupRestore.restoreSafetySuccess")
+      );
+      setShowRestoreSuccess(true);
+      setShowSafetyRestoreConfirm(false);
+      setShowSafetyModal(false);
+    } catch (error: any) {
+      console.error("Safety restore error:", error);
+      setShowSafetyRestoreConfirm(false);
+      setShowSafetyModal(false);
+      const message =
+        error?.data?.message || error?.message || t("settings.backupRestore.restoreSafetyError");
+      alert(message);
+    }
+  };
+
+  const handleDownloadSafety = (file: string) => {
+    const url = `/api/settings/restore/safety/download?file=${encodeURIComponent(file)}`;
+    window.open(url, "_blank");
+  };
+
+  const handleDeleteSafety = async (file: string) => {
+    const confirmed = window.confirm(t("settings.backupRestore.deleteSafetyConfirm") || "Delete safety backup?");
+    if (!confirmed) return;
+    try {
+      await deleteSafetyBackup({ file }).unwrap();
+      await refetchSafetyList();
+      if (selectedSafetyFile === file) {
+        setSelectedSafetyFile(null);
+      }
+    } catch (error) {
+      console.error("Delete safety backup error:", error);
+      alert(t("settings.backupRestore.restoreSafetyError"));
     }
   };
 
@@ -218,6 +281,20 @@ export default function SettingsPage() {
               onChange={handleFileSelect}
               className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
             />
+            <div className="mt-3">
+              <button
+                onClick={() => {
+                  setShowSafetyModal(true);
+                  refetchSafetyList();
+                }}
+                disabled={isRestoringSafety || isDeletingSafety}
+                className="rounded-lg bg-slate-600 px-4 py-2 font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+              >
+                {isRestoringSafety
+                  ? t("settings.backupRestore.restoringSafety")
+                  : t("settings.backupRestore.restoreSafetyList")}
+              </button>
+            </div>
           </div>
         </div>
       </SectionCard>
@@ -234,7 +311,16 @@ export default function SettingsPage() {
 
           {/* Table Selection */}
           <div className="space-y-2">
-            {["orders", "expenses", "internal_transfers"].map((tableName) => (
+            {[
+              "orders",
+              "expenses",
+              "internal_transfers",
+              "customers",
+              "accounts",
+              "users",
+              "tags",
+              "currencies",
+            ].map((tableName) => (
               <label
                 key={tableName}
                 className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 cursor-pointer hover:bg-slate-50"
@@ -249,6 +335,11 @@ export default function SettingsPage() {
                     {tableName === "orders" && t("settings.resetIds.orders")}
                     {tableName === "expenses" && t("settings.resetIds.expenses")}
                     {tableName === "internal_transfers" && t("settings.resetIds.transfers")}
+                    {tableName === "customers" && t("settings.resetIds.customers")}
+                    {tableName === "accounts" && t("settings.resetIds.accounts")}
+                    {tableName === "users" && t("settings.resetIds.users")}
+                    {tableName === "tags" && t("settings.resetIds.tags")}
+                    {tableName === "currencies" && t("settings.resetIds.currencies")}
                   </div>
                 </div>
               </label>
@@ -451,16 +542,133 @@ export default function SettingsPage() {
       </SectionCard>
 
       {/* Restore Confirmation Modal */}
-      {showRestoreConfirm && (
-        <ConfirmModal
-          title={t("settings.backupRestore.restore")}
-          message={t("settings.backupRestore.restoreConfirm")}
-          onConfirm={handleRestoreConfirm}
-          onCancel={handleRestoreCancel}
-          confirmText={t("common.confirm")}
-          cancelText={t("common.cancel")}
-          isLoading={isRestoring}
-        />
+      <ConfirmModal
+        isOpen={showRestoreConfirm}
+        message={t("settings.backupRestore.restoreConfirm")}
+        onConfirm={handleRestoreConfirm}
+        onCancel={handleRestoreCancel}
+        confirmText={t("common.confirm")}
+        cancelText={t("common.cancel")}
+        type="warning"
+      />
+      <ConfirmModal
+        isOpen={showSafetyRestoreConfirm}
+        message={t("settings.backupRestore.restoreSafetyConfirm")}
+        onConfirm={handleSafetyRestoreConfirm}
+        onCancel={() => setShowSafetyRestoreConfirm(false)}
+        confirmText={t("common.confirm")}
+        cancelText={t("common.cancel")}
+        type="warning"
+      />
+      <ConfirmModal
+        isOpen={showRestoreSuccess}
+        message={restoreSuccessMessage || t("settings.backupRestore.restoreSuccess")}
+        onConfirm={() => setShowRestoreSuccess(false)}
+        onCancel={() => setShowRestoreSuccess(false)}
+        confirmText={t("common.ok")}
+        cancelText={t("common.cancel")}
+        type="info"
+      />
+      {showSafetyModal && (
+        <div
+          className="fixed inset-0 z-[9998] flex items-center justify-center bg-black bg-opacity-50"
+          onClick={() => setShowSafetyModal(false)}
+        >
+          <div
+            className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                {t("settings.backupRestore.restoreSafetyListTitle")}
+              </h3>
+              <button
+                onClick={() => setShowSafetyModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mb-4 text-sm text-slate-600">
+              {t("settings.backupRestore.restoreSafetyListDesc")}
+            </div>
+            <div className="max-h-80 overflow-y-auto rounded border border-slate-200">
+              {isLoadingSafetyList ? (
+                <div className="p-3 text-sm text-slate-600">{t("common.loading")}</div>
+              ) : safetyListData?.backups?.length ? (
+                <div className="divide-y divide-slate-200">
+                  {safetyListData.backups.map((b) => (
+                    <label
+                      key={b.file}
+                      className="flex items-center gap-3 p-3 hover:bg-slate-50 cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        name="safety-backup"
+                        checked={selectedSafetyFile === b.file}
+                        onChange={() => setSelectedSafetyFile(b.file)}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-slate-900">{b.file}</div>
+                        <div className="text-xs text-slate-600">
+                          {new Date(b.modifiedAt).toLocaleString()} • {(b.size / 1024 / 1024).toFixed(2)} MB
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadSafety(b.file);
+                          }}
+                          className="rounded border border-slate-200 p-2 text-slate-700 hover:bg-slate-100"
+                          title={t("settings.backupRestore.downloadSafety") || "Download safety backup"}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4m0 0l4-4m-4 4V4" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSafety(b.file);
+                          }}
+                          className="rounded border border-slate-200 p-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          title={t("settings.backupRestore.deleteSafety") || "Delete safety backup"}
+                          disabled={isDeletingSafety}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8l-.867-2.6A1 1 0 0015.184 3H8.816a1 1 0 00-.949.658L7 7z" />
+                          </svg>
+                        </button>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-3 text-sm text-slate-600">
+                  {t("settings.backupRestore.noSafetyBackups")}
+                </div>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setShowSafetyModal(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                onClick={() => setShowSafetyRestoreConfirm(true)}
+                disabled={!selectedSafetyFile || isRestoringSafety}
+                className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
+              >
+                {t("settings.backupRestore.restoreSafetySelected")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
