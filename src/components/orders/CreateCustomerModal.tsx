@@ -33,7 +33,7 @@ export function CreateCustomerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
+    <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[10000] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
       <div
         className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
         onClick={(e) => e.stopPropagation()}
