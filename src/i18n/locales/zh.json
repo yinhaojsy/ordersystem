@@ -161,7 +161,9 @@
     "createCustomer": "创建客户",
     "confirmDelete": "您确定要删除此客户吗？",
     "cannotDeleteWithOrders": "无法删除有订单的客户。请先删除订单。",
-    "cannotDeleteReferenced": "无法删除客户，因为它被其他记录引用。"
+    "cannotDeleteReferenced": "无法删除客户，因为它被其他记录引用。",
+    "addFavorite": "添加到收藏",
+    "removeFavorite": "从收藏中移除"
   },
   "users": {
     "title": "用户",
@@ -283,6 +285,7 @@
     "columns": "列",
     "showColumns": "显示列",
     "noOrders": "暂无订单。",
+    "noCustomersFound": "未找到客户",
     "createOrder": "创建订单",
     "process": "处理",
     "view": "查看",

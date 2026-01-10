@@ -2,6 +2,7 @@ import React, { useEffect, type Dispatch, type FormEvent, type SetStateAction } 
 import Badge from "../common/Badge";
 import { formatDate } from "../../utils/format";
 import { RemarksSection } from "./RemarksSection";
+import { CustomerSelect } from "../common/CustomerSelect";
 import type { Account } from "../../types";
 
 type BasicEntity = { id: number; name: string };
@@ -355,20 +356,15 @@ const OtcOrderForm = ({
   <form className="space-y-6" onSubmit={onSave}>
     <div className="space-y-3 border-b border-slate-200 pb-4">
       <h3 className="text-lg font-semibold text-slate-900">{t("orders.orderDetails")}</h3>
-      <div className="flex gap-2">
-        <select
-          className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
+      <div className="flex gap-2 items-end">
+        <CustomerSelect
           value={otcForm.customerId}
-          onChange={(e) => setOtcForm((p) => ({ ...p, customerId: e.target.value }))}
+          onChange={(value) => setOtcForm((p) => ({ ...p, customerId: value }))}
+          customers={customers}
+          placeholder={t("orders.selectCustomer") || "Select customer"}
           required
-        >
-          <option value="">{t("orders.selectCustomer")}</option>
-          {customers.map((customer) => (
-            <option value={customer.id} key={customer.id}>
-              {customer.name}
-            </option>
-          ))}
-        </select>
+          t={t}
+        />
         <button
           type="button"
           onClick={() => setIsCreateCustomerModalOpen(true)}

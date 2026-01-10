@@ -1,5 +1,6 @@
 import React, { type Dispatch, type FormEvent, type SetStateAction } from "react";
 import type { OrderStatus } from "../../types";
+import { CustomerSelect } from "../common/CustomerSelect";
 
 type Customer = { id: number; name: string };
 type Currency = { id: number; code: string; active?: boolean | number };
@@ -88,22 +89,15 @@ export default function OnlineOrderModal({
           </button>
         </div>
         <form className="grid gap-3" onSubmit={onSubmit}>
-          <div className="col-span-full flex gap-2">
-            <select
-              className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
+          <div className="col-span-full flex gap-2 items-end">
+            <CustomerSelect
               value={form.customerId}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, customerId: e.target.value }))
-              }
+              onChange={(value) => setForm((p) => ({ ...p, customerId: value }))}
+              customers={customers}
+              placeholder={t("orders.selectCustomer") || "Select customer"}
               required
-            >
-              <option value="">{t("orders.selectCustomer")}</option>
-              {customers.map((customer) => (
-                <option value={customer.id} key={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
+              t={t}
+            />
             <button
               type="button"
               onClick={() => setIsCreateCustomerModalOpen(true)}

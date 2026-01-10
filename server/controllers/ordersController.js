@@ -714,6 +714,10 @@ export const createOrder = (req, res, next) => {
     // For OTC orders, create confirmed profit/service charge entries in separate tables if provided
     // This matches the pattern of amountBuy/amountSell - all handled in one call
     if (orderData.orderType === "otc") {
+      // Check if this is an imported order (status is "completed" from the start)
+      const isImported = (orderData.status || "pending") === "completed";
+      const importedSuffix = isImported ? " (Imported)" : "";
+      
       // Create confirmed profit entry if provided
       if (orderData.profitAmount !== null && orderData.profitAmount !== undefined && 
           orderData.profitCurrency && orderData.profitAccountId) {
@@ -736,7 +740,7 @@ export const createOrder = (req, res, next) => {
             ).run(
               orderData.profitAccountId,
               profitAmount,
-              `Order #${orderId} - Profit`,
+              `Order #${orderId} - Profit${importedSuffix}`,
               new Date().toISOString()
             );
           }
@@ -768,7 +772,7 @@ export const createOrder = (req, res, next) => {
               ).run(
                 orderData.serviceChargeAccountId,
                 serviceChargeAmount,
-                `Order #${orderId} - Service charge`,
+                `Order #${orderId} - Service charge${importedSuffix}`,
                 new Date().toISOString()
               );
             } else {
@@ -782,7 +786,7 @@ export const createOrder = (req, res, next) => {
               ).run(
                 orderData.serviceChargeAccountId,
                 absAmount,
-                `Order #${orderId} - Service charge paid by us`,
+                `Order #${orderId} - Service charge paid by us${importedSuffix}`,
                 new Date().toISOString()
               );
             }
@@ -863,7 +867,8 @@ export const createOrder = (req, res, next) => {
       }
       
       // Handle profit account balance if provided
-      if (orderData.profitAmount !== null && orderData.profitAmount !== undefined && orderData.profitAccountId) {
+      // Skip for OTC orders since they're already handled in the OTC block above
+      if (orderData.orderType !== "otc" && orderData.profitAmount !== null && orderData.profitAmount !== undefined && orderData.profitAccountId) {
         const profitAmount = Number(orderData.profitAmount);
         if (!isNaN(profitAmount) && profitAmount > 0) {
           db.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?;").run(profitAmount, orderData.profitAccountId);
@@ -880,7 +885,8 @@ export const createOrder = (req, res, next) => {
       }
       
       // Handle service charge account balance if provided
-      if (orderData.serviceChargeAmount !== null && orderData.serviceChargeAmount !== undefined && orderData.serviceChargeAccountId) {
+      // Skip for OTC orders since they're already handled in the OTC block above
+      if (orderData.orderType !== "otc" && orderData.serviceChargeAmount !== null && orderData.serviceChargeAmount !== undefined && orderData.serviceChargeAccountId) {
         const serviceChargeAmount = Number(orderData.serviceChargeAmount);
         if (!isNaN(serviceChargeAmount) && serviceChargeAmount !== 0) {
           if (serviceChargeAmount > 0) {
