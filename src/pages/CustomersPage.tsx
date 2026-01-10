@@ -62,14 +62,56 @@ export default function CustomersPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!form.name) return;
-    const newCustomer = await addCustomer({
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
-      remarks: form.remarks,
-      id: undefined,
-    }).unwrap();
+    const trimmedForm = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+      remarks: form.remarks.trim(),
+    };
+
+    if (!trimmedForm.name) {
+      setAlertModal({
+        isOpen: true,
+        message: t("customers.nameRequired") || "Customer name is required.",
+        type: "warning",
+      });
+      return;
+    }
+
+    const duplicate = customers.some(
+      (c: Customer) => (c.name || "").trim().toLowerCase() === trimmedForm.name.toLowerCase(),
+    );
+
+    if (duplicate) {
+      setAlertModal({
+        isOpen: true,
+        message: t("customers.duplicateName") || "Customer with this name already exists.",
+        type: "error",
+      });
+      return;
+    }
+
+    let newCustomer;
+    try {
+      newCustomer = await addCustomer({
+        ...trimmedForm,
+        id: undefined,
+      }).unwrap();
+    } catch (err: any) {
+      let message = t("customers.saveFailed") || "Could not save customer. Please try again.";
+      if (err?.status === 409) {
+        message = t("customers.duplicateName") || message;
+      } else if (err?.data) {
+        if (typeof err.data === "string") {
+          message = err.data;
+        } else if (err.data.message) {
+          message = err.data.message;
+        }
+      }
+
+      setAlertModal({ isOpen: true, message, type: "error" });
+      return;
+    }
 
     const hasBeneficiaryData =
       includeBeneficiary &&
@@ -205,8 +247,42 @@ export default function CustomersPage() {
   const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
     if (!editingId || !editForm) return;
-    await updateCustomer({ id: editingId, data: editForm });
-    cancelEdit();
+
+    const trimmedEditForm = {
+      name: editForm.name.trim(),
+      email: editForm.email.trim(),
+      phone: editForm.phone.trim(),
+      remarks: (editForm.remarks || "").trim(),
+    };
+
+    if (!trimmedEditForm.name) {
+      setAlertModal({
+        isOpen: true,
+        message: t("customers.nameRequired") || "Customer name is required.",
+        type: "warning",
+      });
+      return;
+    }
+
+    try {
+      await updateCustomer({ id: editingId, data: trimmedEditForm }).unwrap();
+      cancelEdit();
+    } catch (err: any) {
+      let message =
+        t("customers.updateFailed") ||
+        t("customers.saveFailed") ||
+        "Could not update customer. Please try again.";
+
+      if (err?.data) {
+        if (typeof err.data === "string") {
+          message = err.data;
+        } else if (err.data.message) {
+          message = err.data.message;
+        }
+      }
+
+      setAlertModal({ isOpen: true, message, type: "error" });
+    }
   };
 
   const submitEditBeneficiary = async (event: FormEvent) => {

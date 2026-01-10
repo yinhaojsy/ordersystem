@@ -317,6 +317,9 @@ export default function OrdersPage() {
     setForm,
     setOtcForm: (updater) => setOtcFormRef.current?.(updater),
     setIsCreateCustomerModalOpen,
+    customers,
+    setAlertModal,
+    t,
   });
   const [processOrder] = useProcessOrderMutation();
   const [addReceipt] = useAddReceiptMutation();

@@ -1,5 +1,9 @@
 import { db } from "../db.js";
 
+const trimValue = (value) => (typeof value === "string" ? value.trim() : value);
+const sanitizePayload = (payload = {}) =>
+  Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, trimValue(value)]));
+
 export const listCustomers = (_req, res) => {
   const rows = db.prepare("SELECT * FROM customers ORDER BY name ASC;").all();
   res.json(rows);
@@ -7,7 +11,18 @@ export const listCustomers = (_req, res) => {
 
 export const createCustomer = (req, res, next) => {
   try {
-    const payload = req.body || {};
+    const payload = sanitizePayload(req.body);
+    const trimmedName = payload.name;
+
+    if (!trimmedName) {
+      return res.status(400).json({ message: "Customer name is required" });
+    }
+
+    const existing = db.prepare("SELECT id FROM customers WHERE lower(name) = lower(?);").get(trimmedName);
+    if (existing) {
+      return res.status(409).json({ message: "Customer with this name already exists" });
+    }
+
     const stmt = db.prepare(
       `INSERT INTO customers (name, email, phone, remarks) VALUES (@name, @email, @phone, @remarks);`,
     );
@@ -22,7 +37,7 @@ export const createCustomer = (req, res, next) => {
 export const updateCustomer = (req, res, next) => {
   try {
     const { id } = req.params;
-    const updates = req.body || {};
+    const updates = sanitizePayload(req.body);
     const fields = Object.keys(updates);
     if (!fields.length) {
       return res.status(400).json({ message: "No updates provided" });
