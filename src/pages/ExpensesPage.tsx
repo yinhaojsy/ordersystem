@@ -12,6 +12,7 @@ import { ImportExpensesModal } from "../components/expenses/ImportExpensesModal"
 import { Pagination } from "../components/common/Pagination";
 import Badge from "../components/common/Badge";
 import { AccountSelect } from "../components/common/AccountSelect";
+import { Tooltip } from "../components/common/Tooltip";
 import { useExpensesTable } from "../hooks/expenses/useExpensesTable";
 import { useExpensesFilters } from "../hooks/expenses/useExpensesFilters";
 import { useExpensesImportExport } from "../hooks/expenses/useExpensesImportExport";
@@ -63,8 +64,9 @@ export default function ExpensesPage() {
   } = useExpensesFilters(currentPage, setCurrentPage);
 
   const { data: expensesData, isLoading, refetch: refetchExpenses } = useGetExpensesQuery(queryParams);
-  const expenses = expensesData?.expenses || expensesData || [];
-  const totalExpenses = expensesData?.total || expenses.length;
+  // Handle both paginated response (object) and array response
+  const expenses = Array.isArray(expensesData) ? expensesData : (expensesData as any)?.expenses || [];
+  const totalExpenses = Array.isArray(expensesData) ? expenses.length : (expensesData as any)?.total || expenses.length;
   const totalPages = Math.ceil(totalExpenses / 20);
   const { data: accounts = [] } = useGetAccountsQuery();
   const { data: tags = [] } = useGetTagsQuery();
@@ -211,7 +213,7 @@ export default function ExpensesPage() {
   };
 
   const startEdit = (expenseId: number) => {
-    const expense = expenses.find((e) => e.id === expenseId);
+    const expense = expenses.find((e: any) => e.id === expenseId);
     if (!expense) return;
     
     setEditingExpenseId(expenseId);
@@ -403,7 +405,7 @@ export default function ExpensesPage() {
   
   // When editing, get the expense's currency to filter accounts
   const editingExpense = editingExpenseId 
-    ? expenses.find((e) => e.id === editingExpenseId)
+    ? expenses.find((e: any) => e.id === editingExpenseId)
     : null;
   const expenseCurrencyCode = editingExpense?.currencyCode;
 
@@ -667,19 +669,18 @@ export default function ExpensesPage() {
         return (
           <td key={columnKey} className="py-2 text-slate-600">
             {expense.description ? (
-              <div className="relative group inline-block">
-                <span className="inline-block max-w-[10ch] truncate cursor-help">
-                  {expense.description.length > 10
-                    ? expense.description.substring(0, 10) + "..."
-                    : expense.description}
-                </span>
-                {expense.description.length > 10 && (
-                  <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block bg-slate-900 text-white text-xs rounded px-3 py-2 whitespace-normal max-w-xs shadow-lg border border-slate-700">
-                    {expense.description}
-                    <div className="absolute -top-1 left-4 w-2 h-2 bg-slate-900 border-l border-t border-slate-700 transform rotate-45"></div>
-                  </div>
-                )}
-              </div>
+              expense.description.length > 10 ? (
+                <Tooltip 
+                  content={<div className="text-sm text-slate-700">{expense.description}</div>}
+                  copyText={expense.description}
+                >
+                  <span className="inline-block max-w-[10ch] truncate cursor-help">
+                    {expense.description.substring(0, 10) + "..."}
+                  </span>
+                </Tooltip>
+              ) : (
+                <span>{expense.description}</span>
+              )
             ) : (
               "-"
             )}
@@ -933,9 +934,9 @@ export default function ExpensesPage() {
                         !!expenses.length &&
                         selectedExpenseIds.length === expenses.length
                       }
-                      onChange={(e) =>
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         setSelectedExpenseIds(
-                          e.target.checked ? expenses.map((e) => e.id) : []
+                          e.target.checked ? expenses.map((e: any) => e.id) : []
                         )
                       }
                     />
@@ -952,7 +953,7 @@ export default function ExpensesPage() {
               </tr>
             </thead>
             <tbody>
-              {expenses.map((expense) => (
+              {expenses.map((expense: any) => (
                 <tr key={expense.id} className="border-b border-slate-100">
                   {(isBatchDeleteMode || isBatchTagMode) && (
                     <td className="py-2">
@@ -1259,7 +1260,7 @@ export default function ExpensesPage() {
 
       {/* View Image/PDF Modal */}
       {viewImageExpenseId && (() => {
-        const expense = expenses.find((e) => e.id === viewImageExpenseId);
+        const expense = expenses.find((e: any) => e.id === viewImageExpenseId);
         const imagePath = expense?.imagePath || "";
         const isPDF = isPdfFile(imagePath);
         
@@ -1360,7 +1361,7 @@ export default function ExpensesPage() {
 
             {(() => {
               const expense = expenses.find(
-                (e) => e.id === viewAuditTrailExpenseId
+                (e: any) => e.id === viewAuditTrailExpenseId
               );
               if (!expense) return null;
 

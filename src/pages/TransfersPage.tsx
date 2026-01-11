@@ -12,6 +12,7 @@ import { ImportTransfersModal } from "../components/transfers/ImportTransfersMod
 import { Pagination } from "../components/common/Pagination";
 import Badge from "../components/common/Badge";
 import { AccountSelect } from "../components/common/AccountSelect";
+import { Tooltip } from "../components/common/Tooltip";
 import { useTransfersTable } from "../hooks/transfers/useTransfersTable";
 import { useTransfersFilters } from "../hooks/transfers/useTransfersFilters";
 import { useTransfersImportExport } from "../hooks/transfers/useTransfersImportExport";
@@ -63,8 +64,9 @@ export default function TransfersPage() {
   } = useTransfersFilters(currentPage, setCurrentPage);
 
   const { data: transfersData, isLoading, refetch: refetchTransfers } = useGetTransfersQuery(queryParams);
-  const transfers = transfersData?.transfers || transfersData || [];
-  const totalTransfers = transfersData?.total || transfers.length;
+  // Handle both paginated response (object) and array response
+  const transfers = Array.isArray(transfersData) ? transfersData : (transfersData as any)?.transfers || [];
+  const totalTransfers = Array.isArray(transfersData) ? transfers.length : (transfersData as any)?.total || transfers.length;
   const totalPages = Math.ceil(totalTransfers / 20);
   const { data: accounts = [] } = useGetAccountsQuery();
   const { data: tags = [] } = useGetTagsQuery();
@@ -201,7 +203,7 @@ export default function TransfersPage() {
   };
 
   const startEdit = (transferId: number) => {
-    const transfer = transfers.find((t) => t.id === transferId);
+    const transfer = transfers.find((t: any) => t.id === transferId);
     if (!transfer) return;
     
     setEditingTransferId(transferId);
@@ -254,8 +256,8 @@ export default function TransfersPage() {
 
 
   // Get selected accounts for validation
-  const fromAccount = accounts.find((a) => a.id === Number(form.fromAccountId));
-  const toAccount = accounts.find((a) => a.id === Number(form.toAccountId));
+  const fromAccount = accounts.find((a: any) => a.id === Number(form.fromAccountId));
+  const toAccount = accounts.find((a: any) => a.id === Number(form.toAccountId));
 
   // Handle Esc key to close create/edit transfer modal
   useEffect(() => {
@@ -396,7 +398,7 @@ export default function TransfersPage() {
   const selectedTagNames = useMemo(
     () =>
       filters.tagIds
-        .map((id) => tags.find((t) => t.id === id)?.name)
+        .map((id) => tags.find((t: any) => t.id === id)?.name)
         .filter((name): name is string => Boolean(name)),
     [filters.tagIds, tags],
   );
@@ -501,19 +503,18 @@ export default function TransfersPage() {
         return (
           <td key={columnKey} className="py-2 text-slate-600">
             {transfer.description ? (
-              <div className="relative group inline-block">
-                <span className="inline-block max-w-[10ch] truncate cursor-help">
-                  {transfer.description.length > 10 
-                    ? transfer.description.substring(0, 10) + "..."
-                    : transfer.description}
-                </span>
-                {transfer.description.length > 10 && (
-                  <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block bg-slate-900 text-white text-xs rounded px-3 py-2 whitespace-normal max-w-xs shadow-lg border border-slate-700">
-                    {transfer.description}
-                    <div className="absolute -top-1 left-4 w-2 h-2 bg-slate-900 border-l border-t border-slate-700 transform rotate-45"></div>
-                  </div>
-                )}
-              </div>
+              transfer.description.length > 10 ? (
+                <Tooltip 
+                  content={<div className="text-sm text-slate-700">{transfer.description}</div>}
+                  copyText={transfer.description}
+                >
+                  <span className="inline-block max-w-[10ch] truncate cursor-help">
+                    {transfer.description.substring(0, 10) + "..."}
+                  </span>
+                </Tooltip>
+              ) : (
+                <span>{transfer.description}</span>
+              )
             ) : (
               "-"
             )}
@@ -745,9 +746,9 @@ export default function TransfersPage() {
                         !!transfers.length &&
                         selectedTransferIds.length === transfers.length
                       }
-                      onChange={(e) =>
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         setSelectedTransferIds(
-                          e.target.checked ? transfers.map((t) => t.id) : [],
+                          e.target.checked ? transfers.map((t: any) => t.id) : [],
                         )
                       }
                     />
@@ -764,7 +765,7 @@ export default function TransfersPage() {
               </tr>
             </thead>
             <tbody>
-              {transfers.map((transfer) => (
+              {transfers.map((transfer: any) => (
                 <tr key={transfer.id} className="border-b border-slate-100">
                   {(isBatchDeleteMode || isBatchTagMode) && (
                     <td className="py-2">
@@ -772,7 +773,7 @@ export default function TransfersPage() {
                         type="checkbox"
                         className="h-4 w-4"
                         checked={selectedTransferIds.includes(transfer.id)}
-                        onChange={(e) => {
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           if (e.target.checked) {
                             setSelectedTransferIds((prev: number[]) =>
                               prev.includes(transfer.id)
@@ -908,7 +909,7 @@ export default function TransfersPage() {
                   min="0.01"
                   value={form.amount}
                   onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                  onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm((p) => ({ ...p, amount: e.target.value }))}
                   required
                   disabled={!form.fromAccountId}
                 />
@@ -939,7 +940,7 @@ export default function TransfersPage() {
                   min="0"
                   className="w-full rounded-lg border border-slate-200 px-3 py-2"
                   value={form.transactionFee}
-                  onChange={(e) => setForm((p) => ({ ...p, transactionFee: e.target.value }))}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm((p) => ({ ...p, transactionFee: e.target.value }))}
                   placeholder={t("transfers.transactionFeePlaceholder") || "0.00"}
                 />
               </div>
@@ -952,7 +953,7 @@ export default function TransfersPage() {
                   className="w-full rounded-lg border border-slate-200 px-3 py-2"
                   rows={3}
                   value={form.description}
-                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm((p) => ({ ...p, description: e.target.value }))}
                   placeholder={t("transfers.descriptionPlaceholder")}
                   required
                 />
@@ -1019,7 +1020,7 @@ export default function TransfersPage() {
 
             {(() => {
               const transfer = transfers.find(
-                (t) => t.id === viewAuditTrailTransferId
+                (t: any) => t.id === viewAuditTrailTransferId
               );
               if (!transfer) return null;
 
