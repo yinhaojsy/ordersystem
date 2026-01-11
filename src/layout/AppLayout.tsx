@@ -239,7 +239,7 @@ export default function AppLayout() {
             <div className="text-xs uppercase tracking-wide text-slate-300">{t("app.testSystem")}</div>
             <div className="text-lg font-semibold">{t("app.sevenGoldenGates")}</div>
           </div>
-          <nav className="flex flex-wrap gap-2 lg:flex-col">
+          <nav className="flex flex-wrap gap-2 lg:flex-col mt-6">
             {navItems
               .filter((item) => {
                 // Admin-only items
