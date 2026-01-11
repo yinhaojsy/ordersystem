@@ -83,23 +83,25 @@ export default function SettingsPage() {
   const handleRestoreConfirm = async () => {
     if (!selectedFile) return;
 
+    // Close the confirmation modal immediately to prevent multiple clicks
+    setShowRestoreConfirm(false);
+    const fileToRestore = selectedFile;
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
     try {
       const formData = new FormData();
-      formData.append("file", selectedFile);
+      formData.append("file", fileToRestore);
 
       const result = await restoreBackup(formData).unwrap();
       setRestoreSuccessMessage(
         (result as any)?.message || t("settings.backupRestore.restoreSuccess")
       );
       setShowRestoreSuccess(true);
-      setShowRestoreConfirm(false);
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     } catch (error) {
       console.error("Restore error:", error);
-      setShowRestoreConfirm(false);
       const message =
         (error as any)?.data?.message ||
         (error as any)?.message ||
@@ -121,18 +123,21 @@ export default function SettingsPage() {
       alert(t("settings.backupRestore.selectSafetyBackup"));
       return;
     }
+
+    // Close the confirmation modal immediately to prevent multiple clicks
+    setShowSafetyRestoreConfirm(false);
+    setShowSafetyModal(false);
+    const fileToRestore = selectedSafetyFile;
+    setSelectedSafetyFile(null);
+
     try {
-      const result = await restoreSafetyBackup({ file: selectedSafetyFile }).unwrap();
+      const result = await restoreSafetyBackup({ file: fileToRestore }).unwrap();
       setRestoreSuccessMessage(
         (result as any)?.message || t("settings.backupRestore.restoreSafetySuccess")
       );
       setShowRestoreSuccess(true);
-      setShowSafetyRestoreConfirm(false);
-      setShowSafetyModal(false);
     } catch (error: any) {
       console.error("Safety restore error:", error);
-      setShowSafetyRestoreConfirm(false);
-      setShowSafetyModal(false);
       const message =
         error?.data?.message || error?.message || t("settings.backupRestore.restoreSafetyError");
       alert(message);
