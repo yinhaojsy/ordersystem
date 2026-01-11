@@ -161,28 +161,20 @@ export function renderOrderCell({
         ? accounts.find(acc => acc.id === order.serviceChargeAccountId)?.name || null
         : null;
       
-      // Check if profit/service charge accounts are different from buyAccounts
-      const profitAccountId = showProfitInBuy ? order.profitAccountId : null;
-      const serviceChargeAccountId = showServiceChargeInBuy ? order.serviceChargeAccountId : null;
-      
-      const profitAccountInBuyAccounts = profitAccountId 
-        ? buyAccounts.some(acc => acc.accountId === profitAccountId)
-        : false;
-      const serviceChargeAccountInBuyAccounts = serviceChargeAccountId
-        ? buyAccounts.some(acc => acc.accountId === serviceChargeAccountId)
-        : false;
-      
-      // Count includes buyAccounts plus profit/service charge accounts if they're different
+      // Count the number of entries that will be displayed in the tooltip
+      // This includes all buy accounts, plus profit and service charges if they are shown
+      // Each entry counts as 1, even if they use the same account
       let accountCount = buyAccounts.length;
-      if (profitAccountId && !profitAccountInBuyAccounts) {
+      if (showProfitInBuy) {
         accountCount++;
       }
-      if (serviceChargeAccountId && !serviceChargeAccountInBuyAccounts) {
+      if (showServiceChargeInBuy) {
         accountCount++;
       }
       
       const hasMultiple = accountCount > 1;
       const shouldShowTooltip = hasMultiple || showProfitInBuy || showServiceChargeInBuy;
+      // Show badge when there are multiple entries (accounts, profit, or service charges)
       const showBadge = accountCount > 1;
       
       return (
@@ -253,28 +245,20 @@ export function renderOrderCell({
         ? accounts.find(acc => acc.id === order.serviceChargeAccountId)?.name || null
         : null;
       
-      // Check if profit/service charge accounts are different from sellAccounts
-      const profitAccountId = showProfitInSell ? order.profitAccountId : null;
-      const serviceChargeAccountId = showServiceChargeInSell ? order.serviceChargeAccountId : null;
-      
-      const profitAccountInSellAccounts = profitAccountId 
-        ? sellAccounts.some(acc => acc.accountId === profitAccountId)
-        : false;
-      const serviceChargeAccountInSellAccounts = serviceChargeAccountId
-        ? sellAccounts.some(acc => acc.accountId === serviceChargeAccountId)
-        : false;
-      
-      // Count includes sellAccounts plus profit/service charge accounts if they're different
+      // Count the number of entries that will be displayed in the tooltip
+      // This includes all sell accounts, plus profit and service charges if they are shown
+      // Each entry counts as 1, even if they use the same account
       let accountCount = sellAccounts.length;
-      if (profitAccountId && !profitAccountInSellAccounts) {
+      if (showProfitInSell) {
         accountCount++;
       }
-      if (serviceChargeAccountId && !serviceChargeAccountInSellAccounts) {
+      if (showServiceChargeInSell) {
         accountCount++;
       }
       
       const hasMultiple = accountCount > 1;
       const shouldShowTooltip = hasMultiple || showProfitInSell || showServiceChargeInSell;
+      // Show badge when there are multiple entries (accounts, profit, or service charges)
       const showBadge = accountCount > 1;
       
       return (
