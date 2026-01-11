@@ -893,6 +893,7 @@
       "databaseAndFilesDesc": "Complete backup including all receipts, payments, and expense images",
       "restore": "Restore from Backup",
       "restoring": "Restoring...",
+      "restoringDB": "Restoring DB...",
       "chooseFile": "Choose backup file",
       "restoreWarning": "Warning: Restoring will replace all current data. A safety backup will be created automatically.",
       "restoreConfirm": "Are you sure you want to restore from this backup? This action cannot be undone.",

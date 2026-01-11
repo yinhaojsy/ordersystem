@@ -885,6 +885,7 @@
       "databaseAndFilesDesc": "完整备份，包括所有收据、付款和费用图片",
       "restore": "从备份恢复",
       "restoring": "恢复中...",
+      "restoringDB": "正在恢复数据库...",
       "chooseFile": "选择备份文件",
       "restoreWarning": "警告：恢复将替换所有当前数据。系统将自动创建安全备份。",
       "restoreConfirm": "您确定要从此备份恢复吗？此操作无法撤消。",
