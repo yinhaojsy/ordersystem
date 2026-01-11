@@ -167,6 +167,7 @@ export default function AccountsPage() {
 
   const [editForm, setEditForm] = useState({
     name: "",
+    balance: "",
   });
 
   const [fundsForm, setFundsForm] = useState({
@@ -224,14 +225,25 @@ export default function AccountsPage() {
 
   const startEdit = (accountId: number) => {
     const account = accounts.find((a) => a.id === accountId);
-    if (!account) return;
+    if (!account) {
+      console.error('Account not found:', accountId);
+      setAlertModal({
+        isOpen: true,
+        message: t("accounts.accountNotFound") || "Account not found",
+        type: "error",
+      });
+      return;
+    }
     setEditingId(accountId);
-    setEditForm({ name: account.name });
+    setEditForm({ 
+      name: account.name,
+      balance: (account.balance ?? 0).toString(),
+    });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditForm({ name: "" });
+    setEditForm({ name: "", balance: "" });
   };
 
   const submitEdit = async (event: FormEvent) => {
@@ -251,8 +263,30 @@ export default function AccountsPage() {
       return;
     }
 
+    // Validate balance if provided
+    let balanceValue: number | undefined = undefined;
+    if (editForm.balance !== undefined && editForm.balance !== null && editForm.balance !== "") {
+      const parsedBalance = parseFloat(editForm.balance);
+      if (isNaN(parsedBalance)) {
+        setAlertModal({
+          isOpen: true,
+          message: t("accounts.invalidBalance") || "Invalid balance value",
+          type: "error",
+        });
+        return;
+      }
+      balanceValue = parsedBalance;
+    }
+
     try {
-      await updateAccount({ id: editingId, name: editForm.name }).unwrap();
+      const updateData: { id: number; name: string; balance?: number } = {
+        id: editingId,
+        name: editForm.name,
+      };
+      if (balanceValue !== undefined) {
+        updateData.balance = balanceValue;
+      }
+      await updateAccount(updateData).unwrap();
       cancelEdit();
     } catch (error: any) {
       setAlertModal({ 
@@ -902,6 +936,7 @@ export default function AccountsPage() {
                                         {t("accounts.withdrawFunds")}
                                       </button>
                                       <button
+                                        type="button"
                                         className="text-amber-600 hover:text-amber-700"
                                         onClick={() => startEdit(account.id)}
                                       >
@@ -994,33 +1029,91 @@ export default function AccountsPage() {
         </SectionCard>
       )}
 
-      {/* Edit Account Form */}
+      {/* Edit Account Modal */}
       {editingId && (
-        <SectionCard
-          title={t("accounts.editAccountTitle")}
-          description={t("accounts.editAccountDescription")}
-          actions={
-            <button onClick={cancelEdit} className="text-sm text-slate-600">
-              {t("common.cancel")}
-            </button>
-          }
-        >
-          <form className="grid gap-3 md:grid-cols-2" onSubmit={submitEdit}>
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2"
-              placeholder={t("accounts.accountNamePlaceholder")}
-              value={editForm.name}
-              onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
-              required
-            />
-            <button
-              type="submit"
-              className="col-span-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700"
-            >
-              {t("accounts.updateAccount")}
-            </button>
-          </form>
-        </SectionCard>
+        <div className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[9999] flex items-center justify-center bg-black bg-opacity-50" style={{ margin: 0, padding: 0 }}>
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-900">
+                {t("accounts.editAccountTitle")}
+              </h2>
+              <button
+                onClick={cancelEdit}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label={t("common.close")}
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <form className="grid gap-3" onSubmit={submitEdit}>
+              {editingId && (() => {
+                const account = accounts.find((a) => a.id === editingId);
+                return account && (
+                  <div className="text-sm text-slate-600">
+                    {t("accounts.account")}:{" "}
+                    <span className="font-semibold">{account.name}</span>
+                  </div>
+                );
+              })()}
+              <input
+                className="rounded-lg border border-slate-200 px-3 py-2"
+                placeholder={t("accounts.accountNamePlaceholder")}
+                value={editForm.name}
+                onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
+                required
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder={t("accounts.balance")}
+                  value={editForm.balance}
+                  onChange={(e) => setEditForm((p) => ({ ...p, balance: e.target.value }))}
+                  type="number"
+                  step="0.01"
+                  onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                />
+                {editingId && (() => {
+                  const account = accounts.find((a) => a.id === editingId);
+                  return account && (
+                    <span className="text-sm text-slate-600 whitespace-nowrap">
+                      {account.currencyCode}
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-amber-700 transition-colors"
+                >
+                  {t("accounts.updateAccount")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Add/Withdraw Funds Modal */}

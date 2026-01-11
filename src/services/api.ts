@@ -865,7 +865,7 @@ export const api = createApi({
       }),
       invalidatesTags: [{ type: "Account", id: "LIST" }],
     }),
-    updateAccount: builder.mutation<Account, { id: number; name: string }>({
+    updateAccount: builder.mutation<Account, { id: number; name: string; balance?: number }>({
       query: ({ id, ...body }) => ({
         url: `accounts/${id}`,
         method: "PUT",
@@ -918,7 +918,7 @@ export const api = createApi({
       query: (id) => `accounts/${id}/transactions`,
       providesTags: (_res, _err, id) => [{ type: "Account", id }],
     }),
-    clearAllTransactionLogs: builder.mutation<{ success: boolean; deletedCount: number; message: string }, void>({
+    clearAllTransactionLogs: builder.mutation<{ success: boolean; deletedCount: number; initialFundsLogged?: number; message: string }, void>({
       query: () => ({
         url: "accounts/transactions/clear-all",
         method: "DELETE",

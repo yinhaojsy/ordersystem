@@ -297,14 +297,14 @@ export const createAccount = (req, res, next) => {
 export const updateAccount = (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name } = req.body || {};
+    const { name, balance } = req.body || {};
     
     if (!name) {
       return res.status(400).json({ message: "Name is required" });
     }
 
-    // Check if account exists
-    const existing = db.prepare("SELECT id FROM accounts WHERE id = ?").get(id);
+    // Check if account exists and get current balance
+    const existing = db.prepare("SELECT id, balance FROM accounts WHERE id = ?").get(id);
     if (!existing) {
       return res.status(404).json({ message: "Account not found" });
     }
@@ -345,7 +345,40 @@ export const updateAccount = (req, res, next) => {
       });
     }
 
-    db.prepare("UPDATE accounts SET name = @name WHERE id = @id;").run({ id, name });
+    // Update name and balance if provided
+    if (balance !== undefined && balance !== null) {
+      const parsedBalance = parseFloat(balance);
+      if (isNaN(parsedBalance)) {
+        return res.status(400).json({ message: "Invalid balance value" });
+      }
+      
+      // Get old balance before updating
+      const oldBalance = existing.balance;
+      const balanceDifference = parsedBalance - oldBalance;
+      
+      // Update the balance
+      db.prepare("UPDATE accounts SET name = @name, balance = @balance WHERE id = @id;").run({ id, name, balance: parsedBalance });
+      
+      // Log transaction if balance changed
+      if (balanceDifference !== 0) {
+        const transactionType = balanceDifference > 0 ? 'add' : 'withdraw';
+        const absoluteDifference = Math.abs(balanceDifference);
+        const description = `Balance adjustment: ${oldBalance.toFixed(2)} → ${parsedBalance.toFixed(2)}`;
+        
+        db.prepare(
+          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+           VALUES (?, ?, ?, ?, ?);`
+        ).run(
+          id,
+          transactionType,
+          absoluteDifference,
+          description,
+          new Date().toISOString()
+        );
+      }
+    } else {
+      db.prepare("UPDATE accounts SET name = @name WHERE id = @id;").run({ id, name });
+    }
     
     const row = db
       .prepare(
@@ -622,12 +655,37 @@ export const getAccountTransactions = (req, res, next) => {
 
 export const clearAllTransactionLogs = (req, res, next) => {
   try {
+    // Get all accounts with their current balances before clearing logs
+    const accounts = db.prepare("SELECT id, balance FROM accounts").all();
+    
     // Delete all records from account_transactions table
     const result = db.prepare("DELETE FROM account_transactions").run();
+    
+    // For each account, log current balance as "Initial funds" (similar to account creation)
+    const createdAt = new Date().toISOString();
+    let initialFundsLogged = 0;
+    
+    accounts.forEach((account) => {
+      if (account.balance !== 0) {
+        db.prepare(
+          `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+           VALUES (?, ?, ?, ?, ?);`
+        ).run(
+          account.id,
+          account.balance > 0 ? 'add' : 'withdraw',
+          Math.abs(account.balance),
+          "Initial funds",
+          createdAt
+        );
+        initialFundsLogged++;
+      }
+    });
+    
     res.json({ 
       success: true, 
       deletedCount: result.changes,
-      message: `Successfully cleared ${result.changes} transaction log records`
+      initialFundsLogged,
+      message: `Successfully cleared ${result.changes} transaction log records and logged initial funds for ${initialFundsLogged} account(s)`
     });
   } catch (error) {
     next(error);
