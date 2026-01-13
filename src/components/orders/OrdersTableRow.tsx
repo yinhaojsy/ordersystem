@@ -1,5 +1,5 @@
 import React from "react";
-import type { Order } from "../../types";
+import type { Order, AuthResponse } from "../../types";
 import { renderOrderCell } from "./OrdersTableColumns";
 import { OrderActionsMenu } from "./OrderActionsMenu";
 import type { Account } from "../../types";
@@ -10,7 +10,7 @@ interface OrdersTableRowProps {
   columnOrder: string[];
   visibleColumns: Set<string>;
   accounts: Account[];
-  getStatusTone: (status: OrderStatus) => "amber" | "blue" | "emerald" | "rose" | "slate";
+  getStatusTone: (status: OrderStatus) => "amber" | "blue" | "emerald" | "rose" | "slate" | "orange";
   // Selection
   showCheckbox: boolean;
   isSelected: boolean;
@@ -21,11 +21,14 @@ interface OrdersTableRowProps {
   menuRef: (el: HTMLDivElement | null) => void;
   menuElementRef: (el: HTMLDivElement | null) => void;
   onMenuToggle: (orderId: number) => void;
+  authUser: AuthResponse | null;
   onEdit: (orderId: number) => void;
   onProcess: (orderId: number) => void;
   onView: (orderId: number) => void;
   onCancel: (orderId: number) => void;
   onDelete: (orderId: number) => void;
+  onRequestDelete?: (orderId: number) => void;
+  onRequestEdit?: (orderId: number) => void;
   canCancelOrder: boolean;
   canDeleteOrder: boolean;
   isDeleting: boolean;
@@ -49,11 +52,14 @@ export function OrdersTableRow({
   menuRef,
   menuElementRef,
   onMenuToggle,
+  authUser,
   onEdit,
   onProcess,
   onView,
   onCancel,
   onDelete,
+  onRequestDelete,
+  onRequestEdit,
   canCancelOrder,
   canDeleteOrder,
   isDeleting,
@@ -109,11 +115,14 @@ export function OrdersTableRow({
                 order={order}
                 isOpen={isMenuOpen}
                 menuPositionAbove={menuPositionAbove[order.id] || false}
+                authUser={authUser}
                 onEdit={onEdit}
                 onProcess={onProcess}
                 onView={onView}
                 onCancel={onCancel}
                 onDelete={onDelete}
+                onRequestDelete={onRequestDelete}
+                onRequestEdit={onRequestEdit}
                 canCancelOrder={canCancelOrder}
                 canDeleteOrder={canDeleteOrder}
                 isDeleting={isDeleting}

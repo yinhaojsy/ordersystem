@@ -72,7 +72,7 @@ export const PaymentDisplay: React.FC<PaymentDisplayProps> = ({
           src={payment.imagePath}
           alt="Payment"
           className="w-48 h-72 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity mb-2"
-          onClick={() => onViewImage(payment.imagePath, 'image', t("orders.paymentUploads"))}
+          onClick={() => onViewImage(payment.imagePath, 'image', t("orders.paymentUploads") || "Payment")}
         />
       ) : getFileType(payment.imagePath) === 'pdf' ? (
         <div

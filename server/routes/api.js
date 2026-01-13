@@ -123,6 +123,13 @@ import {
   batchAssignTags,
   batchUnassignTags,
 } from "../controllers/tagsController.js";
+import {
+  createApprovalRequest,
+  listApprovalRequests,
+  getApprovalRequest,
+  approveRequest,
+  rejectRequest,
+} from "../controllers/approvalsController.js";
 
 const router = Router();
 
@@ -242,6 +249,15 @@ router.put("/tags/:id", updateTag);
 router.delete("/tags/:id", deleteTag);
 router.post("/tags/batch-assign", batchAssignTags);
 router.post("/tags/batch-unassign", batchUnassignTags);
+
+router.post("/approval-requests", upload.fields([
+  { name: 'receiptFiles', maxCount: 10 },
+  { name: 'paymentFiles', maxCount: 10 }
+]), createApprovalRequest);
+router.get("/approval-requests", listApprovalRequests);
+router.get("/approval-requests/:id", getApprovalRequest);
+router.post("/approval-requests/:id/approve", approveRequest);
+router.post("/approval-requests/:id/reject", rejectRequest);
 
 export default router;
 

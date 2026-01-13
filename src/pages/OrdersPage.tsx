@@ -28,6 +28,8 @@ import { CompleteOrderButton } from "../components/orders/CompleteOrderButton";
 import { OnlineOrderSummary } from "../components/orders/OnlineOrderSummary";
 import { TagSelectionModal } from "../components/common/TagSelectionModal";
 import { RemarksSection } from "../components/orders/RemarksSection";
+import { RequestApprovalModal } from "../components/orders/RequestApprovalModal";
+import { OrderChangesModal } from "../components/orders/OrderChangesModal";
 import { calculateAmountSell as calculateAmountSellUtil } from "../utils/orders/orderCalculations";
 import { useOrdersFilters } from "../hooks/orders/useOrdersFilters";
 import { useOrdersTable } from "../hooks/orders/useOrdersTable";
@@ -54,6 +56,7 @@ import {
   useDeleteOrderMutation,
   useGetOrderDetailsQuery,
   useProcessOrderMutation,
+  useCreateApprovalRequestMutation,
   useAddReceiptMutation,
   useUpdateReceiptMutation,
   useDeleteReceiptMutation,
@@ -76,6 +79,8 @@ import {
   useGetTagsQuery,
   useBatchAssignTagsMutation,
   useBatchUnassignTagsMutation,
+  useListApprovalRequestsQuery,
+  useGetApprovalRequestQuery,
 } from "../services/api";
 import { useGetRolesQuery } from "../services/api";
 import { useAppSelector } from "../app/hooks";
@@ -260,6 +265,7 @@ export default function OrdersPage() {
   const [updateOrder] = useUpdateOrderMutation();
   const [updateOrderStatus] = useUpdateOrderStatusMutation();
   const [deleteOrder, { isLoading: isDeleting }] = useDeleteOrderMutation();
+  const [createApprovalRequest, { isLoading: isSubmittingApproval }] = useCreateApprovalRequestMutation();
 
   // Batch delete hook
   const {
@@ -344,6 +350,11 @@ export default function OrdersPage() {
   const [isBatchTagMode, setIsBatchTagMode] = useState(false);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  
+  // Approval request modal state
+  const [isRequestApprovalModalOpen, setIsRequestApprovalModalOpen] = useState(false);
+  const [requestApprovalOrderId, setRequestApprovalOrderId] = useState<number | null>(null);
+  const [requestApprovalType, setRequestApprovalType] = useState<"delete" | "edit">("delete");
   // Tag filter helpers (needs tags from query)
   const selectedTagNames = useMemo(
     () =>
@@ -658,6 +669,7 @@ export default function OrdersPage() {
         {canEdit && (
           <div className={addWrapperClass}>
             <ProfitServiceChargeSection
+              authUser={authUser}
               orderId={viewModalOrderId}
               order={orderDetails?.order}
               accounts={accounts}
@@ -761,7 +773,10 @@ export default function OrdersPage() {
     handleOtcOrderSave,
     handleOtcOrderComplete,
     closeOtcModal,
-  } = useOtcOrder(accounts, setOpenMenuId, setIsCreateCustomerModalOpen);
+    handleRemoveOtcProfit,
+    handleRemoveOtcServiceCharge,
+    handleRemoveOtcRemarks,
+  } = useOtcOrder(accounts, setOpenMenuId, setIsCreateCustomerModalOpen, authUser);
   // Expose OTC form setter to the customer creation hook
   useEffect(() => {
     setOtcFormRef.current = setOtcForm;
@@ -811,6 +826,29 @@ export default function OrdersPage() {
 
   const { data: orderDetails } = useGetOrderDetailsQuery(viewModalOrderId || 0, {
     skip: !viewModalOrderId,
+  });
+
+  // Fetch approval request for pending_amend orders
+  const viewedOrder = orders.find((o) => o.id === viewModalOrderId);
+  const isPendingAmend = viewedOrder?.status === "pending_amend";
+  
+  // First get the list of approval requests to find the ID
+  const { data: approvalRequests = [] } = useListApprovalRequestsQuery(
+    {
+      entityType: "order",
+      entityId: viewModalOrderId || undefined,
+      requestType: "edit",
+      status: "pending",
+    },
+    {
+      skip: !viewModalOrderId || !isPendingAmend,
+    }
+  );
+  const approvalRequestId = approvalRequests.length > 0 ? approvalRequests[0].id : null;
+  
+  // Then fetch the detailed approval request (which includes full entity data with originalReceipts/Payments)
+  const { data: pendingApprovalRequest } = useGetApprovalRequestQuery(approvalRequestId!, {
+    skip: !approvalRequestId,
   });
 
   // File upload handling
@@ -1516,6 +1554,7 @@ export default function OrdersPage() {
           menuRefs={menuRefs}
           menuElementRefs={menuElementRefs}
           onMenuToggle={(orderId) => setOpenMenuId(openMenuId === orderId ? null : orderId)}
+          authUser={authUser}
           onEdit={startEdit}
           onProcess={(orderId) => {
             setProcessModalOrderId(orderId);
@@ -1527,6 +1566,18 @@ export default function OrdersPage() {
           }}
           onCancel={(orderId) => setStatus(orderId, "cancelled")}
           onDelete={handleDeleteClick}
+          onRequestDelete={(orderId) => {
+            setRequestApprovalOrderId(orderId);
+            setRequestApprovalType("delete");
+            setIsRequestApprovalModalOpen(true);
+            setOpenMenuId(null);
+          }}
+          onRequestEdit={(orderId) => {
+            setRequestApprovalOrderId(orderId);
+            setRequestApprovalType("edit");
+            setIsRequestApprovalModalOpen(true);
+            setOpenMenuId(null);
+          }}
           canCancelOrder={canCancelOrder}
           canDeleteOrder={canDeleteOrder}
           isDeleting={isDeleting}
@@ -1578,8 +1629,28 @@ export default function OrdersPage() {
         onSubmit={handleProcess}
       />
 
-      {/* View Order Modal */}
-      {viewModalOrderId && orderDetails && (
+      {/* Order Changes Modal - For pending_amend orders */}
+      {viewModalOrderId && isPendingAmend && pendingApprovalRequest && orderDetails && (
+        <OrderChangesModal
+          isOpen={true}
+          order={{
+            ...(pendingApprovalRequest.entity || orderDetails.order),
+            // Ensure we have originalReceipts and originalPayments from the entity or orderDetails
+            originalReceipts: pendingApprovalRequest.entity?.originalReceipts || 
+                            orderDetails.receipts.filter((r: any) => r.status === 'confirmed'),
+            originalPayments: pendingApprovalRequest.entity?.originalPayments || 
+                            orderDetails.payments.filter((p: any) => p.status === 'confirmed'),
+          }}
+          amendedData={pendingApprovalRequest.requestData || {}}
+          reason={pendingApprovalRequest.reason}
+          accounts={accounts}
+          onClose={closeViewModal}
+          showActions={false}
+        />
+      )}
+
+      {/* View Order Modal - For non-pending_amend orders */}
+      {viewModalOrderId && !isPendingAmend && orderDetails && (
         <ViewOrderModal
           isOpen={!!viewModalOrderId}
           onClose={closeViewModal}
@@ -1598,6 +1669,7 @@ export default function OrdersPage() {
                         accounts={accounts}
                         orders={orders}
                         viewModalOrderId={viewModalOrderId}
+                        authUser={authUser}
                         receipts={orderDetails.receipts}
                         totalReceiptAmount={orderDetails.totalReceiptAmount}
                         receiptBalance={orderDetails.receiptBalance}
@@ -1691,6 +1763,7 @@ export default function OrdersPage() {
                       setShowMissingPaymentModal={setShowMissingPaymentModal}
                       setExcessPaymentModalData={setExcessPaymentModalData}
                       setShowExcessPaymentModal={setShowExcessPaymentModal}
+                      authUser={authUser}
                       layout="grid"
                       t={t}
                     />
@@ -1760,6 +1833,7 @@ export default function OrdersPage() {
                   accounts={accounts}
                   orders={orders}
                   viewModalOrderId={viewModalOrderId}
+                  authUser={authUser}
                   receipts={orderDetails.receipts}
                   totalReceiptAmount={orderDetails.totalReceiptAmount}
                   receiptBalance={orderDetails.receiptBalance}
@@ -1848,6 +1922,7 @@ export default function OrdersPage() {
                   flexOrderRate={null}
                   updateOrderStatus={updateOrderStatus}
                   calculateAmountSell={calculateAmountSell}
+                  authUser={authUser}
                   layout="vertical"
                   t={t}
                 />
@@ -1955,6 +2030,50 @@ export default function OrdersPage() {
         t={t}
       />
 
+      {/* Request Approval Modal */}
+      <RequestApprovalModal
+        isOpen={isRequestApprovalModalOpen}
+        order={requestApprovalOrderId ? orders.find(o => o.id === requestApprovalOrderId) || null : null}
+        requestType={requestApprovalType}
+        accounts={accounts}
+        currencies={currencies}
+        onClose={() => {
+          setIsRequestApprovalModalOpen(false);
+          setRequestApprovalOrderId(null);
+        }}
+        onSubmit={async (reason, amendedData) => {
+          if (!requestApprovalOrderId) return;
+          
+          try {
+            const amendedDataWithFiles = amendedData as Partial<Order> & { receiptFiles?: File[]; paymentFiles?: File[] };
+            await createApprovalRequest({
+              entityType: "order",
+              entityId: requestApprovalOrderId,
+              requestType: requestApprovalType,
+              reason,
+              requestData: requestApprovalType === "edit" ? amendedData : undefined,
+              receiptFiles: requestApprovalType === "edit" && amendedDataWithFiles?.receiptFiles ? amendedDataWithFiles.receiptFiles : undefined,
+              paymentFiles: requestApprovalType === "edit" && amendedDataWithFiles?.paymentFiles ? amendedDataWithFiles.paymentFiles : undefined,
+            }).unwrap();
+            
+            setIsRequestApprovalModalOpen(false);
+            setRequestApprovalOrderId(null);
+            setAlertModal({
+              isOpen: true,
+              message: t("orders.approvalRequestSubmitted") || "Approval request submitted successfully",
+              type: "success",
+            });
+          } catch (error: any) {
+            setAlertModal({
+              isOpen: true,
+              message: error?.data?.message || t("orders.errorSubmittingRequest") || "Error submitting approval request",
+              type: "error",
+            });
+          }
+        }}
+        isSubmitting={isSubmittingApproval}
+      />
+
       {/* Delete confirmation modal (for delete operations) */}
       <ConfirmModal
         isOpen={deleteConfirmModal.isOpen}
@@ -2024,6 +2143,10 @@ export default function OrdersPage() {
         onComplete={handleOtcOrderComplete}
         onClose={closeOtcModal}
         setIsCreateCustomerModalOpen={setIsCreateCustomerModalOpen}
+        authUser={authUser}
+        onRemoveProfit={handleRemoveOtcProfit}
+        onRemoveServiceCharge={handleRemoveOtcServiceCharge}
+        onRemoveRemarks={handleRemoveOtcRemarks}
         t={t}
       />
     </div>

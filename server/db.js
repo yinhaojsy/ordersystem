@@ -33,7 +33,7 @@ export const resetDbInstance = () => {
   return db;
 };
 
-const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit"];
+const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit", "approval_requests"];
 
 const ensureSchema = () => {
   db.prepare(
@@ -442,6 +442,36 @@ const ensureSchema = () => {
       FOREIGN KEY(tagId) REFERENCES tags(id) ON DELETE CASCADE
     );`,
   ).run();
+
+  // Generic approval requests table (for orders, expenses, transfers, etc.)
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS approval_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entityType TEXT NOT NULL,
+      entityId INTEGER NOT NULL,
+      requestType TEXT NOT NULL,
+      requestedBy INTEGER NOT NULL,
+      requestedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      approvedBy INTEGER,
+      approvedAt TEXT,
+      rejectedBy INTEGER,
+      rejectedAt TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      requestData TEXT,
+      originalEntityData TEXT,
+      reason TEXT NOT NULL,
+      FOREIGN KEY(requestedBy) REFERENCES users(id),
+      FOREIGN KEY(approvedBy) REFERENCES users(id),
+      FOREIGN KEY(rejectedBy) REFERENCES users(id)
+    );`,
+  ).run();
+
+  // Migration: Add originalEntityData column if it doesn't exist
+  const approvalRequestColumns = db.prepare("PRAGMA table_info(approval_requests);").all();
+  const hasOriginalEntityData = approvalRequestColumns.some((col) => col.name === "originalEntityData");
+  if (!hasOriginalEntityData) {
+    db.prepare("ALTER TABLE approval_requests ADD COLUMN originalEntityData TEXT;").run();
+  }
 };
 
 const seedData = () => {
@@ -532,6 +562,8 @@ const seedData = () => {
             cancelOrder: true,
             deleteOrder: true,
             deleteManyOrders: true,
+            approveOrderDelete: true,
+            approveOrderEdit: true,
           },
         },
       },
@@ -676,6 +708,9 @@ const migrateDatabase = () => {
     }
     if (!columnNames.includes("remarks")) {
       db.prepare("ALTER TABLE orders ADD COLUMN remarks TEXT").run();
+    }
+    if (!columnNames.includes("createdBy")) {
+      db.prepare("ALTER TABLE orders ADD COLUMN createdBy INTEGER REFERENCES users(id)").run();
     }
 
     // Check customers table for remarks column

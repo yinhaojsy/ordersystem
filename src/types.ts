@@ -47,7 +47,7 @@ export interface Role {
   updatedAt?: string;
 }
 
-export type OrderStatus = "pending" | "under_process" | "completed" | "cancelled";
+export type OrderStatus = "pending" | "under_process" | "completed" | "cancelled" | "pending_amend" | "pending_delete";
 export type PaymentFlow = "receive_first" | "pay_first";
 
 export interface Tag {
@@ -62,6 +62,26 @@ export interface TagInput {
   color: string;
 }
 
+export interface ApprovalRequest {
+  id: number;
+  entityType: "order" | "expense" | "transfer";
+  entityId: number;
+  requestType: "delete" | "edit";
+  requestedBy: number;
+  requestedByName?: string;
+  requestedAt: string;
+  approvedBy?: number;
+  approvedByName?: string;
+  approvedAt?: string;
+  rejectedBy?: number;
+  rejectedByName?: string;
+  rejectedAt?: string;
+  status: "pending" | "approved" | "rejected";
+  requestData?: any; // For edit requests, contains the amended order/expense/transfer data
+  reason: string;
+  entity?: Order | Expense | Transfer; // The original entity (for comparison)
+}
+
 export interface Order {
   id: number;
   customerId: number;
@@ -74,6 +94,8 @@ export interface Order {
   status: OrderStatus;
   handlerId?: number;
   handlerName?: string;
+  createdBy?: number;
+  createdByName?: string;
   paymentType?: "CRYPTO" | "FIAT";
   networkChain?: string;
   walletAddresses?: string[];
@@ -97,12 +119,12 @@ export interface Order {
   actualAmountSell?: number;
   actualRate?: number;
   isFlexOrder?: boolean;
-  serviceChargeAmount?: number;
-  serviceChargeCurrency?: string;
-  serviceChargeAccountId?: number;
-  profitAmount?: number;
-  profitCurrency?: string;
-  profitAccountId?: number;
+  serviceChargeAmount?: number | null;
+  serviceChargeCurrency?: string | null;
+  serviceChargeAccountId?: number | null;
+  profitAmount?: number | null;
+  profitCurrency?: string | null;
+  profitAccountId?: number | null;
   orderType?: "online" | "otc";
   tags?: Tag[];
   remarks?: string;
@@ -195,12 +217,12 @@ export interface OrderInput {
   sellAccountId?: number;
   paymentFlow?: PaymentFlow;
   isFlexOrder?: boolean;
-  serviceChargeAmount?: number;
-  serviceChargeCurrency?: string;
-  serviceChargeAccountId?: number;
-  profitAmount?: number;
-  profitCurrency?: string;
-  profitAccountId?: number;
+  serviceChargeAmount?: number | null;
+  serviceChargeCurrency?: string | null;
+  serviceChargeAccountId?: number | null;
+  profitAmount?: number | null;
+  profitCurrency?: string | null;
+  profitAccountId?: number | null;
   orderType?: "online" | "otc";
   handlerId?: number;
   tagIds?: number[];

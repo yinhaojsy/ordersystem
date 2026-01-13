@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type Tone = "emerald" | "amber" | "rose" | "slate" | "blue" | "purple";
+type Tone = "emerald" | "amber" | "rose" | "slate" | "blue" | "purple" | "orange";
 
 const tones: Record<Tone, string> = {
   emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
@@ -9,6 +9,7 @@ const tones: Record<Tone, string> = {
   slate: "bg-slate-100 text-slate-700 ring-slate-200",
   blue: "bg-blue-50 text-blue-700 ring-blue-100",
   purple: "bg-purple-50 text-purple-700 ring-purple-100",
+  orange: "bg-orange-50 text-orange-700 ring-orange-100",
 };
 
 // Convert hex color to RGB

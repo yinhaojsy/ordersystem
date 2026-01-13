@@ -222,6 +222,8 @@ export function OrdersFilters({
               <option value="under_process">{t("orders.underProcess") || "Under Process"}</option>
               <option value="completed">{t("orders.completed") || "Completed"}</option>
               <option value="cancelled">{t("orders.cancelled") || "Cancelled"}</option>
+              <option value="pending_amend">{t("orders.pending_amend") || "Pending Amend"}</option>
+              <option value="pending_delete">{t("orders.pending_delete") || "Pending Delete"}</option>
             </select>
           </div>
 

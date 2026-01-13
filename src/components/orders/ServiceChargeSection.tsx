@@ -11,6 +11,7 @@ interface ServiceChargeSectionProps {
   showServiceChargeSection: boolean;
   setShowServiceChargeSection: (show: boolean) => void;
   onSave: () => Promise<void>;
+  onRemove?: () => Promise<void>;
   order: Order | null | undefined;
   accounts: Account[];
   handleNumberInputWheel: (e: React.WheelEvent<HTMLInputElement>) => void;
@@ -27,12 +28,25 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
   showServiceChargeSection,
   setShowServiceChargeSection,
   onSave,
+  onRemove,
   order,
   accounts,
   handleNumberInputWheel,
   t,
 }) => {
   if (!showServiceChargeSection) return null;
+
+  const handleRemoveClick = async () => {
+    if (onRemove) {
+      await onRemove();
+    } else {
+      // Fallback: just close the form
+      setShowServiceChargeSection(false);
+      setServiceChargeAmount("");
+      setServiceChargeCurrency("");
+      setServiceChargeAccountId("");
+    }
+  };
 
   return (
     <div className="p-4 border border-green-200 rounded-lg bg-green-50">
@@ -42,12 +56,7 @@ export const ServiceChargeSection: React.FC<ServiceChargeSectionProps> = ({
         </h3>
         <button
           type="button"
-          onClick={() => {
-            setShowServiceChargeSection(false);
-            setServiceChargeAmount("");
-            setServiceChargeCurrency("");
-            setServiceChargeAccountId("");
-          }}
+          onClick={handleRemoveClick}
           className="text-green-600 hover:text-green-800 text-sm"
         >
           {t("common.remove")}

@@ -1,8 +1,11 @@
-import React, { useEffect, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import React, { useEffect, useMemo, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import Badge from "../common/Badge";
 import { formatDate } from "../../utils/format";
 import { RemarksSection } from "./RemarksSection";
 import { CustomerSelect } from "../common/CustomerSelect";
+import { saveDefaultOtcHandler, getDefaultOtcHandler, clearDefaultOtcHandler } from "../../utils/otcHandlerPreference";
+import { useListApprovalRequestsQuery, useGetApprovalRequestQuery } from "../../services/api";
+import { useTranslation } from "react-i18next";
 import type { Account } from "../../types";
 
 type BasicEntity = { id: number; name: string };
@@ -88,6 +91,10 @@ type OtcOrderModalProps = {
   onComplete: (event: FormEvent) => void;
   onClose: () => void;
   setIsCreateCustomerModalOpen: Dispatch<SetStateAction<boolean>>;
+  authUser: { id: number } | null;
+  onRemoveProfit?: () => Promise<void>;
+  onRemoveServiceCharge?: () => Promise<void>;
+  onRemoveRemarks?: () => Promise<void>;
   t: (key: string) => string;
 };
 
@@ -138,7 +145,161 @@ type FormProps = {
   onClose: () => void;
   setIsCreateCustomerModalOpen: Dispatch<SetStateAction<boolean>>;
   isSaving: boolean;
+  authUser: { id: number } | null;
+  otcEditingOrderId: number | null;
+  otcOrderDetails?: OtcOrderDetails | null;
+  onRemoveProfit?: () => Promise<void>;
+  onRemoveServiceCharge?: () => Promise<void>;
+  onRemoveRemarks?: () => Promise<void>;
   t: (key: string) => string;
+};
+
+// Component to show comparison view for pending_amend orders
+const OtcOrderComparisonView = ({ 
+  order, 
+  approvalRequest, 
+  accounts, 
+  customers, 
+  users, 
+  onClose, 
+  t 
+}: { 
+  order: any; 
+  approvalRequest: any; 
+  accounts: Account[]; 
+  customers: BasicEntity[]; 
+  users: BasicEntity[]; 
+  onClose: () => void; 
+  t: (key: string) => string;
+}) => {
+  // Look up account names from accounts array if not provided
+  const getAccountName = (accountId: number | null | undefined) => {
+    if (!accountId) return null;
+    return accounts.find((a) => a.id === accountId)?.name || null;
+  };
+
+  const originalOrder = approvalRequest?.entity || null;
+  const amendedData = approvalRequest?.requestData || null;
+
+  // Merge original order data with amended data for display
+  // Clear account names if account IDs changed or were cleared in the amended data
+  // This ensures the component looks up account names from the new IDs (or shows none if cleared)
+  const amendedOrder = originalOrder && amendedData ? {
+    ...originalOrder,
+    ...amendedData,
+    profitAccountName: ('profitAccountId' in amendedData && 
+                       amendedData.profitAccountId !== originalOrder.profitAccountId)
+      ? undefined 
+      : originalOrder.profitAccountName,
+    serviceChargeAccountName: ('serviceChargeAccountId' in amendedData && 
+                              amendedData.serviceChargeAccountId !== originalOrder.serviceChargeAccountId)
+      ? undefined 
+      : originalOrder.serviceChargeAccountName,
+  } : null;
+
+  return (
+    <div className="space-y-6">
+      {/* Reason */}
+      {approvalRequest?.reason && (
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-slate-700 mb-2">
+            {t("approvals.reason") || "Reason"}
+          </h3>
+          <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-700">
+            {approvalRequest.reason}
+          </div>
+        </div>
+      )}
+
+      {/* Comparison View */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">
+            {t("approvals.originalOrder") || "Original Order"}
+          </h3>
+          {originalOrder && (
+            <div className="bg-slate-50 rounded-lg p-4 text-sm space-y-2">
+              <div><strong>{t("orders.customer") || "Customer"}:</strong> {originalOrder.customerName || originalOrder.customerId || "-"}</div>
+              <div><strong>{t("orders.currencyPair") || "Currency Pair"}:</strong> {originalOrder.fromCurrency || ""} / {originalOrder.toCurrency || ""}</div>
+              <div><strong>{t("orders.amountBuy") || "Amount Buy"}:</strong> {originalOrder.amountBuy}</div>
+              <div><strong>{t("orders.amountSell") || "Amount Sell"}:</strong> {originalOrder.amountSell}</div>
+              <div><strong>{t("orders.rate") || "Rate"}:</strong> {originalOrder.rate}</div>
+              {(originalOrder.profitAmount !== null && originalOrder.profitAmount !== undefined) && (
+                <div>
+                  <strong>{t("orders.profitAmount") || "Profit Amount"}:</strong> {originalOrder.profitAmount} {originalOrder.profitCurrency || ""}
+                  {originalOrder.profitAccountName ? (
+                    <span className="text-slate-500 ml-1">({originalOrder.profitAccountName})</span>
+                  ) : originalOrder.profitAccountId ? (
+                    <span className="text-slate-500 ml-1">({getAccountName(originalOrder.profitAccountId) || `${t("orders.account") || "Account"} #${originalOrder.profitAccountId}`})</span>
+                  ) : null}
+                </div>
+              )}
+              {(originalOrder.serviceChargeAmount !== null && originalOrder.serviceChargeAmount !== undefined) && (
+                <div>
+                  <strong>{t("orders.serviceChargeAmount") || "Service Charge Amount"}:</strong> {originalOrder.serviceChargeAmount} {originalOrder.serviceChargeCurrency || ""}
+                  {originalOrder.serviceChargeAccountName ? (
+                    <span className="text-slate-500 ml-1">({originalOrder.serviceChargeAccountName})</span>
+                  ) : originalOrder.serviceChargeAccountId ? (
+                    <span className="text-slate-500 ml-1">({getAccountName(originalOrder.serviceChargeAccountId) || `${t("orders.account") || "Account"} #${originalOrder.serviceChargeAccountId}`})</span>
+                  ) : null}
+                </div>
+              )}
+              {originalOrder.remarks && (
+                <div><strong>{t("orders.remarks") || "Remarks"}:</strong> {originalOrder.remarks}</div>
+              )}
+            </div>
+          )}
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">
+            {t("approvals.amendedOrder") || "Amended Order"}
+          </h3>
+          {amendedOrder && (
+            <div className="bg-slate-50 rounded-lg p-4 text-sm space-y-2">
+              <div><strong>{t("orders.customer") || "Customer"}:</strong> {amendedOrder.customerName || amendedOrder.customerId || "-"}</div>
+              <div><strong>{t("orders.currencyPair") || "Currency Pair"}:</strong> {amendedOrder.fromCurrency || ""} / {amendedOrder.toCurrency || ""}</div>
+              <div><strong>{t("orders.amountBuy") || "Amount Buy"}:</strong> {amendedOrder.amountBuy}</div>
+              <div><strong>{t("orders.amountSell") || "Amount Sell"}:</strong> {amendedOrder.amountSell}</div>
+              <div><strong>{t("orders.rate") || "Rate"}:</strong> {amendedOrder.rate}</div>
+              {(amendedOrder.profitAmount !== null && amendedOrder.profitAmount !== undefined) && (
+                <div>
+                  <strong>{t("orders.profitAmount") || "Profit Amount"}:</strong> {amendedOrder.profitAmount} {amendedOrder.profitCurrency || ""}
+                  {amendedOrder.profitAccountName ? (
+                    <span className="text-slate-500 ml-1">({amendedOrder.profitAccountName})</span>
+                  ) : amendedOrder.profitAccountId ? (
+                    <span className="text-slate-500 ml-1">({getAccountName(amendedOrder.profitAccountId) || `${t("orders.account") || "Account"} #${amendedOrder.profitAccountId}`})</span>
+                  ) : null}
+                </div>
+              )}
+              {(amendedOrder.serviceChargeAmount !== null && amendedOrder.serviceChargeAmount !== undefined) && (
+                <div>
+                  <strong>{t("orders.serviceChargeAmount") || "Service Charge Amount"}:</strong> {amendedOrder.serviceChargeAmount} {amendedOrder.serviceChargeCurrency || ""}
+                  {amendedOrder.serviceChargeAccountName ? (
+                    <span className="text-slate-500 ml-1">({amendedOrder.serviceChargeAccountName})</span>
+                  ) : amendedOrder.serviceChargeAccountId ? (
+                    <span className="text-slate-500 ml-1">({getAccountName(amendedOrder.serviceChargeAccountId) || `${t("orders.account") || "Account"} #${amendedOrder.serviceChargeAccountId}`})</span>
+                  ) : null}
+                </div>
+              )}
+              {amendedOrder.remarks && (
+                <div><strong>{t("orders.remarks") || "Remarks"}:</strong> {amendedOrder.remarks}</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          {t("common.close")}
+        </button>
+      </div>
+    </div>
+  );
 };
 
 const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose, t }: ViewProps) => {
@@ -313,6 +474,117 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose, t 
   );
 };
 
+// Wrapper component to fetch approval request for pending_amend orders
+const OtcOrderComparisonViewWrapper = ({
+  order,
+  accounts,
+  customers,
+  users,
+  onClose,
+  t,
+}: {
+  order: any;
+  accounts: Account[];
+  customers: BasicEntity[];
+  users: BasicEntity[];
+  onClose: () => void;
+  t: (key: string) => string;
+}) => {
+  const { t: translate } = useTranslation();
+  
+  // Fetch approval request for this specific order
+  // Don't filter by status - we want to find the request even if it's been processed
+  const { data: approvalRequests = [], isLoading: isLoadingList, isError: isErrorList } = useListApprovalRequestsQuery({
+    entityType: "order",
+    requestType: "edit",
+    entityId: order.id,
+  });
+
+  // Get the approval request ID (should be only one or none)
+  // Prefer pending requests, but fall back to any if pending not found
+  const pendingRequest = approvalRequests.find((req: any) => req.status === "pending");
+  const approvalRequestId = pendingRequest?.id || (approvalRequests.length > 0 ? approvalRequests[0].id : null);
+
+  // Fetch full approval request details with entity data
+  const { data: approvalRequest, isLoading: isLoadingDetails, isError: isErrorDetails } = useGetApprovalRequestQuery(approvalRequestId!, {
+    skip: !approvalRequestId,
+  });
+
+  // Show loading state
+  if (isLoadingList || (approvalRequestId && isLoadingDetails)) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-8 text-slate-500">
+          {translate("common.loading") || "Loading..."}
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            {translate("common.close")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (isErrorList || isErrorDetails) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-8 text-red-500">
+          {translate("common.errorLoading") || "Error loading approval request"}
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            {translate("common.close")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // If we found an approval request, show comparison view
+  if (approvalRequest) {
+    return (
+      <OtcOrderComparisonView
+        order={order}
+        approvalRequest={approvalRequest}
+        accounts={accounts}
+        customers={customers}
+        users={users}
+        onClose={onClose}
+        t={translate}
+      />
+    );
+  }
+
+  // Fallback: show message if no approval request found
+  // This shouldn't happen for pending_amend orders, but handle gracefully
+  return (
+    <div className="space-y-6">
+      <div className="text-center py-8 text-slate-500">
+        {translate("approvals.noRequestFound") || "No approval request found for this order"}
+      </div>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          {translate("common.close")}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const OtcOrderForm = ({
   accounts,
   customers,
@@ -351,8 +623,88 @@ const OtcOrderForm = ({
   onClose,
   setIsCreateCustomerModalOpen,
   isSaving,
+  authUser,
+  otcEditingOrderId,
+  otcOrderDetails,
+  onRemoveProfit,
+  onRemoveServiceCharge,
+  onRemoveRemarks,
   t,
-}: FormProps) => (
+}: FormProps) => {
+  // Track the current default handler ID to update button state immediately
+  const [defaultHandlerId, setDefaultHandlerId] = useState<string | null>(() => {
+    if (authUser?.id) {
+      return getDefaultOtcHandler(authUser.id);
+    }
+    return null;
+  });
+
+  // Track original handlerId to detect changes
+  const [originalHandlerId, setOriginalHandlerId] = useState<string>("");
+  const [showHandlerChangeWarning, setShowHandlerChangeWarning] = useState(false);
+  const [pendingHandlerChange, setPendingHandlerChange] = useState<string | null>(null);
+
+  // Sync defaultHandlerId when authUser changes or when modal opens
+  useEffect(() => {
+    if (authUser?.id) {
+      const savedDefault = getDefaultOtcHandler(authUser.id);
+      setDefaultHandlerId(savedDefault);
+    }
+  }, [authUser?.id]);
+
+  // Track original handlerId when editing an order
+  useEffect(() => {
+    if (otcEditingOrderId && otcOrderDetails?.order?.handlerId) {
+      setOriginalHandlerId(String(otcOrderDetails.order.handlerId));
+    } else {
+      setOriginalHandlerId("");
+    }
+  }, [otcEditingOrderId, otcOrderDetails]);
+
+  // Handle handler change with warning for pending OTC orders
+  const handleHandlerChange = (newHandlerId: string) => {
+    const order = otcOrderDetails?.order;
+    const isPending = order?.status === "pending";
+    const hasOriginalHandler = originalHandlerId !== "" && originalHandlerId !== null;
+    const isChangingHandler = newHandlerId !== originalHandlerId && hasOriginalHandler;
+
+    // Show warning only for pending OTC orders that already have a handler
+    if (isPending && isChangingHandler && otcEditingOrderId) {
+      setPendingHandlerChange(newHandlerId);
+      setShowHandlerChangeWarning(true);
+    } else {
+      // No warning needed, proceed with change
+      setOtcForm((p) => ({ ...p, handlerId: newHandlerId }));
+    }
+  };
+
+  // Confirm handler change
+  const confirmHandlerChange = () => {
+    if (pendingHandlerChange !== null) {
+      setOtcForm((p) => ({ ...p, handlerId: pendingHandlerChange }));
+      setPendingHandlerChange(null);
+    }
+    setShowHandlerChangeWarning(false);
+  };
+
+  // Cancel handler change
+  const cancelHandlerChange = () => {
+    setPendingHandlerChange(null);
+    setShowHandlerChangeWarning(false);
+  };
+
+  // Check if current handler is the default handler
+  const isDefaultHandler = useMemo(() => {
+    if (!authUser?.id || !otcForm.handlerId) return false;
+    return defaultHandlerId === otcForm.handlerId;
+  }, [authUser?.id, otcForm.handlerId, defaultHandlerId]);
+
+  // Check if order is pending (hide button for pending orders)
+  const isPendingOrder = useMemo(() => {
+    return otcOrderDetails?.order?.status === "pending";
+  }, [otcOrderDetails?.order?.status]);
+
+  return (
   <form className="space-y-6" onSubmit={onSave}>
     <div className="space-y-3 border-b border-slate-200 pb-4">
       <h3 className="text-lg font-semibold text-slate-900">{t("orders.orderDetails")}</h3>
@@ -471,19 +823,58 @@ const OtcOrderForm = ({
           onWheel={handleNumberInputWheel}
         />
       </div>
-      <select
-        className="w-full rounded-lg border border-slate-200 px-3 py-2"
-        value={otcForm.handlerId}
-        onChange={(e) => setOtcForm((p) => ({ ...p, handlerId: e.target.value }))}
-        required
-      >
-        <option value="">{t("orders.selectHandler")}</option>
-        {users.filter((user) => user.role !== "admin").map((user) => (
-          <option key={user.id} value={user.id}>
-            {user.name}
-          </option>
-        ))}
-      </select>
+      <div className="flex gap-2 items-center">
+        <select
+          className="flex-1 rounded-lg border border-slate-200 px-3 py-2"
+          value={otcForm.handlerId}
+          onChange={(e) => handleHandlerChange(e.target.value)}
+          required
+        >
+          <option value="">{t("orders.selectHandler")}</option>
+          {users.filter((user) => user.role !== "admin").map((user) => (
+            <option key={user.id} value={user.id}>
+              {user.name}
+            </option>
+          ))}
+        </select>
+        {otcForm.handlerId && !isPendingOrder && (
+          <button
+            type="button"
+            onClick={() => {
+              if (authUser?.id && otcForm.handlerId) {
+                if (isDefaultHandler) {
+                  // Unset default
+                  clearDefaultOtcHandler(authUser.id);
+                  setDefaultHandlerId(null);
+                  setOtcForm((p) => ({ ...p, handlerId: "" }));
+                  // 我 comment out the confirmation message because it's not needed
+                  // alert(t("orders.defaultHandlerUnset") || "Default handler unset successfully");
+                } else {
+                  // Set default
+                  saveDefaultOtcHandler(authUser.id, otcForm.handlerId);
+                  setDefaultHandlerId(otcForm.handlerId);
+                  // 我 comment out the confirmation message because it's not needed
+                  // alert(t("orders.defaultHandlerSet") || "Default handler set successfully");
+                }
+              }
+            }}
+            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap ${
+              isDefaultHandler
+                ? "text-red-700 bg-red-50 border-red-200 hover:bg-red-100"
+                : "text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
+            }`}
+            title={
+              isDefaultHandler
+                ? t("orders.unsetDefaultHandler") || "Unset default handler"
+                : t("orders.setDefaultHandler") || "Set as default handler"
+            }
+          >
+            {isDefaultHandler
+              ? t("orders.unsetDefault") || "Unset Default"
+              : t("orders.setDefault") || "Set Default"}
+          </button>
+        )}
+      </div>
     </div>
 
     <div className="space-y-3 border-b border-slate-200 pb-4">
@@ -491,13 +882,41 @@ const OtcOrderForm = ({
         <h3 className="text-lg font-semibold text-slate-900">
           {t("orders.receipts")} ({otcForm.fromCurrency})
         </h3>
-        <button
-          type="button"
-          onClick={() => setOtcReceipts([...otcReceipts, { amount: "", accountId: "" }])}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-        >
-          {t("orders.addReceipt")}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              // Auto fill: add receipt with amountBuy and payment with amountSell
+              const newReceipts = [...otcReceipts];
+              const newPayments = [...otcPayments];
+              
+              // Add receipt with amountBuy if it exists and is not empty
+              if (otcForm.amountBuy && Number(otcForm.amountBuy) > 0) {
+                newReceipts.push({ amount: otcForm.amountBuy, accountId: "" });
+              }
+              
+              // Add payment with amountSell if it exists and is not empty
+              if (otcForm.amountSell && Number(otcForm.amountSell) > 0) {
+                newPayments.push({ amount: otcForm.amountSell, accountId: "" });
+              }
+              
+              setOtcReceipts(newReceipts);
+              setOtcPayments(newPayments);
+            }}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
+            disabled={!otcForm.amountBuy || !otcForm.amountSell || Number(otcForm.amountBuy) <= 0 || Number(otcForm.amountSell) <= 0}
+            title={t("orders.autoFillTooltip") || "Auto fill receipts and payments with buy/sell amounts"}
+          >
+            {t("orders.autoFill") || "Auto Fill"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setOtcReceipts([...otcReceipts, { amount: "", accountId: "" }])}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+          >
+            {t("orders.addReceipt")}
+          </button>
+        </div>
       </div>
       {otcReceipts.map((receipt, index) => (
         <div key={index} className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg">
@@ -635,11 +1054,15 @@ const OtcOrderForm = ({
             <h3 className="font-semibold text-blue-900">{t("orders.profit")}</h3>
             <button
               type="button"
-              onClick={() => {
-                setShowOtcProfitSection(false);
-                setOtcProfitAmount("");
-                setOtcProfitCurrency("");
-                setOtcProfitAccountId("");
+              onClick={async () => {
+                if (onRemoveProfit) {
+                  await onRemoveProfit();
+                } else {
+                  setShowOtcProfitSection(false);
+                  setOtcProfitAmount("");
+                  setOtcProfitCurrency("");
+                  setOtcProfitAccountId("");
+                }
               }}
               className="text-blue-600 hover:text-blue-800 text-sm"
             >
@@ -706,11 +1129,15 @@ const OtcOrderForm = ({
             <h3 className="font-semibold text-green-900">{t("orders.serviceCharges")}</h3>
             <button
               type="button"
-              onClick={() => {
-                setShowOtcServiceChargeSection(false);
-                setOtcServiceChargeAmount("");
-                setOtcServiceChargeCurrency("");
-                setOtcServiceChargeAccountId("");
+              onClick={async () => {
+                if (onRemoveServiceCharge) {
+                  await onRemoveServiceCharge();
+                } else {
+                  setShowOtcServiceChargeSection(false);
+                  setOtcServiceChargeAmount("");
+                  setOtcServiceChargeCurrency("");
+                  setOtcServiceChargeAccountId("");
+                }
               }}
               className="text-green-600 hover:text-green-800 text-sm"
             >
@@ -767,6 +1194,7 @@ const OtcOrderForm = ({
       setRemarks={setOtcRemarks}
       showRemarks={showOtcRemarks}
       setShowRemarks={setShowOtcRemarks}
+      onRemove={onRemoveRemarks}
       t={t}
     />
 
@@ -794,8 +1222,40 @@ const OtcOrderForm = ({
         {t("orders.complete")}
       </button>
     </div>
+
+    {/* Handler Change Warning Modal */}
+    {showHandlerChangeWarning && (
+      <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black bg-opacity-50">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">
+            {t("orders.changeHandlerWarning") || "Change Handler Warning"}
+          </h3>
+          <p className="text-sm text-slate-600 mb-6">
+            {t("orders.changeHandlerWarningMessage") || 
+              "Changing the handler will revoke the current handler's access to add receipts, payments, profits, and service charges to this order. Only the new handler and order creator will have access. Are you sure you want to proceed?"}
+          </p>
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={cancelHandlerChange}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+            >
+              {t("common.cancel") || "Cancel"}
+            </button>
+            <button
+              type="button"
+              onClick={confirmHandlerChange}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+            >
+              {t("orders.confirmChangeHandler") || "Confirm Change"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </form>
-);
+  );
+};
 
 export default function OtcOrderModal({
   isOpen,
@@ -839,6 +1299,10 @@ export default function OtcOrderModal({
   onComplete,
   onClose,
   setIsCreateCustomerModalOpen,
+  authUser,
+  onRemoveProfit,
+  onRemoveServiceCharge,
+  onRemoveRemarks,
   t,
 }: OtcOrderModalProps) {
   const heading = isOtcCompleted
@@ -886,14 +1350,25 @@ export default function OtcOrderModal({
 
         <div className="overflow-y-auto px-6 py-4">
           {isOtcCompleted && otcOrderDetails?.order ? (
-            <OtcOrderView
-              accounts={accounts}
-              customers={customers}
-              users={users}
-              otcOrderDetails={otcOrderDetails}
-              onClose={onClose}
-              t={t}
-            />
+            otcOrderDetails.order.status === "pending_amend" ? (
+              <OtcOrderComparisonViewWrapper
+                order={otcOrderDetails.order}
+                accounts={accounts}
+                customers={customers}
+                users={users}
+                onClose={onClose}
+                t={t}
+              />
+            ) : (
+              <OtcOrderView
+                accounts={accounts}
+                customers={customers}
+                users={users}
+                otcOrderDetails={otcOrderDetails}
+                onClose={onClose}
+                t={t}
+              />
+            )
           ) : (
             <OtcOrderForm
               accounts={accounts}
@@ -933,6 +1408,12 @@ export default function OtcOrderModal({
               onClose={onClose}
               setIsCreateCustomerModalOpen={setIsCreateCustomerModalOpen}
               isSaving={isSaving}
+              authUser={authUser}
+              otcEditingOrderId={otcEditingOrderId}
+              otcOrderDetails={otcOrderDetails}
+              onRemoveProfit={onRemoveProfit}
+              onRemoveServiceCharge={onRemoveServiceCharge}
+              onRemoveRemarks={onRemoveRemarks}
               t={t}
             />
           )}

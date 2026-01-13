@@ -14,8 +14,11 @@ import {
   useUpdateOrderStatusMutation,
   useConfirmProfitMutation,
   useConfirmServiceChargeMutation,
+  useDeleteProfitMutation,
+  useDeleteServiceChargeMutation,
 } from "../../services/api";
-import type { Account } from "../../types";
+import { getDefaultOtcHandler } from "../../utils/otcHandlerPreference";
+import type { Account, AuthResponse } from "../../types";
 
 interface OtcForm {
   customerId: string;
@@ -40,7 +43,8 @@ interface OtcPayment {
 export function useOtcOrder(
   accounts: Account[],
   setOpenMenuId: (id: number | null) => void,
-  setIsCreateCustomerModalOpen: (open: boolean) => void
+  setIsCreateCustomerModalOpen: (open: boolean) => void,
+  authUser: AuthResponse | null
 ) {
   const [isOtcOrderModalOpen, setIsOtcOrderModalOpen] = useState(false);
   const [otcEditingOrderId, setOtcEditingOrderId] = useState<number | null>(null);
@@ -69,6 +73,11 @@ export function useOtcOrder(
   const [otcCalculatedField, setOtcCalculatedField] = useState<"buy" | "sell" | null>(null);
   const [otcRemarks, setOtcRemarks] = useState<string>("");
   const [showOtcRemarks, setShowOtcRemarks] = useState(false);
+  // Track if there were draft profit/service charges when editing started
+  const [hadDraftProfit, setHadDraftProfit] = useState(false);
+  const [hadDraftServiceCharge, setHadDraftServiceCharge] = useState(false);
+  // Track if there were remarks when editing started
+  const [hadRemarks, setHadRemarks] = useState(false);
 
   const { data: otcOrderDetails } = useGetOrderDetailsQuery(otcEditingOrderId || 0, {
     skip: !otcEditingOrderId,
@@ -82,17 +91,23 @@ export function useOtcOrder(
   const [addPayment] = useAddPaymentMutation();
   const [deleteReceipt] = useDeleteReceiptMutation();
   const [deletePayment] = useDeletePaymentMutation();
+  const [deleteProfit] = useDeleteProfitMutation();
+  const [deleteServiceCharge] = useDeleteServiceChargeMutation();
   const [confirmReceipt] = useConfirmReceiptMutation();
   const [confirmPayment] = useConfirmPaymentMutation();
   const [confirmProfit] = useConfirmProfitMutation();
   const [confirmServiceCharge] = useConfirmServiceChargeMutation();
 
-  // Determine if OTC order is completed/cancelled for view mode
+  // Determine if OTC order is completed/cancelled/pending_amend/pending_delete for view mode
+  // pending_amend and pending_delete should be treated as completed (read-only)
   const isOtcCompleted = useMemo(() => {
     return Boolean(
       otcEditingOrderId &&
       otcOrderDetails?.order &&
-      (otcOrderDetails.order.status === "completed" || otcOrderDetails.order.status === "cancelled")
+      (otcOrderDetails.order.status === "completed" || 
+       otcOrderDetails.order.status === "cancelled" ||
+       otcOrderDetails.order.status === "pending_amend" ||
+       otcOrderDetails.order.status === "pending_delete")
     );
   }, [otcEditingOrderId, otcOrderDetails]);
 
@@ -123,14 +138,53 @@ export function useOtcOrder(
         accountId: p.accountId ? String(p.accountId) : "",
       })));
       
-      // Load profit and service charges
-      if (order.profitAmount !== null && order.profitAmount !== undefined) {
+      // Load profit and service charges from separate tables (like receipts/payments)
+      // Check confirmed entries first, then fall back to order table fields
+      const profits = Array.isArray(otcOrderDetails.profits) ? otcOrderDetails.profits : [];
+      const serviceCharges = Array.isArray(otcOrderDetails.serviceCharges) ? otcOrderDetails.serviceCharges : [];
+      
+      // Check if there are draft entries
+      const draftProfit = profits.find((p: any) => p.status === 'draft');
+      const draftServiceCharge = serviceCharges.find((sc: any) => sc.status === 'draft');
+      setHadDraftProfit(!!draftProfit);
+      setHadDraftServiceCharge(!!draftServiceCharge);
+      
+      // Find confirmed profit entry (or use the latest one if no confirmed exists)
+      const confirmedProfit = profits.find((p: any) => p.status === 'confirmed') || profits[profits.length - 1];
+      if (confirmedProfit) {
+        setOtcProfitAmount(String(confirmedProfit.amount || ""));
+        setOtcProfitCurrency(confirmedProfit.currencyCode || "");
+        setOtcProfitAccountId(confirmedProfit.accountId ? String(confirmedProfit.accountId) : "");
+        setShowOtcProfitSection(true);
+      } else if (draftProfit) {
+        // Use draft profit
+        setOtcProfitAmount(String(draftProfit.amount || ""));
+        setOtcProfitCurrency(draftProfit.currencyCode || "");
+        setOtcProfitAccountId(draftProfit.accountId ? String(draftProfit.accountId) : "");
+        setShowOtcProfitSection(true);
+      } else if (order.profitAmount !== null && order.profitAmount !== undefined) {
+        // Fall back to order table fields
         setOtcProfitAmount(String(order.profitAmount));
         setOtcProfitCurrency(order.profitCurrency || "");
         setOtcProfitAccountId(order.profitAccountId ? String(order.profitAccountId) : "");
         setShowOtcProfitSection(true);
       }
-      if (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined) {
+      
+      // Find confirmed service charge entry (or use the latest one if no confirmed exists)
+      const confirmedServiceCharge = serviceCharges.find((sc: any) => sc.status === 'confirmed') || serviceCharges[serviceCharges.length - 1];
+      if (confirmedServiceCharge) {
+        setOtcServiceChargeAmount(String(confirmedServiceCharge.amount || ""));
+        setOtcServiceChargeCurrency(confirmedServiceCharge.currencyCode || "");
+        setOtcServiceChargeAccountId(confirmedServiceCharge.accountId ? String(confirmedServiceCharge.accountId) : "");
+        setShowOtcServiceChargeSection(true);
+      } else if (draftServiceCharge) {
+        // Use draft service charge
+        setOtcServiceChargeAmount(String(draftServiceCharge.amount || ""));
+        setOtcServiceChargeCurrency(draftServiceCharge.currencyCode || "");
+        setOtcServiceChargeAccountId(draftServiceCharge.accountId ? String(draftServiceCharge.accountId) : "");
+        setShowOtcServiceChargeSection(true);
+      } else if (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined) {
+        // Fall back to order table fields
         setOtcServiceChargeAmount(String(order.serviceChargeAmount));
         setOtcServiceChargeCurrency(order.serviceChargeCurrency || "");
         setOtcServiceChargeAccountId(order.serviceChargeAccountId ? String(order.serviceChargeAccountId) : "");
@@ -142,13 +196,34 @@ export function useOtcOrder(
       if (remarksValue !== null && remarksValue !== undefined && remarksValue.trim() !== "") {
         setOtcRemarks(remarksValue);
         setShowOtcRemarks(true);
+        setHadRemarks(true);
       } else {
         // Reset remarks state if no remarks exist
         setOtcRemarks("");
         setShowOtcRemarks(false);
+        setHadRemarks(false);
       }
     }
   }, [otcEditingOrderId, otcOrderDetails]);
+
+  // Load default handler when creating new OTC order (not editing)
+  useEffect(() => {
+    if (!otcEditingOrderId && isOtcOrderModalOpen && authUser?.id) {
+      const defaultHandlerId = getDefaultOtcHandler(authUser.id);
+      if (defaultHandlerId) {
+        setOtcForm((prev) => {
+          // Only set if handlerId is empty (don't override if already set)
+          if (!prev.handlerId) {
+            return {
+              ...prev,
+              handlerId: defaultHandlerId,
+            };
+          }
+          return prev;
+        });
+      }
+    }
+  }, [isOtcOrderModalOpen, otcEditingOrderId, authUser?.id]);
 
   const resetOtcForm = () => {
     setOtcForm({
@@ -173,6 +248,9 @@ export function useOtcOrder(
     setOtcCalculatedField(null);
     setOtcRemarks("");
     setShowOtcRemarks(false);
+    setHadDraftProfit(false);
+    setHadDraftServiceCharge(false);
+    setHadRemarks(false);
   };
 
   const closeOtcModal = () => {
@@ -181,6 +259,103 @@ export function useOtcOrder(
     setOtcEditingOrderId(null);
     isSubmittingRef.current = false;
     setIsOtcSaving(false);
+  };
+
+  // Handler to remove profit (clears draft) - uses DELETE endpoint like receipts/payments
+  const handleRemoveOtcProfit = async () => {
+    if (!otcEditingOrderId) {
+      // Not editing, just clear local state
+      setShowOtcProfitSection(false);
+      setOtcProfitAmount("");
+      setOtcProfitCurrency("");
+      setOtcProfitAccountId("");
+      setHadDraftProfit(false);
+      return;
+    }
+
+    try {
+      // Find draft profit entry to delete
+      if (otcOrderDetails && otcOrderDetails.profits) {
+        const draftProfit = otcOrderDetails.profits.find((p: any) => p.status === 'draft');
+        if (draftProfit && draftProfit.id) {
+          // Use DELETE endpoint like receipts/payments
+          await deleteProfit(draftProfit.id).unwrap();
+        }
+      }
+      // Clear local state
+      setShowOtcProfitSection(false);
+      setOtcProfitAmount("");
+      setOtcProfitCurrency("");
+      setOtcProfitAccountId("");
+      setHadDraftProfit(false);
+    } catch (error: any) {
+      console.error("Error removing profit:", error);
+      const errorMessage = error?.data?.message || error?.message || "Failed to remove profit";
+      alert(errorMessage);
+    }
+  };
+
+  // Handler to remove service charge (clears draft) - uses DELETE endpoint like receipts/payments
+  const handleRemoveOtcServiceCharge = async () => {
+    if (!otcEditingOrderId) {
+      // Not editing, just clear local state
+      setShowOtcServiceChargeSection(false);
+      setOtcServiceChargeAmount("");
+      setOtcServiceChargeCurrency("");
+      setOtcServiceChargeAccountId("");
+      setHadDraftServiceCharge(false);
+      return;
+    }
+
+    try {
+      // Find draft service charge entry to delete
+      if (otcOrderDetails && otcOrderDetails.serviceCharges) {
+        const draftServiceCharge = otcOrderDetails.serviceCharges.find((sc: any) => sc.status === 'draft');
+        if (draftServiceCharge && draftServiceCharge.id) {
+          // Use DELETE endpoint like receipts/payments
+          await deleteServiceCharge(draftServiceCharge.id).unwrap();
+        }
+      }
+      // Clear local state
+      setShowOtcServiceChargeSection(false);
+      setOtcServiceChargeAmount("");
+      setOtcServiceChargeCurrency("");
+      setOtcServiceChargeAccountId("");
+      setHadDraftServiceCharge(false);
+    } catch (error: any) {
+      console.error("Error removing service charge:", error);
+      const errorMessage = error?.data?.message || error?.message || "Failed to remove service charge";
+      alert(errorMessage);
+    }
+  };
+
+  // Handler to remove remarks (clears from backend)
+  const handleRemoveOtcRemarks = async () => {
+    if (!otcEditingOrderId) {
+      // Not editing, just clear local state
+      setShowOtcRemarks(false);
+      setOtcRemarks("");
+      setHadRemarks(false);
+      return;
+    }
+
+    try {
+      // Send null to clear remarks
+      await updateOrder({
+        id: otcEditingOrderId,
+        data: {
+          remarks: null as unknown as string,
+        },
+      }).unwrap();
+      // Clear local state
+      setShowOtcRemarks(false);
+      setOtcRemarks("");
+      setHadRemarks(false);
+    } catch (error: any) {
+      console.error("Error removing remarks:", error);
+      const errorMessage = error?.data?.message || error?.message || "Failed to remove remarks";
+      alert(errorMessage);
+    }
   };
 
   const handleOtcOrderSave = async (event: FormEvent) => {
@@ -223,17 +398,46 @@ export function useOtcOrder(
       };
       
       // Handle remarks: if section is shown, include remarks (null if empty to remove from DB)
+      // Also clear remarks if section was closed but there were remarks before
       if (showOtcRemarks) {
         if (otcRemarks && otcRemarks.trim() !== "") {
           orderData.remarks = otcRemarks.trim();
         } else {
           // Empty remarks - set to null to remove from database
-          orderData.remarks = null;
+          orderData.remarks = null as unknown as string;
         }
+      } else if (hadRemarks) {
+        // Section is closed but there were remarks before - clear them
+        orderData.remarks = null as unknown as string;
+      }
+
+      // Include profit and service charges in orderData (like handleOtcOrderComplete)
+      // Backend's updateOrder automatically deletes existing drafts and creates new ones
+      if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
+        orderData.profitAmount = Number(otcProfitAmount);
+        orderData.profitCurrency = otcProfitCurrency;
+        orderData.profitAccountId = Number(otcProfitAccountId);
+      } else if (showOtcProfitSection || hadDraftProfit) {
+        // If section is shown but fields are empty, or if there was a draft, clear it
+        orderData.profitAmount = null as unknown as number;
+        orderData.profitCurrency = null as unknown as string;
+        orderData.profitAccountId = null as unknown as number;
+      }
+      
+      if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
+        orderData.serviceChargeAmount = Number(otcServiceChargeAmount);
+        orderData.serviceChargeCurrency = otcServiceChargeCurrency;
+        orderData.serviceChargeAccountId = Number(otcServiceChargeAccountId);
+      } else if (showOtcServiceChargeSection || hadDraftServiceCharge) {
+        // If section is shown but fields are empty, or if there was a draft, clear it
+        orderData.serviceChargeAmount = null as unknown as number;
+        orderData.serviceChargeCurrency = null as unknown as string;
+        orderData.serviceChargeAccountId = null as unknown as number;
       }
 
       if (otcEditingOrderId) {
         // Update existing order
+        // Backend's updateOrder handles profit/service charge drafts automatically
         await updateOrder({
           id: otcEditingOrderId,
           data: orderData,
@@ -293,30 +497,6 @@ export function useOtcOrder(
             imagePath: "", // Empty for OTC orders - backend will use placeholder
           } as any).unwrap();
         }
-      }
-
-      // Add profit if provided
-      if (otcProfitAmount && otcProfitAccountId && otcProfitCurrency) {
-        await updateOrder({
-          id: orderId,
-          data: {
-            profitAmount: Number(otcProfitAmount),
-            profitCurrency: otcProfitCurrency,
-            profitAccountId: Number(otcProfitAccountId),
-          },
-        }).unwrap();
-      }
-
-      // Add service charges if provided
-      if (otcServiceChargeAmount && otcServiceChargeAccountId && otcServiceChargeCurrency) {
-        await updateOrder({
-          id: orderId,
-          data: {
-            serviceChargeAmount: Number(otcServiceChargeAmount),
-            serviceChargeCurrency: otcServiceChargeCurrency,
-            serviceChargeAccountId: Number(otcServiceChargeAccountId),
-          },
-        }).unwrap();
       }
 
       closeOtcModal();
@@ -461,11 +641,9 @@ export function useOtcOrder(
         orderId = newOrder.id;
       }
 
-      // Assign handler
-      await processOrder({
-        id: orderId,
-        handlerId: Number(otcForm.handlerId),
-      }).unwrap();
+      // For OTC orders, handler is already set in orderData, so no need to call processOrder
+      // processOrder would change status to "under_process" which prevents editing
+      // OTC orders should stay in "pending" status so they can be edited until completed
 
       // Delete existing receipts and payments when editing, then recreate from form
       if (otcEditingOrderId && otcOrderDetails) {
@@ -598,6 +776,9 @@ export function useOtcOrder(
     handleOtcOrderSave,
     handleOtcOrderComplete,
     resetOtcForm,
+    handleRemoveOtcProfit,
+    handleRemoveOtcServiceCharge,
+    handleRemoveOtcRemarks,
     closeOtcModal,
   };
 }

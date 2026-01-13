@@ -3,14 +3,16 @@ import { ReceiptDisplay } from "./ReceiptDisplay";
 import { PaymentDisplay } from "./PaymentDisplay";
 import { ReceiptUploadSection } from "./ReceiptUploadSection";
 import { PaymentUploadSection } from "./PaymentUploadSection";
-import type { Account, Order } from "../../types";
+import type { Account, Order, AuthResponse } from "../../types";
 import type { UploadItem } from "../../hooks/orders/useViewOrderModal";
+import { canPerformOrderActions } from "../../utils/orderPermissions";
 
 interface OnlineOrderUploadsSectionProps {
   orderDetails: any; // Order details with receipts, payments, order, etc.
   accounts: Account[];
   orders: Order[];
   viewModalOrderId: number | null;
+  authUser: AuthResponse | null;
   
   // Receipt props
   receipts: any[]; // OrderReceipt[]
@@ -72,6 +74,7 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
   accounts,
   orders,
   viewModalOrderId,
+  authUser,
   receipts,
   totalReceiptAmount,
   receiptBalance,
@@ -117,6 +120,23 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
   t,
 }) => {
   const isDisabled = orderDetails.order.status === "completed" || orderDetails.order.status === "cancelled";
+  const canPerformActions = canPerformOrderActions(orderDetails.order, authUser);
+  
+  // Temporary debug logging
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.log('[OnlineOrderUploadsSection] Permission Debug:', {
+      orderId: orderDetails.order.id,
+      orderCreatedBy: orderDetails.order.createdBy,
+      orderHandlerId: orderDetails.order.handlerId,
+      authUserId: authUser?.id,
+      authUserRole: authUser?.role,
+      canPerformActions,
+      isDisabled,
+      showReceiptUpload,
+      showPaymentUpload,
+    });
+  }
+  
   const containerClassName = layout === "grid" ? "lg:col-span-2 space-y-4" : "space-y-4";
   const receiptTitleSuffix = isFlexOrder ? ` (${t("orders.flexOrder")})` : "";
   const paymentTitleSuffix = isFlexOrder ? ` (${t("orders.flexOrder")})` : "";
@@ -176,7 +196,7 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
               t={t}
             />
           ))}
-          {!isDisabled && showReceiptUpload && (
+          {!isDisabled && canPerformActions && showReceiptUpload && (
             <ReceiptUploadSection
               uploads={receiptUploads}
               setUploads={setReceiptUploads}
@@ -208,7 +228,7 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
           )}
         </div>
 
-        {!isDisabled && !showReceiptUpload && (
+        {!isDisabled && canPerformActions && !showReceiptUpload && (
           <button
             type="button"
             onClick={() => {
@@ -276,7 +296,7 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
               t={t}
             />
           ))}
-          {!isDisabled && showPaymentUpload && (
+          {!isDisabled && canPerformActions && showPaymentUpload && (
             <PaymentUploadSection
               uploads={paymentUploads}
               setUploads={setPaymentUploads}
@@ -308,7 +328,7 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
           )}
         </div>
 
-        {!isDisabled && !showPaymentUpload && (
+        {!isDisabled && canPerformActions && !showPaymentUpload && (
           <button
             type="button"
             onClick={() => {

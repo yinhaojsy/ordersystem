@@ -1,6 +1,7 @@
 import React from "react";
 import { calculateAmountSell as calculateAmountSellUtil } from "../../utils/orders/orderCalculations";
-import type { Currency } from "../../types";
+import type { Currency, AuthResponse } from "../../types";
+import { canPerformOrderActions } from "../../utils/orderPermissions";
 
 interface OrderDetails {
   order: {
@@ -43,6 +44,7 @@ interface CompleteOrderButtonProps {
     toCurrency: string;
   }) => void;
   setShowExcessPaymentModal?: (show: boolean) => void;
+  authUser?: AuthResponse | null;
   layout?: "grid" | "vertical";
   t: (key: string) => string | undefined;
 }
@@ -59,13 +61,15 @@ export const CompleteOrderButton: React.FC<CompleteOrderButtonProps> = ({
   setShowMissingPaymentModal,
   setExcessPaymentModalData,
   setShowExcessPaymentModal,
+  authUser,
   layout = "vertical",
   t,
 }) => {
   const isFlexOrder = orderDetails.order.isFlexOrder ?? false;
   const isDisabled = orderDetails.order.status === "completed" || orderDetails.order.status === "cancelled";
+  const canPerformActions = canPerformOrderActions(orderDetails.order as any, authUser || null);
 
-  if (isDisabled) return null;
+  if (isDisabled || !canPerformActions) return null;
 
   const handleCompleteOrder = async () => {
     if (!orderId) return;

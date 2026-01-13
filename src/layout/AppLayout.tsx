@@ -140,6 +140,7 @@ export default function AppLayout() {
     { to: "/roles", labelKey: "nav.roles", section: "roles" },
     { to: "/tags", labelKey: "nav.tags", section: "tags" },
     { to: "/profit", labelKey: "nav.profit", section: "profit" },
+    { to: "/approval-requests", labelKey: "nav.approvalRequests", section: "approval_requests" },
     { to: "/settings", labelKey: "nav.settings", adminOnly: true },
   ];
 

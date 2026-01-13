@@ -11,6 +11,7 @@ interface ProfitSectionProps {
   showProfitSection: boolean;
   setShowProfitSection: (show: boolean) => void;
   onSave: () => Promise<void>;
+  onRemove?: () => Promise<void>;
   order: Order | null | undefined;
   accounts: Account[];
   handleNumberInputWheel: (e: React.WheelEvent<HTMLInputElement>) => void;
@@ -27,12 +28,25 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
   showProfitSection,
   setShowProfitSection,
   onSave,
+  onRemove,
   order,
   accounts,
   handleNumberInputWheel,
   t,
 }) => {
   if (!showProfitSection) return null;
+
+  const handleRemoveClick = async () => {
+    if (onRemove) {
+      await onRemove();
+    } else {
+      // Fallback: just close the form
+      setShowProfitSection(false);
+      setProfitAmount("");
+      setProfitCurrency("");
+      setProfitAccountId("");
+    }
+  };
 
   return (
     <div className="p-4 border border-blue-200 rounded-lg bg-blue-50">
@@ -42,12 +56,7 @@ export const ProfitSection: React.FC<ProfitSectionProps> = ({
         </h3>
         <button
           type="button"
-          onClick={() => {
-            setShowProfitSection(false);
-            setProfitAmount("");
-            setProfitCurrency("");
-            setProfitAccountId("");
-          }}
+          onClick={handleRemoveClick}
           className="text-blue-600 hover:text-blue-800 text-sm"
         >
           {t("common.remove")}

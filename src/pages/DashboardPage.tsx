@@ -8,12 +8,16 @@ import {
   useGetCustomersQuery,
   useGetOrdersQuery,
   useGetUsersQuery,
+  useListApprovalRequestsQuery,
 } from "../services/api";
 import { OrderStatus } from "../types";
+import { useAppSelector } from "../app/hooks";
+import { canApproveDelete, canApproveEdit } from "../utils/orderPermissions";
 
 export default function DashboardPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const authUser = useAppSelector((s) => s.auth.user);
   const { data: currencies = [] } = useGetCurrenciesQuery();
   const { data: customers = [] } = useGetCustomersQuery();
   const { data: users = [] } = useGetUsersQuery();
@@ -21,6 +25,16 @@ export default function DashboardPage() {
   const { data: ordersData, isLoading } = useGetOrdersQuery({ limit: 10000 });
   const orders = ordersData?.orders ?? [];
   const totalOrders = ordersData?.total ?? 0;
+
+  // Fetch approval requests if user has approval permissions
+  // Fetch all requests (no status filter) to calculate both pending and approved counts
+  const canApproveDeleteRequests = canApproveDelete(authUser);
+  const canApproveEditRequests = canApproveEdit(authUser);
+  const hasApprovalPermissions = canApproveDeleteRequests || canApproveEditRequests;
+  const { data: approvalRequests = [] } = useListApprovalRequestsQuery(
+    { status: "all" },
+    { skip: !hasApprovalPermissions }
+  );
 
   const stats = useMemo(() => {
     // Ensure orders is an array
@@ -94,6 +108,20 @@ export default function DashboardPage() {
     navigate("/users");
   };
 
+  const handleApprovalRequestsClick = () => {
+    navigate("/approval-requests");
+  };
+
+  // Calculate approval request stats
+  const approvalStats = useMemo(() => {
+    if (!hasApprovalPermissions) {
+      return { pending: 0, approved: 0 };
+    }
+    const pending = approvalRequests.filter((r: any) => r.status === "pending").length;
+    const approved = approvalRequests.filter((r: any) => r.status === "approved").length;
+    return { pending, approved };
+  }, [approvalRequests, hasApprovalPermissions]);
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -140,6 +168,22 @@ export default function DashboardPage() {
           tone="rose"
           onClick={handleCancelledOrdersClick}
         />
+        {hasApprovalPermissions && (
+          <>
+            <StatCard
+              label={t("dashboard.pendingRequests") || "Pending Requests"}
+              value={approvalStats.pending}
+              tone="amber"
+              onClick={handleApprovalRequestsClick}
+            />
+            <StatCard
+              label={t("dashboard.approvedRequests") || "Approved Requests"}
+              value={approvalStats.approved}
+              tone="emerald"
+              onClick={handleApprovalRequestsClick}
+            />
+          </>
+        )}
       </div>
 
       {/* <DashboardStatistics /> */}

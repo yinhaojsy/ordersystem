@@ -6,6 +6,7 @@ interface RemarksSectionProps {
   showRemarks: boolean;
   setShowRemarks: (show: boolean) => void;
   onSave?: () => void;
+  onRemove?: () => Promise<void>;
   showSaveButton?: boolean;
   isSaving?: boolean;
   canEdit?: boolean;
@@ -18,6 +19,7 @@ export function RemarksSection({
   showRemarks,
   setShowRemarks,
   onSave,
+  onRemove,
   showSaveButton = false,
   isSaving = false,
   canEdit = true,
@@ -42,8 +44,13 @@ export function RemarksSection({
             </label>
             <button
               type="button"
-              onClick={() => {
-                setRemarks("");
+              onClick={async () => {
+                if (onRemove) {
+                  await onRemove();
+                } else {
+                  setRemarks("");
+                  setShowRemarks(false);
+                }
               }}
               className="text-slate-600 hover:text-slate-800 text-sm"
             >

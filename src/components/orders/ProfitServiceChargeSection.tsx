@@ -1,7 +1,8 @@
 import React from "react";
 import { ProfitSection } from "./ProfitSection";
 import { ServiceChargeSection } from "./ServiceChargeSection";
-import type { Account, Order } from "../../types";
+import type { Account, Order, AuthResponse } from "../../types";
+import { canPerformOrderActions } from "../../utils/orderPermissions";
 
 interface ProfitServiceChargeSectionProps {
   orderId: number | null;
@@ -36,6 +37,7 @@ interface ProfitServiceChargeSectionProps {
   
   // Configuration
   layout?: "grid" | "vertical";
+  authUser?: AuthResponse | null;
   
   t: (key: string) => string | undefined;
 }
@@ -65,19 +67,110 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
   updateOrder,
   handleNumberInputWheel,
   layout = "vertical",
+  authUser,
   t,
 }) => {
+  const canPerformActions = order ? canPerformOrderActions(order, authUser || null) : true;
+  
+  // Check if there are existing draft entries
+  const hasDraftProfit = profits && profits.some((p: any) => p.status === 'draft');
+  const hasDraftServiceCharge = serviceCharges && serviceCharges.some((sc: any) => sc.status === 'draft');
+  
+  const handleRemoveProfit = async () => {
+    if (!orderId || !order) return;
+    // If there's a draft profit, send null values to clear it
+    if (hasDraftProfit) {
+      try {
+        await updateOrder({
+          id: orderId,
+          data: {
+            profitAmount: null,
+            profitCurrency: null,
+            profitAccountId: null,
+          },
+        }).unwrap();
+      } catch (error: any) {
+        console.error("Error removing profit:", error);
+        const errorMessage = error?.data?.message || error?.message || t("orders.failedToRemoveProfit");
+        alert(errorMessage);
+        return;
+      }
+    }
+    // Close the section and clear form fields
+    setShowProfitSection(false);
+    setProfitAmount("");
+    setProfitCurrency("");
+    setProfitAccountId("");
+  };
+
+  const handleRemoveServiceCharge = async () => {
+    if (!orderId || !order) return;
+    // If there's a draft service charge, send null values to clear it
+    if (hasDraftServiceCharge) {
+      try {
+        await updateOrder({
+          id: orderId,
+          data: {
+            serviceChargeAmount: null,
+            serviceChargeCurrency: null,
+            serviceChargeAccountId: null,
+          },
+        }).unwrap();
+      } catch (error: any) {
+        console.error("Error removing service charge:", error);
+        const errorMessage = error?.data?.message || error?.message || t("orders.failedToRemoveServiceCharge");
+        alert(errorMessage);
+        return;
+      }
+    }
+    // Close the section and clear form fields
+    setShowServiceChargeSection(false);
+    setServiceChargeAmount("");
+    setServiceChargeCurrency("");
+    setServiceChargeAccountId("");
+  };
+
   const handleSaveProfit = async () => {
     if (!orderId || !order) return;
-    if (!profitAmount || !profitCurrency || !profitAccountId) {
-      alert(t("orders.pleaseFillAllFields"));
-      return;
-    }
-    const amount = Number(profitAmount);
-    if (isNaN(amount) || amount <= 0) {
+    // Allow saving 0 or empty to clear existing drafts
+    const amount = profitAmount ? Number(profitAmount) : 0;
+    if (isNaN(amount) || amount < 0) {
       alert(t("orders.pleaseEnterValidAmount"));
       return;
     }
+    
+    // If amount is 0 or empty, clear the draft
+    if (amount === 0 || !profitAmount || !profitCurrency || !profitAccountId) {
+      if (hasDraftProfit) {
+        try {
+          await updateOrder({
+            id: orderId,
+            data: {
+              profitAmount: null,
+              profitCurrency: null,
+              profitAccountId: null,
+            },
+          }).unwrap();
+          setShowProfitSection(false);
+          setProfitAmount("");
+          setProfitCurrency("");
+          setProfitAccountId("");
+        } catch (error: any) {
+          console.error("Error clearing profit:", error);
+          const errorMessage = error?.data?.message || error?.message || t("orders.failedToRemoveProfit");
+          alert(errorMessage);
+        }
+      } else {
+        // No draft to clear, just close the form
+        setShowProfitSection(false);
+        setProfitAmount("");
+        setProfitCurrency("");
+        setProfitAccountId("");
+      }
+      return;
+    }
+    
+    // Save new profit
     try {
       await updateOrder({
         id: orderId,
@@ -102,15 +195,45 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
 
   const handleSaveServiceCharge = async () => {
     if (!orderId || !order) return;
-    if (!serviceChargeAmount || !serviceChargeCurrency || !serviceChargeAccountId) {
-      alert(t("orders.pleaseFillAllFields"));
-      return;
-    }
-    const amount = Number(serviceChargeAmount);
-    if (isNaN(amount) || amount === 0) {
+    // Allow saving 0 or empty to clear existing drafts
+    const amount = serviceChargeAmount ? Number(serviceChargeAmount) : 0;
+    if (isNaN(amount)) {
       alert(t("orders.pleaseEnterValidAmount"));
       return;
     }
+    
+    // If amount is 0 or empty, clear the draft
+    if (amount === 0 || !serviceChargeAmount || !serviceChargeCurrency || !serviceChargeAccountId) {
+      if (hasDraftServiceCharge) {
+        try {
+          await updateOrder({
+            id: orderId,
+            data: {
+              serviceChargeAmount: null,
+              serviceChargeCurrency: null,
+              serviceChargeAccountId: null,
+            },
+          }).unwrap();
+          setShowServiceChargeSection(false);
+          setServiceChargeAmount("");
+          setServiceChargeCurrency("");
+          setServiceChargeAccountId("");
+        } catch (error: any) {
+          console.error("Error clearing service charge:", error);
+          const errorMessage = error?.data?.message || error?.message || t("orders.failedToRemoveServiceCharge");
+          alert(errorMessage);
+        }
+      } else {
+        // No draft to clear, just close the form
+        setShowServiceChargeSection(false);
+        setServiceChargeAmount("");
+        setServiceChargeCurrency("");
+        setServiceChargeAccountId("");
+      }
+      return;
+    }
+    
+    // Save new service charge
     try {
       await updateOrder({
         id: orderId,
@@ -152,6 +275,7 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
         showProfitSection={showProfitSection}
         setShowProfitSection={setShowProfitSection}
         onSave={handleSaveProfit}
+        onRemove={handleRemoveProfit}
         order={order}
         accounts={accounts}
         handleNumberInputWheel={handleNumberInputWheel}
@@ -169,32 +293,35 @@ export const ProfitServiceChargeSection: React.FC<ProfitServiceChargeSectionProp
         showServiceChargeSection={showServiceChargeSection}
         setShowServiceChargeSection={setShowServiceChargeSection}
         onSave={handleSaveServiceCharge}
+        onRemove={handleRemoveServiceCharge}
         order={order}
         accounts={accounts}
         handleNumberInputWheel={handleNumberInputWheel}
         t={t}
       />
 
-      <div className="flex gap-2">
-        {!showProfitSection && !hasProfit && (
-          <button
-            type="button"
-            onClick={() => setShowProfitSection(true)}
-            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-          >
-            {t("orders.addProfit")}
-          </button>
-        )}
-        {!showServiceChargeSection && !hasServiceCharge && (
-          <button
-            type="button"
-            onClick={() => setShowServiceChargeSection(true)}
-            className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
-          >
-            {t("orders.addServiceCharges")}
-          </button>
-        )}
-      </div>
+      {canPerformActions && (
+        <div className="flex gap-2">
+          {!showProfitSection && !hasProfit && (
+            <button
+              type="button"
+              onClick={() => setShowProfitSection(true)}
+              className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              {t("orders.addProfit")}
+            </button>
+          )}
+          {!showServiceChargeSection && !hasServiceCharge && (
+            <button
+              type="button"
+              onClick={() => setShowServiceChargeSection(true)}
+              className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+            >
+              {t("orders.addServiceCharges")}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

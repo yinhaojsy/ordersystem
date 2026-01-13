@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { OrdersTableRow } from "./OrdersTableRow";
 import { Pagination } from "../common/Pagination";
 import { getStatusTone } from "../../utils/orders/orderFormatters";
-import type { Order, Account } from "../../types";
+import type { Order, Account, AuthResponse } from "../../types";
 
 interface OrdersTableProps {
   orders: Order[];
@@ -23,11 +23,14 @@ interface OrdersTableProps {
   menuRefs: React.MutableRefObject<{ [key: number]: HTMLDivElement | null }>;
   menuElementRefs: React.MutableRefObject<{ [key: number]: HTMLDivElement | null }>;
   onMenuToggle: (orderId: number) => void;
+  authUser: AuthResponse | null;
   onEdit: (orderId: number) => void;
   onProcess: (orderId: number) => void;
   onView: (orderId: number) => void;
   onCancel: (orderId: number) => void;
   onDelete: (orderId: number) => void;
+  onRequestDelete?: (orderId: number) => void;
+  onRequestEdit?: (orderId: number) => void;
   canCancelOrder: boolean;
   canDeleteOrder: boolean;
   isDeleting: boolean;
@@ -56,11 +59,14 @@ export function OrdersTable({
   menuRefs,
   menuElementRefs,
   onMenuToggle,
+  authUser,
   onEdit,
   onProcess,
   onView,
   onCancel,
   onDelete,
+  onRequestDelete,
+  onRequestEdit,
   canCancelOrder,
   canDeleteOrder,
   isDeleting,
@@ -120,11 +126,14 @@ export function OrdersTable({
                 menuRef={handleMenuRef(order.id)}
                 menuElementRef={handleMenuElementRef(order.id)}
                 onMenuToggle={onMenuToggle}
+                authUser={authUser}
                 onEdit={onEdit}
                 onProcess={onProcess}
                 onView={onView}
                 onCancel={onCancel}
                 onDelete={onDelete}
+                onRequestDelete={onRequestDelete}
+                onRequestEdit={onRequestEdit}
                 canCancelOrder={canCancelOrder}
                 canDeleteOrder={canDeleteOrder}
                 isDeleting={isDeleting}

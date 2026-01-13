@@ -3,7 +3,7 @@ import type { OrderStatus } from "../../types";
 /**
  * Get the tone/badge color for an order status
  */
-export function getStatusTone(status: OrderStatus): "amber" | "blue" | "emerald" | "rose" | "slate" {
+export function getStatusTone(status: OrderStatus): "amber" | "blue" | "emerald" | "rose" | "slate" | "orange" {
   switch (status) {
     case "pending":
       return "amber";
@@ -13,6 +13,9 @@ export function getStatusTone(status: OrderStatus): "amber" | "blue" | "emerald"
       return "emerald";
     case "cancelled":
       return "rose";
+    case "pending_amend":
+    case "pending_delete":
+      return "orange";
     default:
       return "slate";
   }

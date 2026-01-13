@@ -10,7 +10,7 @@ interface OrdersTableColumnsProps {
   columnKey: string;
   order: Order;
   accounts: Account[];
-  getStatusTone: (status: OrderStatus) => "amber" | "blue" | "emerald" | "rose" | "slate";
+  getStatusTone: (status: OrderStatus) => "amber" | "blue" | "emerald" | "rose" | "slate" | "orange";
   t: (key: string) => string;
 }
 

@@ -16,7 +16,7 @@ import { useAppSelector, useAppDispatch } from "../app/hooks";
 import { setUser } from "../app/authSlice";
 import type { RolePermissions } from "../types";
 
-const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit", "tags"];
+const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit", "tags", "approval_requests"];
 
 // Group actions by their related pages/sections
 const ACTION_GROUPS = [
@@ -50,9 +50,18 @@ const ACTION_GROUPS = [
       { key: "cancelOrder", labelKey: "roles.cancelOrder" },
       { key: "deleteOrder", labelKey: "roles.deleteOrder" },
       { key: "deleteManyOrders", labelKey: "roles.deleteManyOrders" },
+      { key: "requestOrderEdit", labelKey: "roles.requestOrderEdit" },
+      { key: "requestOrderDelete", labelKey: "roles.requestOrderDelete" },
       { key: "importOrder", labelKey: "roles.importOrder" },
       { key: "exportOrder", labelKey: "roles.exportOrder" },
       { key: "assignUnassignOrderTag", labelKey: "roles.assignUnassignOrderTag" },
+    ],
+  },
+  {
+    section: "approval_requests",
+    actions: [
+      { key: "approveOrderDelete", labelKey: "roles.approveOrderDelete" },
+      { key: "approveOrderEdit", labelKey: "roles.approveOrderEdit" },
     ],
   },
   {

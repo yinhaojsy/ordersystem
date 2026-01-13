@@ -7,6 +7,8 @@ import {
   base64ToBuffer,
   getFileUrl,
 } from "../utils/fileStorage.js";
+import { getUserIdFromHeader } from "../utils/auth.js";
+import { getUserPermissions, isAdmin, canModifyOrder } from "../utils/orderPermissions.js";
 
 // Helper function to calculate amountSell from amountBuy using the same logic as order creation (OrdersPage.tsx lines 298-365)
 const calculateAmountSell = (amountBuy, rate, fromCurrency, toCurrency) => {
@@ -270,7 +272,7 @@ export const listOrders = (req, res) => {
         )
         .all(order.id);
 
-      // Get confirmed profit for this order
+      // Get profit for this order (confirmed first, then draft, then fall back to order table)
       const confirmedProfit = db
         .prepare(
           `SELECT amount, currencyCode as profitCurrency, accountId as profitAccountId
@@ -281,7 +283,18 @@ export const listOrders = (req, res) => {
         )
         .get(order.id);
 
-      // Get confirmed service charge for this order
+      // Get draft profit if no confirmed profit exists (for pending OTC orders)
+      const draftProfit = confirmedProfit ? null : db
+        .prepare(
+          `SELECT amount, currencyCode as profitCurrency, accountId as profitAccountId
+           FROM order_profits
+           WHERE orderId = ? AND status = 'draft'
+           ORDER BY createdAt DESC
+           LIMIT 1;`
+        )
+        .get(order.id);
+
+      // Get service charge for this order (confirmed first, then draft, then fall back to order table)
       const confirmedServiceCharge = db
         .prepare(
           `SELECT amount, currencyCode as serviceChargeCurrency, accountId as serviceChargeAccountId
@@ -292,15 +305,28 @@ export const listOrders = (req, res) => {
         )
         .get(order.id);
 
-      // Use confirmed profit/service charge if available, otherwise fall back to order table fields
+      // Get draft service charge if no confirmed service charge exists (for pending OTC orders)
+      const draftServiceCharge = confirmedServiceCharge ? null : db
+        .prepare(
+          `SELECT amount, currencyCode as serviceChargeCurrency, accountId as serviceChargeAccountId
+           FROM order_service_charges
+           WHERE orderId = ? AND status = 'draft'
+           ORDER BY createdAt DESC
+           LIMIT 1;`
+        )
+        .get(order.id);
+
+      // Use confirmed profit/service charge if available, then draft, then fall back to order table fields
       // Ensure amounts are numbers
-      const profitAmount = confirmedProfit ? Number(confirmedProfit.amount) : (order.profitAmount !== null && order.profitAmount !== undefined ? Number(order.profitAmount) : null);
-      const profitCurrency = confirmedProfit ? confirmedProfit.profitCurrency : (order.profitCurrency ?? null);
-      const profitAccountId = confirmedProfit ? confirmedProfit.profitAccountId : (order.profitAccountId ?? null);
+      const profitEntry = confirmedProfit || draftProfit;
+      const profitAmount = profitEntry ? Number(profitEntry.amount) : (order.profitAmount !== null && order.profitAmount !== undefined ? Number(order.profitAmount) : null);
+      const profitCurrency = profitEntry ? profitEntry.profitCurrency : (order.profitCurrency ?? null);
+      const profitAccountId = profitEntry ? profitEntry.profitAccountId : (order.profitAccountId ?? null);
       
-      const serviceChargeAmount = confirmedServiceCharge ? Number(confirmedServiceCharge.amount) : (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined ? Number(order.serviceChargeAmount) : null);
-      const serviceChargeCurrency = confirmedServiceCharge ? confirmedServiceCharge.serviceChargeCurrency : (order.serviceChargeCurrency ?? null);
-      const serviceChargeAccountId = confirmedServiceCharge ? confirmedServiceCharge.serviceChargeAccountId : (order.serviceChargeAccountId ?? null);
+      const serviceChargeEntry = confirmedServiceCharge || draftServiceCharge;
+      const serviceChargeAmount = serviceChargeEntry ? Number(serviceChargeEntry.amount) : (order.serviceChargeAmount !== null && order.serviceChargeAmount !== undefined ? Number(order.serviceChargeAmount) : null);
+      const serviceChargeCurrency = serviceChargeEntry ? serviceChargeEntry.serviceChargeCurrency : (order.serviceChargeCurrency ?? null);
+      const serviceChargeAccountId = serviceChargeEntry ? serviceChargeEntry.serviceChargeAccountId : (order.serviceChargeAccountId ?? null);
 
       return {
         ...order,
@@ -586,6 +612,11 @@ export const createOrder = (req, res, next) => {
   try {
     const payload = req.body || {};
     const { tagIds, ...orderData } = payload;
+    const userId = getUserIdFromHeader(req);
+    
+    if (!userId) {
+      return res.status(401).json({ message: "User ID is required" });
+    }
 
     // Validate handler (required for imported orders)
     if (orderData.handlerId === undefined || orderData.handlerId === null) {
@@ -669,6 +700,7 @@ export const createOrder = (req, res, next) => {
          serviceChargeAmount,
          serviceChargeCurrency,
          serviceChargeAccountId,
+         createdBy,
          createdAt
        ) VALUES (
          @customerId,
@@ -689,6 +721,7 @@ export const createOrder = (req, res, next) => {
          @serviceChargeAmount,
          @serviceChargeCurrency,
          @serviceChargeAccountId,
+         @createdBy,
          @createdAt
        );`,
     );
@@ -706,89 +739,94 @@ export const createOrder = (req, res, next) => {
       serviceChargeAmount: orderData.serviceChargeAmount ?? null,
       serviceChargeCurrency: orderData.serviceChargeCurrency ?? null,
       serviceChargeAccountId: orderData.serviceChargeAccountId ?? null,
+      createdBy: userId, // userId is already validated above
       createdAt: new Date().toISOString(),
     });
     
     const orderId = result.lastInsertRowid;
     
-    // For OTC orders, create confirmed profit/service charge entries in separate tables if provided
-    // This matches the pattern of amountBuy/amountSell - all handled in one call
+    // For OTC orders, create profit/service charge entries in separate tables if provided
+    // Only create confirmed entries if order is completed (imported), otherwise create drafts
+    // This matches the pattern of receipts/payments - drafts until order is completed
     if (orderData.orderType === "otc") {
       // Check if this is an imported order (status is "completed" from the start)
       const isImported = (orderData.status || "pending") === "completed";
       const importedSuffix = isImported ? " (Imported)" : "";
+      const profitServiceChargeStatus = isImported ? "confirmed" : "draft";
       
-      // Create confirmed profit entry if provided
+      // Create profit entry if provided (draft for pending, confirmed for completed)
       if (orderData.profitAmount !== null && orderData.profitAmount !== undefined && 
           orderData.profitCurrency && orderData.profitAccountId) {
         const profitAmount = Number(orderData.profitAmount);
         if (!isNaN(profitAmount) && profitAmount > 0) {
-          // Create confirmed profit entry directly
           db.prepare(
             `INSERT INTO order_profits (orderId, amount, currencyCode, accountId, status, createdAt)
-             VALUES (?, ?, ?, ?, 'confirmed', ?);`
-          ).run(orderId, profitAmount, orderData.profitCurrency, orderData.profitAccountId, new Date().toISOString());
+             VALUES (?, ?, ?, ?, ?, ?);`
+          ).run(orderId, profitAmount, orderData.profitCurrency, orderData.profitAccountId, profitServiceChargeStatus, new Date().toISOString());
           
-          // Update account balance and create transaction
-          const profitAccount = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(orderData.profitAccountId);
-          if (profitAccount) {
-            const newBalance = profitAccount.balance + profitAmount;
-            db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.profitAccountId);
-            db.prepare(
-              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-               VALUES (?, 'add', ?, ?, ?);`
-            ).run(
-              orderData.profitAccountId,
-              profitAmount,
-              `Order #${orderId} - Profit${importedSuffix}`,
-              new Date().toISOString()
-            );
-          }
-        }
-      }
-      
-      // Create confirmed service charge entry if provided
-      if (orderData.serviceChargeAmount !== null && orderData.serviceChargeAmount !== undefined && 
-          orderData.serviceChargeCurrency && orderData.serviceChargeAccountId) {
-        const serviceChargeAmount = Number(orderData.serviceChargeAmount);
-        if (!isNaN(serviceChargeAmount) && serviceChargeAmount !== 0) {
-          // Create confirmed service charge entry directly
-          db.prepare(
-            `INSERT INTO order_service_charges (orderId, amount, currencyCode, accountId, status, createdAt)
-             VALUES (?, ?, ?, ?, 'confirmed', ?);`
-          ).run(orderId, serviceChargeAmount, orderData.serviceChargeCurrency, orderData.serviceChargeAccountId, new Date().toISOString());
-          
-          // Update account balance and create transaction
-          const scAccount = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(orderData.serviceChargeAccountId);
-          if (scAccount) {
-            const oldBalance = scAccount.balance;
-            if (serviceChargeAmount > 0) {
-              // Positive service charge: add to account
-              const newBalance = oldBalance + serviceChargeAmount;
-              db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.serviceChargeAccountId);
+          // Only update account balance and create transaction if confirmed (completed order)
+          if (isImported) {
+            const profitAccount = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(orderData.profitAccountId);
+            if (profitAccount) {
+              const newBalance = profitAccount.balance + profitAmount;
+              db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.profitAccountId);
               db.prepare(
                 `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
                  VALUES (?, 'add', ?, ?, ?);`
               ).run(
-                orderData.serviceChargeAccountId,
-                serviceChargeAmount,
-                `Order #${orderId} - Service charge${importedSuffix}`,
+                orderData.profitAccountId,
+                profitAmount,
+                `Order #${orderId} - Profit${importedSuffix}`,
                 new Date().toISOString()
               );
-            } else {
-              // Negative service charge: subtract from account
-              const absAmount = Math.abs(serviceChargeAmount);
-              const newBalance = oldBalance - absAmount;
-              db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.serviceChargeAccountId);
-              db.prepare(
-                `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
-                 VALUES (?, 'withdraw', ?, ?, ?);`
-              ).run(
-                orderData.serviceChargeAccountId,
-                absAmount,
-                `Order #${orderId} - Service charge paid by us${importedSuffix}`,
-                new Date().toISOString()
-              );
+            }
+          }
+        }
+      }
+      
+      // Create service charge entry if provided (draft for pending, confirmed for completed)
+      if (orderData.serviceChargeAmount !== null && orderData.serviceChargeAmount !== undefined && 
+          orderData.serviceChargeCurrency && orderData.serviceChargeAccountId) {
+        const serviceChargeAmount = Number(orderData.serviceChargeAmount);
+        if (!isNaN(serviceChargeAmount) && serviceChargeAmount !== 0) {
+          db.prepare(
+            `INSERT INTO order_service_charges (orderId, amount, currencyCode, accountId, status, createdAt)
+             VALUES (?, ?, ?, ?, ?, ?);`
+          ).run(orderId, serviceChargeAmount, orderData.serviceChargeCurrency, orderData.serviceChargeAccountId, profitServiceChargeStatus, new Date().toISOString());
+          
+          // Only update account balance and create transaction if confirmed (completed order)
+          if (isImported) {
+            const scAccount = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(orderData.serviceChargeAccountId);
+            if (scAccount) {
+              const oldBalance = scAccount.balance;
+              if (serviceChargeAmount > 0) {
+                // Positive service charge: add to account
+                const newBalance = oldBalance + serviceChargeAmount;
+                db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.serviceChargeAccountId);
+                db.prepare(
+                  `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+                   VALUES (?, 'add', ?, ?, ?);`
+                ).run(
+                  orderData.serviceChargeAccountId,
+                  serviceChargeAmount,
+                  `Order #${orderId} - Service charge${importedSuffix}`,
+                  new Date().toISOString()
+                );
+              } else {
+                // Negative service charge: subtract from account
+                const absAmount = Math.abs(serviceChargeAmount);
+                const newBalance = oldBalance - absAmount;
+                db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, orderData.serviceChargeAccountId);
+                db.prepare(
+                  `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+                   VALUES (?, 'withdraw', ?, ?, ?);`
+                ).run(
+                  orderData.serviceChargeAccountId,
+                  absAmount,
+                  `Order #${orderId} - Service charge paid by us${importedSuffix}`,
+                  new Date().toISOString()
+                );
+              }
             }
           }
         }
@@ -933,11 +971,41 @@ export const updateOrder = (req, res, next) => {
     const { id } = req.params;
     const updates = req.body || {};
     const { tagIds, ...orderUpdates } = updates;
+    const userId = getUserIdFromHeader(req);
     
     // Check if order exists and get existing profit/service charge data
-    const existingOrder = db.prepare("SELECT id, status, fromCurrency, toCurrency, profitAmount, profitAccountId, profitCurrency, serviceChargeAmount, serviceChargeAccountId, serviceChargeCurrency, buyAccountId, sellAccountId FROM orders WHERE id = ?").get(id);
+    const existingOrder = db.prepare("SELECT id, createdBy, handlerId, status, fromCurrency, toCurrency, profitAmount, profitAccountId, profitCurrency, serviceChargeAmount, serviceChargeAccountId, serviceChargeCurrency, buyAccountId, sellAccountId FROM orders WHERE id = ?").get(id);
     if (!existingOrder) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check permissions
+    if (userId) {
+      const userPermissions = getUserPermissions(userId);
+      const isUserAdmin = isAdmin(userPermissions);
+      
+      // For completed orders, non-admin users must create approval request
+      if (existingOrder.status === "completed" && !isUserAdmin) {
+        if (!canModifyOrder(existingOrder, userId)) {
+          return res.status(403).json({ 
+            message: "Only the order creator, handler, or admin can edit orders" 
+          });
+        }
+        // Creator/handler must create approval request for completed orders
+        return res.status(400).json({ 
+          message: "Please use the approval request system to edit completed orders",
+          requiresApproval: true
+        });
+      }
+      
+      // For non-completed orders, check if user is creator/handler/admin
+      if (!isUserAdmin && !canModifyOrder(existingOrder, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can edit orders" 
+        });
+      }
+    } else {
+      return res.status(401).json({ message: "User ID is required" });
     }
 
     // Fields that can only be updated when order is pending
@@ -1018,15 +1086,18 @@ export const updateOrder = (req, res, next) => {
     
     let profitDraftCreated = false;
     let serviceChargeDraftCreated = false;
+    let profitDraftDeleted = false;
+    let serviceChargeDraftDeleted = false;
     let createdProfitId = null;
     let createdServiceChargeId = null;
     
-    // If profit fields are provided, create a draft profit entry
+    // If profit fields are provided, handle profit draft
     if (profitAmount !== undefined || profitAccountId !== undefined || profitCurrency !== undefined) {
       // Delete any existing draft profit for this order
-      db.prepare("DELETE FROM order_profits WHERE orderId = ? AND status = 'draft';").run(id);
+      const deleteResult = db.prepare("DELETE FROM order_profits WHERE orderId = ? AND status = 'draft';").run(id);
+      profitDraftDeleted = deleteResult.changes > 0;
       
-      // Create new draft profit if all required fields are provided
+      // Create new draft profit if all required fields are provided and amount is valid
       if (profitAmount !== null && profitAmount !== undefined && profitCurrency && profitAccountId) {
         const amount = Number(profitAmount);
         if (!isNaN(amount) && amount > 0) {
@@ -1040,12 +1111,13 @@ export const updateOrder = (req, res, next) => {
       }
     }
     
-    // If service charge fields are provided, create a draft service charge entry
+    // If service charge fields are provided, handle service charge draft
     if (serviceChargeAmount !== undefined || serviceChargeAccountId !== undefined || serviceChargeCurrency !== undefined) {
       // Delete any existing draft service charge for this order
-      db.prepare("DELETE FROM order_service_charges WHERE orderId = ? AND status = 'draft';").run(id);
+      const deleteResult = db.prepare("DELETE FROM order_service_charges WHERE orderId = ? AND status = 'draft';").run(id);
+      serviceChargeDraftDeleted = deleteResult.changes > 0;
       
-      // Create new draft service charge if all required fields are provided
+      // Create new draft service charge if all required fields are provided and amount is valid
       if (serviceChargeAmount !== null && serviceChargeAmount !== undefined && serviceChargeCurrency && serviceChargeAccountId) {
         const amount = Number(serviceChargeAmount);
         if (!isNaN(amount) && amount !== 0) {
@@ -1067,8 +1139,8 @@ export const updateOrder = (req, res, next) => {
     const fieldsToUpdate = Object.keys(allUpdates);
     
     // Allow updating tags even if no other fields are being updated
-    // Also allow if profit or service charge drafts were created
-    if (fieldsToUpdate.length === 0 && tagIds === undefined && !profitDraftCreated && !serviceChargeDraftCreated) {
+    // Also allow if profit or service charge drafts were created or deleted
+    if (fieldsToUpdate.length === 0 && tagIds === undefined && !profitDraftCreated && !serviceChargeDraftCreated && !profitDraftDeleted && !serviceChargeDraftDeleted) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
 
@@ -1165,16 +1237,44 @@ export const updateOrderStatus = (req, res, next) => {
   try {
     const { id } = req.params;
     const { status } = req.body || {};
+    const userId = getUserIdFromHeader(req);
+    
     if (!status) {
       return res.status(400).json({ message: "Status is required" });
     }
     
     // Get the current status before updating
     const currentOrder = db
-      .prepare("SELECT status, buyAccountId, sellAccountId, orderType FROM orders WHERE id = ?;")
+      .prepare("SELECT id, createdBy, handlerId, status, buyAccountId, sellAccountId, orderType FROM orders WHERE id = ?;")
       .get(id);
     if (!currentOrder) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check permissions for status changes
+    if (!userId) {
+      return res.status(401).json({ message: "User ID is required" });
+    }
+    
+    const userPermissions = getUserPermissions(userId);
+    const isUserAdmin = isAdmin(userPermissions);
+    
+    // For canceling orders, only creator/handler/admin can cancel
+    if (status === "cancelled") {
+      if (!isUserAdmin && !canModifyOrder(currentOrder, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can cancel orders" 
+        });
+      }
+    }
+    
+    // For completing orders or changing from completed, check if user is creator/handler/admin
+    if (status === "completed" || currentOrder.status === "completed") {
+      if (!isUserAdmin && !canModifyOrder(currentOrder, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can change order status" 
+        });
+      }
     }
     
     // Update the status
@@ -1195,6 +1295,85 @@ export const updateOrderStatus = (req, res, next) => {
       // (typical for imported orders without detailed entries) and it's not an OTC order
       if (!hasConfirmedReceipt && !hasConfirmedPayment && !isOtcOrder) {
         updateAccountBalancesOnCompletion(id, false);
+      }
+    }
+    
+    // When order is completed, confirm all draft profit and service charge entries
+    if (status === "completed" && currentOrder.status !== "completed") {
+      // Confirm all draft profit entries
+      const draftProfits = db.prepare("SELECT * FROM order_profits WHERE orderId = ? AND status = 'draft';").all(id);
+      for (const profit of draftProfits) {
+        if (profit.accountId) {
+          // Update profit status to confirmed
+          db.prepare("UPDATE order_profits SET status = 'confirmed' WHERE id = ?;").run(profit.id);
+          
+          // Update account balance
+          const accountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(profit.accountId);
+          if (accountForBalance) {
+            const newBalance = accountForBalance.balance + profit.amount;
+            db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, profit.accountId);
+            
+            // Create account transaction
+            db.prepare(
+              `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+               VALUES (?, 'add', ?, ?, ?);`
+            ).run(
+              profit.accountId,
+              profit.amount,
+              `Order #${id} - Profit`,
+              new Date().toISOString()
+            );
+          }
+        }
+      }
+      
+      // Confirm all draft service charge entries
+      const draftServiceCharges = db.prepare("SELECT * FROM order_service_charges WHERE orderId = ? AND status = 'draft';").all(id);
+      for (const serviceCharge of draftServiceCharges) {
+        if (serviceCharge.accountId) {
+          // Update service charge status to confirmed
+          db.prepare("UPDATE order_service_charges SET status = 'confirmed' WHERE id = ?;").run(serviceCharge.id);
+          
+          // Update account balance
+          const accountForBalance = db.prepare("SELECT balance FROM accounts WHERE id = ?;").get(serviceCharge.accountId);
+          if (accountForBalance) {
+            const oldBalance = accountForBalance.balance;
+            const amount = Number(serviceCharge.amount);
+            
+            if (amount > 0) {
+              // Positive service charge: add to account (we receive it)
+              const newBalance = oldBalance + amount;
+              db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, serviceCharge.accountId);
+              
+              // Create account transaction
+              db.prepare(
+                `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+                 VALUES (?, 'add', ?, ?, ?);`
+              ).run(
+                serviceCharge.accountId,
+                amount,
+                `Order #${id} - Service charge`,
+                new Date().toISOString()
+              );
+            } else if (amount < 0) {
+              // Negative service charge: subtract from account (we pay it)
+              const absAmount = Math.abs(amount);
+              const newBalance = oldBalance - absAmount;
+              db.prepare("UPDATE accounts SET balance = ? WHERE id = ?;").run(newBalance, serviceCharge.accountId);
+              
+              // Create account transaction
+              db.prepare(
+                `INSERT INTO account_transactions (accountId, type, amount, description, createdAt)
+                 VALUES (?, 'withdraw', ?, ?, ?);`
+              ).run(
+                serviceCharge.accountId,
+                absAmount,
+                `Order #${id} - Service charge paid by us`,
+                new Date().toISOString()
+              );
+            }
+          }
+        }
       }
     }
     
@@ -1229,11 +1408,35 @@ export const updateOrderStatus = (req, res, next) => {
 export const deleteOrder = (req, res, next) => {
   try {
     const { id } = req.params;
+    const userId = getUserIdFromHeader(req);
     
     // Check if order exists and get profit/service charge data, and account info
-    const order = db.prepare("SELECT id, profitAmount, profitAccountId, serviceChargeAmount, serviceChargeAccountId, buyAccountId, sellAccountId, amountBuy, amountSell, status FROM orders WHERE id = ?;").get(id);
+    const order = db.prepare("SELECT id, createdBy, handlerId, profitAmount, profitAccountId, serviceChargeAmount, serviceChargeAccountId, buyAccountId, sellAccountId, amountBuy, amountSell, status FROM orders WHERE id = ?;").get(id);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check permissions: Admin can delete directly, creator/handler must request approval
+    if (userId) {
+      const userPermissions = getUserPermissions(userId);
+      const isUserAdmin = isAdmin(userPermissions);
+      
+      if (!isUserAdmin) {
+        // Non-admin users must be creator or handler to request deletion
+        if (!canModifyOrder(order, userId)) {
+          return res.status(403).json({ 
+            message: "Only the order creator, handler, or admin can delete orders" 
+          });
+        }
+        // Creator/handler must create approval request instead of direct delete
+        return res.status(400).json({ 
+          message: "Please use the approval request system to delete this order",
+          requiresApproval: true
+        });
+      }
+      // Admin can delete directly (continue with deletion)
+    } else {
+      return res.status(401).json({ message: "User ID is required" });
     }
     
     // Get all confirmed receipts with accountId and amount for reversing balances (only reverse confirmed ones)
@@ -1712,6 +1915,7 @@ export const addReceipt = (req, res, next) => {
     const { id } = req.params;
     const { amount, accountId } = req.body;
     const file = req.file; // Multer file object
+    const userId = getUserIdFromHeader(req);
 
     // Support both file upload and base64 (for backward compatibility)
     let imagePath = null;
@@ -1742,9 +1946,23 @@ export const addReceipt = (req, res, next) => {
     }
 
     // Check if order exists first and get paymentFlow and status
-    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, amountSell, paymentFlow, buyAccountId, isFlexOrder, status, orderType FROM orders WHERE id = ?;").get(id);
+    const order = db.prepare("SELECT id, createdBy, handlerId, fromCurrency, toCurrency, amountBuy, amountSell, paymentFlow, buyAccountId, isFlexOrder, status, orderType FROM orders WHERE id = ?;").get(id);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check permissions
+    if (userId) {
+      const userPermissions = getUserPermissions(userId);
+      const isUserAdmin = isAdmin(userPermissions);
+      
+      if (!isUserAdmin && !canModifyOrder(order, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can add receipts" 
+        });
+      }
+    } else {
+      return res.status(401).json({ message: "User ID is required" });
     }
 
     const paymentFlow = order.paymentFlow || "receive_first";
@@ -2045,6 +2263,7 @@ export const addPayment = (req, res, next) => {
     const { id } = req.params;
     const { amount, accountId } = req.body;
     const file = req.file; // Multer file object
+    const userId = getUserIdFromHeader(req);
 
     // Support both file upload and base64 (for backward compatibility)
     let imagePath = null;
@@ -2075,9 +2294,23 @@ export const addPayment = (req, res, next) => {
     }
 
     // Check if order exists first and get paymentFlow
-    const order = db.prepare("SELECT id, toCurrency, amountSell, paymentFlow, sellAccountId, isFlexOrder, actualAmountBuy, actualAmountSell, actualRate, rate, orderType FROM orders WHERE id = ?;").get(id);
+    const order = db.prepare("SELECT id, createdBy, handlerId, toCurrency, amountSell, paymentFlow, sellAccountId, isFlexOrder, actualAmountBuy, actualAmountSell, actualRate, rate, orderType FROM orders WHERE id = ?;").get(id);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check permissions
+    if (userId) {
+      const userPermissions = getUserPermissions(userId);
+      const isUserAdmin = isAdmin(userPermissions);
+      
+      if (!isUserAdmin && !canModifyOrder(order, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can add payments" 
+        });
+      }
+    } else {
+      return res.status(401).json({ message: "User ID is required" });
     }
 
     const paymentFlow = order.paymentFlow || "receive_first";
@@ -2459,6 +2692,7 @@ export const deleteReceipt = (req, res, next) => {
 export const confirmReceipt = (req, res, next) => {
   try {
     const { receiptId } = req.params;
+    const userId = getUserIdFromHeader(req);
 
     // Check if receipt exists and is a draft
     const receipt = db.prepare("SELECT * FROM order_receipts WHERE id = ?;").get(receiptId);
@@ -2467,6 +2701,21 @@ export const confirmReceipt = (req, res, next) => {
     }
     if (receipt.status !== 'draft') {
       return res.status(400).json({ message: "Only draft receipts can be confirmed" });
+    }
+
+    // Check permissions - get order info (fetch all fields needed for later use)
+    const order = db.prepare("SELECT id, createdBy, handlerId, fromCurrency, toCurrency, amountBuy, paymentFlow, isFlexOrder, actualAmountBuy, rate, actualRate, status FROM orders WHERE id = ?;").get(receipt.orderId);
+    if (userId && order) {
+      const userPermissions = getUserPermissions(userId);
+      const isUserAdmin = isAdmin(userPermissions);
+      
+      if (!isUserAdmin && !canModifyOrder(order, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can confirm receipts" 
+        });
+      }
+    } else if (!userId) {
+      return res.status(401).json({ message: "User ID is required" });
     }
 
     if (!receipt.accountId) {
@@ -2510,7 +2759,7 @@ export const confirmReceipt = (req, res, next) => {
     };
 
     // Check if order should be updated based on confirmed receipts
-    const order = db.prepare("SELECT id, fromCurrency, toCurrency, amountBuy, paymentFlow, isFlexOrder, actualAmountBuy, rate, actualRate, status FROM orders WHERE id = ?;").get(receipt.orderId);
+    // Note: order variable already fetched above with all needed fields
     if (order) {
       const confirmedReceipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(receipt.orderId);
       const totalAmount = confirmedReceipts.reduce((sum, r) => sum + r.amount, 0);
@@ -2671,6 +2920,7 @@ export const deletePayment = (req, res, next) => {
 export const confirmPayment = (req, res, next) => {
   try {
     const { paymentId } = req.params;
+    const userId = getUserIdFromHeader(req);
 
     // Check if payment exists and is a draft
     const payment = db.prepare("SELECT * FROM order_payments WHERE id = ?;").get(paymentId);
@@ -2679,6 +2929,21 @@ export const confirmPayment = (req, res, next) => {
     }
     if (payment.status !== 'draft') {
       return res.status(400).json({ message: "Only draft payments can be confirmed" });
+    }
+
+    // Check permissions - get order info (fetch all fields needed for later use)
+    const order = db.prepare("SELECT id, createdBy, handlerId, fromCurrency, toCurrency, amountBuy, amountSell, paymentFlow, isFlexOrder, actualAmountBuy, rate, actualRate, status FROM orders WHERE id = ?;").get(payment.orderId);
+    if (userId && order) {
+      const userPermissions = getUserPermissions(userId);
+      const isUserAdmin = isAdmin(userPermissions);
+      
+      if (!isUserAdmin && !canModifyOrder(order, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can confirm payments" 
+        });
+      }
+    } else if (!userId) {
+      return res.status(401).json({ message: "User ID is required" });
     }
 
     if (!payment.accountId) {
@@ -2723,7 +2988,7 @@ export const confirmPayment = (req, res, next) => {
     };
 
     // Check if order should be updated based on confirmed payments
-    const order = db.prepare("SELECT id, toCurrency, amountSell, paymentFlow, isFlexOrder, actualAmountBuy, actualAmountSell, rate, actualRate, status FROM orders WHERE id = ?;").get(payment.orderId);
+    // Note: order variable already fetched above with all needed fields
     if (order) {
       const confirmedPayments = db.prepare("SELECT * FROM order_payments WHERE orderId = ? AND status = 'confirmed';").all(payment.orderId);
       const totalAmount = confirmedPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -2790,20 +3055,35 @@ export const updateProfit = (req, res, next) => {
   try {
     const { profitId } = req.params;
     const { amount, accountId, currencyCode } = req.body;
+    const userId = getUserIdFromHeader(req);
 
     // Check if profit exists and is a draft
     const existingProfit = db.prepare("SELECT * FROM order_profits WHERE id = ?;").get(profitId);
     if (!existingProfit) {
       return res.status(404).json({ message: "Profit not found" });
     }
-    if (existingProfit.status !== 'draft') {
-      return res.status(400).json({ message: "Only draft profits can be updated" });
-    }
 
-    // Get order details
-    const order = db.prepare("SELECT id, fromCurrency, toCurrency FROM orders WHERE id = ?;").get(existingProfit.orderId);
+    // Check permissions - get order info (fetch all fields needed)
+    const order = db.prepare("SELECT id, createdBy, handlerId, fromCurrency, toCurrency FROM orders WHERE id = ?;").get(existingProfit.orderId);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+    
+    if (userId) {
+      const userPermissions = getUserPermissions(userId);
+      const isUserAdmin = isAdmin(userPermissions);
+      
+      if (!isUserAdmin && !canModifyOrder(order, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can update profit" 
+        });
+      }
+    } else {
+      return res.status(401).json({ message: "User ID is required" });
+    }
+
+    if (existingProfit.status !== 'draft') {
+      return res.status(400).json({ message: "Only draft profits can be updated" });
     }
 
     // Validate account if provided
@@ -2945,20 +3225,35 @@ export const updateServiceCharge = (req, res, next) => {
   try {
     const { serviceChargeId } = req.params;
     const { amount, accountId, currencyCode } = req.body;
+    const userId = getUserIdFromHeader(req);
 
     // Check if service charge exists and is a draft
     const existingServiceCharge = db.prepare("SELECT * FROM order_service_charges WHERE id = ?;").get(serviceChargeId);
     if (!existingServiceCharge) {
       return res.status(404).json({ message: "Service charge not found" });
     }
-    if (existingServiceCharge.status !== 'draft') {
-      return res.status(400).json({ message: "Only draft service charges can be updated" });
-    }
 
-    // Get order details
-    const order = db.prepare("SELECT id, fromCurrency, toCurrency FROM orders WHERE id = ?;").get(existingServiceCharge.orderId);
+    // Check permissions - get order info (fetch all fields needed)
+    const order = db.prepare("SELECT id, createdBy, handlerId, fromCurrency, toCurrency FROM orders WHERE id = ?;").get(existingServiceCharge.orderId);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+    
+    if (userId) {
+      const userPermissions = getUserPermissions(userId);
+      const isUserAdmin = isAdmin(userPermissions);
+      
+      if (!isUserAdmin && !canModifyOrder(order, userId)) {
+        return res.status(403).json({ 
+          message: "Only the order creator, handler, or admin can update service charges" 
+        });
+      }
+    } else {
+      return res.status(401).json({ message: "User ID is required" });
+    }
+
+    if (existingServiceCharge.status !== 'draft') {
+      return res.status(400).json({ message: "Only draft service charges can be updated" });
     }
 
     // Validate account if provided

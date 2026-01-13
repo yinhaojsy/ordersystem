@@ -33,9 +33,30 @@ import type {
 
 const baseQuery = fetchBaseQuery({
   baseUrl: "/api",
-  prepareHeaders: (headers, { extra, endpoint }) => {
+  prepareHeaders: (headers, { getState }) => {
     // Don't set Content-Type for FormData - browser will set it with boundary
     // RTK Query will automatically handle FormData and not set Content-Type
+    
+    // Add X-User-Id header from Redux store or localStorage
+    const state = getState() as any;
+    const user = state?.auth?.user;
+    if (user?.id) {
+      headers.set('X-User-Id', user.id.toString());
+    } else {
+      // Fallback to localStorage if Redux store doesn't have user
+      const savedUser = localStorage.getItem("auth_user");
+      if (savedUser) {
+        try {
+          const parsedUser = JSON.parse(savedUser);
+          if (parsedUser?.id) {
+            headers.set('X-User-Id', parsedUser.id.toString());
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    }
+    
     return headers;
   },
 });
@@ -43,7 +64,7 @@ const baseQuery = fetchBaseQuery({
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting", "Tag"],
+  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting", "Tag", "ApprovalRequest"],
   refetchOnReconnect: true,
   endpoints: (builder) => ({
     getCurrencies: builder.query<Currency[], void>({
@@ -1462,6 +1483,92 @@ export const api = createApi({
         ];
       },
     }),
+    createApprovalRequest: builder.mutation<any, {
+      entityType: "order" | "expense" | "transfer";
+      entityId: number;
+      requestType: "delete" | "edit";
+      reason: string;
+      requestData?: any;
+      receiptFiles?: File[];
+      paymentFiles?: File[];
+    }>({
+      query: (body) => {
+        const { receiptFiles, paymentFiles, ...rest } = body;
+        
+        // If there are files, use FormData
+        if (receiptFiles && receiptFiles.length > 0 || paymentFiles && paymentFiles.length > 0) {
+          const formData = new FormData();
+          formData.append("entityType", rest.entityType);
+          formData.append("entityId", rest.entityId.toString());
+          formData.append("requestType", rest.requestType);
+          formData.append("reason", rest.reason);
+          if (rest.requestData) {
+            formData.append("requestData", JSON.stringify(rest.requestData));
+          }
+          
+          // Append receipt files
+          if (receiptFiles) {
+            receiptFiles.forEach((file, index) => {
+              formData.append(`receiptFiles`, file);
+            });
+          }
+          
+          // Append payment files
+          if (paymentFiles) {
+            paymentFiles.forEach((file, index) => {
+              formData.append(`paymentFiles`, file);
+            });
+          }
+          
+          return {
+            url: "approval-requests",
+            method: "POST",
+            body: formData,
+          };
+        } else {
+          // No files, use regular JSON
+          return {
+            url: "approval-requests",
+            method: "POST",
+            body: rest,
+          };
+        }
+      },
+      invalidatesTags: [{ type: "Order", id: "LIST" }, { type: "ApprovalRequest", id: "LIST" }],
+    }),
+    listApprovalRequests: builder.query<any[], { entityType?: string; status?: string; requestType?: string; entityId?: number }>({
+      query: (params) => ({
+        url: "approval-requests",
+        params,
+      }),
+      providesTags: [{ type: "ApprovalRequest", id: "LIST" }],
+    }),
+    getApprovalRequest: builder.query<any, number>({
+      query: (id) => `approval-requests/${id}`,
+      providesTags: (_res, _err, id) => [{ type: "ApprovalRequest", id }],
+    }),
+    approveRequest: builder.mutation<{ success: boolean; message: string; notificationData: any }, number>({
+      query: (id) => ({
+        url: `approval-requests/${id}/approve`,
+        method: "POST",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Order", id: "LIST" },
+        { type: "ApprovalRequest", id: "LIST" },
+        { type: "ApprovalRequest", id },
+      ],
+    }),
+    rejectRequest: builder.mutation<{ success: boolean; message: string; notificationData: any }, { id: number; reason?: string }>({
+      query: ({ id, reason }) => ({
+        url: `approval-requests/${id}/reject`,
+        method: "POST",
+        body: { reason },
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "ApprovalRequest", id: "LIST" },
+        { type: "ApprovalRequest", id },
+      ],
+    }),
   }),
 });
 
@@ -1557,8 +1664,13 @@ export const {
     useCreateTagMutation,
     useUpdateTagMutation,
     useDeleteTagMutation,
-    useBatchAssignTagsMutation,
-    useBatchUnassignTagsMutation,
+  useBatchAssignTagsMutation,
+  useBatchUnassignTagsMutation,
+  useCreateApprovalRequestMutation,
+  useListApprovalRequestsQuery,
+  useGetApprovalRequestQuery,
+  useApproveRequestMutation,
+  useRejectRequestMutation,
 } = api;
 
 
