@@ -472,6 +472,59 @@ const ensureSchema = () => {
   if (!hasOriginalEntityData) {
     db.prepare("ALTER TABLE approval_requests ADD COLUMN originalEntityData TEXT;").run();
   }
+
+  // Notifications table
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      entityType TEXT,
+      entityId INTEGER,
+      actionUrl TEXT,
+      isRead INTEGER DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
+    );`,
+  ).run();
+
+  // Create indexes for better performance
+  db.prepare(
+    `CREATE INDEX IF NOT EXISTS idx_notifications_user 
+     ON notifications(userId);`,
+  ).run();
+  
+  db.prepare(
+    `CREATE INDEX IF NOT EXISTS idx_notifications_user_read 
+     ON notifications(userId, isRead);`,
+  ).run();
+
+  // User notification preferences table
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS user_notification_preferences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL UNIQUE,
+      notifyApprovalApproved INTEGER DEFAULT 1,
+      notifyApprovalRejected INTEGER DEFAULT 1,
+      notifyApprovalPending INTEGER DEFAULT 1,
+      notifyOrderAssigned INTEGER DEFAULT 1,
+      notifyOrderUnassigned INTEGER DEFAULT 1,
+      notifyOrderCreated INTEGER DEFAULT 0,
+      notifyOrderCompleted INTEGER DEFAULT 0,
+      notifyOrderCancelled INTEGER DEFAULT 0,
+      notifyOrderDeleted INTEGER DEFAULT 1,
+      notifyExpenseCreated INTEGER DEFAULT 0,
+      notifyExpenseDeleted INTEGER DEFAULT 1,
+      notifyTransferCreated INTEGER DEFAULT 0,
+      notifyTransferDeleted INTEGER DEFAULT 1,
+      enableEmailNotifications INTEGER DEFAULT 0,
+      enablePushNotifications INTEGER DEFAULT 0,
+      updatedAt TEXT,
+      FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
+    );`,
+  ).run();
 };
 
 const seedData = () => {

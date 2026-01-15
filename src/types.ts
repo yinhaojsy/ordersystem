@@ -382,4 +382,54 @@ export interface ProfitCalculationDetails extends ProfitCalculation {
   exchangeRates: ProfitExchangeRate[];
 }
 
+// Notification types
+export type NotificationType = 
+  | 'approval_approved'
+  | 'approval_rejected'
+  | 'approval_pending'
+  | 'order_assigned'
+  | 'order_unassigned'
+  | 'order_created'
+  | 'order_completed'
+  | 'order_cancelled'
+  | 'order_deleted'
+  | 'expense_created'
+  | 'expense_deleted'
+  | 'transfer_created'
+  | 'transfer_deleted';
+
+export interface Notification {
+  id: number;
+  userId: number;
+  type: NotificationType;
+  title: string;
+  message: string;
+  entityType?: string;
+  entityId?: number;
+  actionUrl?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface NotificationPreferences {
+  id?: number;
+  userId?: number;
+  notifyApprovalApproved: boolean;
+  notifyApprovalRejected: boolean;
+  notifyApprovalPending: boolean;
+  notifyOrderAssigned: boolean;
+  notifyOrderUnassigned: boolean;
+  notifyOrderCreated: boolean;
+  notifyOrderCompleted: boolean;
+  notifyOrderCancelled: boolean;
+  notifyOrderDeleted: boolean;
+  notifyExpenseCreated: boolean;
+  notifyExpenseDeleted: boolean;
+  notifyTransferCreated: boolean;
+  notifyTransferDeleted: boolean;
+  enableEmailNotifications: boolean;
+  enablePushNotifications: boolean;
+  updatedAt?: string;
+}
+
 

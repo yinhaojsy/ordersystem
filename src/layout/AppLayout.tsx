@@ -6,6 +6,13 @@ import { useAppDispatch, useAppSelector } from "../app/hooks";
 import { setUser } from "../app/authSlice";
 import { hasSectionAccess } from "../utils/permissions";
 import { useIdleTimeout } from "../hooks/useIdleTimeout";
+import { 
+  useGetUnreadCountQuery, 
+  useGetNotificationsQuery,
+  useMarkNotificationAsReadMutation,
+  useMarkAllNotificationsAsReadMutation,
+  api
+} from "../services/api";
 
 export default function AppLayout() {
   const { t, i18n } = useTranslation();
@@ -20,6 +27,92 @@ export default function AppLayout() {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
+  const notificationDropdownRef = useRef<HTMLDivElement>(null);
+  const notificationEventSourceRef = useRef<EventSource | null>(null);
+  const [realtimeUnreadCount, setRealtimeUnreadCount] = useState(0);
+
+  // Fetch notifications (no polling, SSE will handle real-time updates)
+  const { data: unreadCountData, refetch: refetchUnreadCount } = useGetUnreadCountQuery(undefined, {
+    skip: !user,
+  });
+  const { data: notificationsData, refetch: refetchNotifications } = useGetNotificationsQuery(
+    { limit: 10, offset: 0 },
+    { skip: !user || !isNotificationDropdownOpen }
+  );
+  const [markAsRead] = useMarkNotificationAsReadMutation();
+  const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
+
+  // Use realtime count from SSE if available, otherwise fall back to API data
+  const unreadCount = realtimeUnreadCount;
+  const notifications = notificationsData?.notifications || [];
+
+  // Update realtime count when API data changes
+  useEffect(() => {
+    if (unreadCountData?.count !== undefined) {
+      setRealtimeUnreadCount(unreadCountData.count);
+    }
+  }, [unreadCountData]);
+
+  // Subscribe to notifications via Server-Sent Events (SSE)
+  useEffect(() => {
+    if (!user) {
+      // Close existing connection if user logs out
+      if (notificationEventSourceRef.current) {
+        notificationEventSourceRef.current.close();
+        notificationEventSourceRef.current = null;
+      }
+      return;
+    }
+
+    // Connect to notification SSE endpoint with userId as query param
+    const notificationEventSource = new EventSource(`/api/notifications/subscribe?userId=${user.id}`);
+
+    notificationEventSource.onopen = () => {
+      console.log('Notification SSE: Connection opened');
+    };
+
+    notificationEventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'notification') {
+          console.log('New notification received:', data.notification);
+          
+          // Update count immediately in state
+          setRealtimeUnreadCount(prev => prev + 1);
+          
+          // Invalidate cache to trigger refetch
+          dispatch(api.util.invalidateTags([
+            { type: 'Notification', id: 'LIST' },
+            { type: 'Notification', id: 'UNREAD_COUNT' }
+          ]));
+        } else if (data.type === 'unreadCount') {
+          // Initial unread count received
+          setRealtimeUnreadCount(data.count);
+          console.log('Initial unread count:', data.count);
+        }
+      } catch (error) {
+        console.error('Error parsing notification SSE message:', error);
+      }
+    };
+
+    notificationEventSource.onerror = (error) => {
+      console.error('Notification SSE connection error:', error);
+      notificationEventSource.close();
+      notificationEventSourceRef.current = null;
+    };
+
+    notificationEventSourceRef.current = notificationEventSource;
+
+    // Cleanup on unmount or user change
+    return () => {
+      if (notificationEventSourceRef.current) {
+        notificationEventSourceRef.current.close();
+        notificationEventSourceRef.current = null;
+      }
+    };
+  }, [user, dispatch]);
 
   // Subscribe to role updates via Server-Sent Events (SSE)
   useEffect(() => {
@@ -128,6 +221,41 @@ export default function AppLayout() {
 
   useIdleTimeout(handleIdleTimeout, !!user);
 
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationDropdownRef.current && !notificationDropdownRef.current.contains(event.target as Node)) {
+        setIsNotificationDropdownOpen(false);
+      }
+    };
+
+    if (isNotificationDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isNotificationDropdownOpen]);
+
+  const handleNotificationClick = async (notification: any) => {
+    // Mark as read
+    if (!notification.isRead) {
+      await markAsRead(notification.id);
+      // Decrease unread count immediately
+      setRealtimeUnreadCount(prev => Math.max(0, prev - 1));
+    }
+    
+    // Navigate to action URL if provided
+    if (notification.actionUrl) {
+      navigate(notification.actionUrl);
+      setIsNotificationDropdownOpen(false);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    await markAllAsRead();
+    // Reset unread count immediately
+    setRealtimeUnreadCount(0);
+  };
+
   const navItems: Array<{ to: string; labelKey: string; end?: boolean; section?: string; adminOnly?: boolean }> = [
     { to: "/", labelKey: "nav.dashboard", end: true, section: "dashboard" },
     { to: "/orders", labelKey: "nav.orders", section: "orders" },
@@ -157,6 +285,78 @@ export default function AppLayout() {
 
   const logout = () => {
     dispatch(setUser(null));
+  };
+
+  const getNotificationIcon = (type: string) => {
+    const iconClass = "w-5 h-5";
+    
+    switch (type) {
+      case 'approval_approved':
+        return (
+          <svg className={`${iconClass} text-green-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
+      case 'approval_rejected':
+        return (
+          <svg className={`${iconClass} text-red-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
+      case 'approval_pending':
+        return (
+          <svg className={`${iconClass} text-amber-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
+      case 'order_assigned':
+      case 'order_unassigned':
+        return (
+          <svg className={`${iconClass} text-blue-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        );
+      case 'order_created':
+        return (
+          <svg className={`${iconClass} text-blue-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        );
+      case 'order_completed':
+        return (
+          <svg className={`${iconClass} text-green-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        );
+      case 'order_deleted':
+      case 'order_cancelled':
+        return (
+          <svg className={`${iconClass} text-red-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        );
+      default:
+        return (
+          <svg className={`${iconClass} text-slate-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
+    }
+  };
+
+  const formatNotificationTime = (createdAt: string) => {
+    const now = new Date();
+    const notificationDate = new Date(createdAt);
+    const diffMs = now.getTime() - notificationDate.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return t("notifications.justNow") || "Just now";
+    if (diffMins < 60) return `${diffMins} ${t("notifications.minutesAgo") || "min ago"}`;
+    if (diffHours < 24) return `${diffHours} ${t("notifications.hoursAgo") || "hours ago"}`;
+    if (diffDays < 7) return `${diffDays} ${t("notifications.daysAgo") || "days ago"}`;
+    return notificationDate.toLocaleDateString();
   };
 
   return (
@@ -310,6 +510,120 @@ export default function AppLayout() {
             </button>
             {user && (
               <>
+                {/* Notification Bell */}
+                <div className="relative" ref={notificationDropdownRef}>
+                  <button
+                    onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
+                    className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                    aria-label="Notifications"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    {unreadCount > 0 && (
+                      <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Notification Dropdown */}
+                  {isNotificationDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-slate-200 z-50 max-h-[600px] overflow-hidden flex flex-col">
+                      {/* Header */}
+                      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-slate-900">
+                          {t("notifications.title") || "Notifications"}
+                          {unreadCount > 0 && (
+                            <span className="ml-2 text-xs text-slate-500">({unreadCount})</span>
+                          )}
+                        </h3>
+                        <div className="flex items-center gap-3">
+                          {unreadCount > 0 && (
+                            <button
+                              onClick={handleMarkAllAsRead}
+                              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                            >
+                              {t("notifications.markAllRead") || "Mark all read"}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              navigate('/notification-preferences');
+                              setIsNotificationDropdownOpen(false);
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                            title={t("notifications.preferences") || "Preferences"}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Notification List */}
+                      <div className="flex-1 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <div className="px-4 py-8 text-center text-sm text-slate-500">
+                            {t("notifications.noNotifications") || "No notifications"}
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-slate-100">
+                            {notifications.map((notification) => (
+                              <button
+                                key={notification.id}
+                                onClick={() => handleNotificationClick(notification)}
+                                className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors ${
+                                  !notification.isRead ? 'bg-blue-50' : ''
+                                }`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="flex-shrink-0 mt-1">
+                                    {getNotificationIcon(notification.type)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm ${!notification.isRead ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
+                                      {notification.title}
+                                    </p>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                      {notification.message}
+                                    </p>
+                                    <p className="text-xs text-slate-400 mt-1">
+                                      {formatNotificationTime(notification.createdAt)}
+                                    </p>
+                                  </div>
+                                  {!notification.isRead && (
+                                    <div className="flex-shrink-0">
+                                      <span className="inline-block w-2 h-2 bg-blue-600 rounded-full"></span>
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer */}
+                      {notifications.length > 0 && (
+                        <div className="px-4 py-3 border-t border-slate-200">
+                          <button
+                            onClick={() => {
+                              navigate('/notifications');
+                              setIsNotificationDropdownOpen(false);
+                            }}
+                            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            {t("notifications.viewAll") || "View all notifications"} →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div className="text-sm text-slate-600">{user.email} ({user.role})</div>
                 <button
                   onClick={logout}

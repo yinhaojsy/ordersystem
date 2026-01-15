@@ -8,6 +8,7 @@ import {
   getFileUrl,
 } from "../utils/fileStorage.js";
 import { getUserIdFromHeader } from "../utils/auth.js";
+import { createNotification } from "../services/notification/notificationService.js";
 import { getUserPermissions, isAdmin, canModifyOrder } from "../utils/orderPermissions.js";
 
 // Helper function to calculate amountSell from amountBuy using the same logic as order creation (OrdersPage.tsx lines 298-365)
@@ -608,7 +609,7 @@ export const exportOrders = (req, res) => {
   res.json(orders);
 };
 
-export const createOrder = (req, res, next) => {
+export const createOrder = async (req, res, next) => {
   try {
     const payload = req.body || {};
     const { tagIds, ...orderData } = payload;
@@ -956,6 +957,21 @@ export const createOrder = (req, res, next) => {
         }
       }
     }
+
+    // Send notification to all users about new order
+    const allUsers = db.prepare("SELECT id FROM users").all();
+    const allUserIds = allUsers.map(u => u.id);
+    const creatorName = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+    
+    await createNotification({
+      userId: allUserIds,
+      type: 'order_created',
+      title: 'New Order Created',
+      message: `Order #${orderId} created by ${creatorName?.name || 'User'} - ${row.customerName || 'Customer'}`,
+      entityType: 'order',
+      entityId: orderId,
+      actionUrl: `/orders`,
+    });
     
     res.status(201).json({
       ...row,
@@ -1233,7 +1249,7 @@ export const updateOrder = (req, res, next) => {
   }
 };
 
-export const updateOrderStatus = (req, res, next) => {
+export const updateOrderStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { status } = req.body || {};
@@ -1395,6 +1411,37 @@ export const updateOrderStatus = (req, res, next) => {
          ORDER BY t.name ASC;`
       )
       .all(id);
+
+    // Send notification if order was completed or cancelled
+    if (status === 'completed' && currentOrder.status !== 'completed') {
+      const allUsers = db.prepare("SELECT id FROM users").all();
+      const allUserIds = allUsers.map(u => u.id);
+      const userName = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+      
+      await createNotification({
+        userId: allUserIds,
+        type: 'order_completed',
+        title: 'Order Completed',
+        message: `Order #${id} - ${row.customerName || 'Customer'} has been completed by ${userName?.name || 'User'}`,
+        entityType: 'order',
+        entityId: id,
+        actionUrl: `/orders`,
+      });
+    } else if (status === 'cancelled' && currentOrder.status !== 'cancelled') {
+      const allUsers = db.prepare("SELECT id FROM users").all();
+      const allUserIds = allUsers.map(u => u.id);
+      const userName = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+      
+      await createNotification({
+        userId: allUserIds,
+        type: 'order_cancelled',
+        title: 'Order Cancelled',
+        message: `Order #${id} - ${row.customerName || 'Customer'} has been cancelled by ${userName?.name || 'User'}`,
+        entityType: 'order',
+        entityId: id,
+        actionUrl: `/orders`,
+      });
+    }
     
     res.json({
       ...row,
@@ -1405,7 +1452,7 @@ export const updateOrderStatus = (req, res, next) => {
   }
 };
 
-export const deleteOrder = (req, res, next) => {
+export const deleteOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = getUserIdFromHeader(req);
@@ -1646,6 +1693,15 @@ export const deleteOrder = (req, res, next) => {
         affectedAccountIds.add(serviceCharge.accountId);
       }
     });
+
+    // Get order details for notification before deleting
+    const orderDetails = db.prepare(
+      `SELECT o.id, c.name as customerName 
+       FROM orders o
+       LEFT JOIN customers c ON c.id = o.customerId
+       WHERE o.id = ?`
+    ).get(id);
+    const userName = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
     
     // Delete the order (this will cascade delete receipts and payments due to foreign key constraints)
     const stmt = db.prepare(`DELETE FROM orders WHERE id = ?;`);
@@ -1653,6 +1709,21 @@ export const deleteOrder = (req, res, next) => {
     if (result.changes === 0) {
       return res.status(404).json({ message: "Order not found" });
     }
+
+    // Send notification to all users about order deletion
+    const allUsers = db.prepare("SELECT id FROM users").all();
+    const allUserIds = allUsers.map(u => u.id);
+    
+    await createNotification({
+      userId: allUserIds,
+      type: 'order_deleted',
+      title: 'Order Deleted',
+      message: `Order #${id} - ${orderDetails?.customerName || 'Customer'} has been deleted by ${userName?.name || 'User'}`,
+      entityType: 'order',
+      entityId: id,
+      actionUrl: `/orders`,
+    });
+
     res.json({ 
       success: true,
       affectedAccountIds: Array.from(affectedAccountIds)

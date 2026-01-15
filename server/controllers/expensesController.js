@@ -6,6 +6,8 @@ import {
   base64ToBuffer,
   getFileUrl,
 } from "../utils/fileStorage.js";
+import { getUserIdFromHeader } from "../utils/auth.js";
+import { createNotification } from "../services/notification/notificationService.js";
 
 export const listExpenses = (req, res) => {
   const {
@@ -235,7 +237,7 @@ export const exportExpenses = (req, res) => {
   res.json(expensesWithUrls);
 };
 
-export const createExpense = (req, res, next) => {
+export const createExpense = async (req, res, next) => {
   try {
     // Multer automatically parses FormData fields into req.body
     // When FormData is used, fields are strings; when JSON is used, they might be numbers
@@ -443,6 +445,22 @@ export const createExpense = (req, res, next) => {
         : expense.imagePath,
       tags: tags.length > 0 ? tags : [],
     };
+
+    // Send notification to all users about new expense
+    const allUsers = db.prepare("SELECT id FROM users").all();
+    const allUserIds = allUsers.map(u => u.id);
+    const creatorUser = db.prepare("SELECT name FROM users WHERE id = ?").get(createdBy);
+    const accountInfo = db.prepare("SELECT name, currencyCode FROM accounts WHERE id = ?").get(accountIdNum);
+    
+    await createNotification({
+      userId: allUserIds,
+      type: 'expense_created',
+      title: 'New Expense Created',
+      message: `Expense #${expenseId} created by ${creatorUser?.name || 'User'} - ${expenseAmount} ${expense.currencyCode} (${accountInfo?.name || 'Account'})${description ? ': ' + description : ''}`,
+      entityType: 'expense',
+      entityId: expenseId,
+      actionUrl: `/expenses`,
+    });
 
     res.status(201).json(expenseWithUrl);
   } catch (error) {
@@ -743,10 +761,11 @@ export const getExpenseChanges = (req, res, next) => {
   }
 };
 
-export const deleteExpense = (req, res, next) => {
+export const deleteExpense = async (req, res, next) => {
   try {
     const { id } = req.params;
-    
+    const userId = getUserIdFromHeader(req);
+
     // Check if expense exists
     const expense = db.prepare("SELECT * FROM expenses WHERE id = ?;").get(id);
     if (!expense) {
@@ -804,6 +823,22 @@ export const deleteExpense = (req, res, next) => {
     });
 
     transaction();
+
+    // Send notification to all users about expense deletion
+    const allUsers = db.prepare("SELECT id FROM users").all();
+    const allUserIds = allUsers.map(u => u.id);
+    const userName = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+    const account = db.prepare("SELECT name FROM accounts WHERE id = ?").get(expense.accountId);
+    
+    await createNotification({
+      userId: allUserIds,
+      type: 'expense_deleted',
+      title: 'Expense Deleted',
+      message: `Expense #${id} - ${expense.amount} ${expense.currencyCode} (${account?.name || 'Account'}) deleted by ${userName?.name || 'User'}${expense.description ? ': ' + expense.description : ''}`,
+      entityType: 'expense',
+      entityId: id,
+      actionUrl: `/expenses`,
+    });
     
     res.json({ success: true });
   } catch (error) {

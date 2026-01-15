@@ -29,6 +29,8 @@ import type {
   ProfitExchangeRate,
   Tag,
   TagInput,
+  Notification,
+  NotificationPreferences,
 } from "../types";
 
 const baseQuery = fetchBaseQuery({
@@ -64,7 +66,7 @@ const baseQuery = fetchBaseQuery({
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting", "Tag", "ApprovalRequest"],
+  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting", "Tag", "ApprovalRequest", "Notification"],
   refetchOnReconnect: true,
   endpoints: (builder) => ({
     getCurrencies: builder.query<Currency[], void>({
@@ -1569,6 +1571,64 @@ export const api = createApi({
         { type: "ApprovalRequest", id },
       ],
     }),
+
+    // Notification endpoints
+    getNotifications: builder.query<{ notifications: Notification[] }, { limit?: number; offset?: number }>({
+      query: ({ limit = 20, offset = 0 }) => `notifications?limit=${limit}&offset=${offset}`,
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.notifications.map(({ id }) => ({ type: "Notification" as const, id })),
+              { type: "Notification" as const, id: "LIST" },
+            ]
+          : [{ type: "Notification", id: "LIST" }],
+    }),
+    getUnreadCount: builder.query<{ count: number }, void>({
+      query: () => "notifications/unread-count",
+      providesTags: [{ type: "Notification", id: "UNREAD_COUNT" }],
+    }),
+    markNotificationAsRead: builder.mutation<{ success: boolean; message: string }, number>({
+      query: (id) => ({
+        url: `notifications/${id}/read`,
+        method: "PATCH",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Notification", id },
+        { type: "Notification", id: "LIST" },
+        { type: "Notification", id: "UNREAD_COUNT" },
+      ],
+    }),
+    markAllNotificationsAsRead: builder.mutation<{ success: boolean; count: number; message: string }, void>({
+      query: () => ({
+        url: "notifications/read-all",
+        method: "PATCH",
+      }),
+      invalidatesTags: [
+        { type: "Notification", id: "LIST" },
+        { type: "Notification", id: "UNREAD_COUNT" },
+      ],
+    }),
+    deleteNotification: builder.mutation<{ success: boolean; message: string }, number>({
+      query: (id) => ({
+        url: `notifications/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Notification", id },
+        { type: "Notification", id: "LIST" },
+        { type: "Notification", id: "UNREAD_COUNT" },
+      ],
+    }),
+    getNotificationPreferences: builder.query<{ preferences: NotificationPreferences }, void>({
+      query: () => "notifications/preferences",
+    }),
+    updateNotificationPreferences: builder.mutation<{ success: boolean; preferences: NotificationPreferences }, Partial<NotificationPreferences>>({
+      query: (preferences) => ({
+        url: "notifications/preferences",
+        method: "PUT",
+        body: preferences,
+      }),
+    }),
   }),
 });
 
@@ -1671,6 +1731,13 @@ export const {
   useGetApprovalRequestQuery,
   useApproveRequestMutation,
   useRejectRequestMutation,
+  useGetNotificationsQuery,
+  useGetUnreadCountQuery,
+  useMarkNotificationAsReadMutation,
+  useMarkAllNotificationsAsReadMutation,
+  useDeleteNotificationMutation,
+  useGetNotificationPreferencesQuery,
+  useUpdateNotificationPreferencesMutation,
 } = api;
 
 

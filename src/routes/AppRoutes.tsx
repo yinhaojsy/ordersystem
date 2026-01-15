@@ -15,6 +15,8 @@ import LoginPage from "../pages/LoginPage";
 import ProfitCalculationPage from "../pages/ProfitCalculationPage";
 import SettingsPage from "../pages/SettingsPage";
 import ApprovalRequestsPage from "../pages/ApprovalRequestsPage";
+import NotificationsPage from "../pages/NotificationsPage";
+import NotificationPreferencesPage from "../pages/NotificationPreferencesPage";
 import { useAppSelector } from "../app/hooks";
 import { hasSectionAccess } from "../utils/permissions";
 
@@ -56,6 +58,8 @@ export default function AppRoutes() {
           <Route path="tags" element={<RequireAuth section="tags"><TagsPage /></RequireAuth>} />
           <Route path="orders" element={<RequireAuth section="orders"><OrdersPage /></RequireAuth>} />
           <Route path="approval-requests" element={<RequireAuth section="approval_requests"><ApprovalRequestsPage /></RequireAuth>} />
+          <Route path="notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
+          <Route path="notification-preferences" element={<RequireAuth><NotificationPreferencesPage /></RequireAuth>} />
           <Route path="profit" element={<RequireAuth section="profit"><ProfitCalculationPage /></RequireAuth>} />
           <Route path="settings" element={<RequireAdmin><SettingsPage /></RequireAdmin>} />
         </Route>

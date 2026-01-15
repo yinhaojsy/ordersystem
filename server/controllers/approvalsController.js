@@ -2,6 +2,7 @@ import { db } from "../db.js";
 import { getUserIdFromHeader } from "../utils/auth.js";
 import { getUserPermissions, canApproveDelete, canApproveEdit, canRequestDelete, canRequestEdit } from "../utils/orderPermissions.js";
 import { saveFile, generateOrderReceiptFilename, generateOrderPaymentFilename } from "../utils/fileStorage.js";
+import { createNotification } from "../services/notification/notificationService.js";
 
 /**
  * Create an approval request
@@ -385,12 +386,39 @@ export const createApprovalRequest = async (req, res, next) => {
 
     // Get the created request with user info
     const request = db.prepare(
-      `SELECT ar.*, 
+      `SELECT ar.*,
               u1.name as requestedByName
        FROM approval_requests ar
        LEFT JOIN users u1 ON u1.id = ar.requestedBy
        WHERE ar.id = ?`
     ).get(requestId);
+
+    // Notify users who can approve this request
+    // Get all users who can approve this type of request
+    const allUsers = db.prepare("SELECT id FROM users").all();
+    const approverIds = [];
+    
+    for (const user of allUsers) {
+      const userPerms = getUserPermissions(user.id);
+      if (requestType === 'delete' && canApproveDelete(userPerms)) {
+        approverIds.push(user.id);
+      } else if (requestType === 'edit' && canApproveEdit(userPerms)) {
+        approverIds.push(user.id);
+      }
+    }
+
+    // Create notifications for all approvers
+    if (approverIds.length > 0) {
+      await createNotification({
+        userId: approverIds,
+        type: 'approval_pending',
+        title: 'New Approval Request',
+        message: `${request.requestedByName || 'A user'} has requested approval to ${requestType} ${entityType} #${entityId}.`,
+        entityType: entityType,
+        entityId: entityId,
+        actionUrl: `/approval-requests`,
+      });
+    }
 
     res.status(201).json({
       ...request,
@@ -1240,8 +1268,20 @@ export const approveRequest = async (req, res, next) => {
        WHERE id = ?`
     ).run(userId, new Date().toISOString(), id);
 
-    // Get requester info for notification
+    // Get requester info and approver name for notification
     const requester = db.prepare("SELECT id, name, email FROM users WHERE id = ?").get(request.requestedBy);
+    const approver = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+
+    // Create notification for the requester
+    await createNotification({
+      userId: request.requestedBy,
+      type: 'approval_approved',
+      title: 'Approval Request Approved',
+      message: `Your ${request.requestType} request for ${request.entityType} #${request.entityId} has been approved by ${approver?.name || 'Admin'}.`,
+      entityType: request.entityType,
+      entityId: request.entityId,
+      actionUrl: request.entityType === 'order' ? `/orders` : request.entityType === 'expense' ? `/expenses` : `/transfers`,
+    });
 
     res.json({
       success: true,
@@ -1350,8 +1390,20 @@ export const rejectRequest = async (req, res, next) => {
       id
     );
 
-    // Get requester info for notification
+    // Get requester info and rejecter name for notification
     const requester = db.prepare("SELECT id, name, email FROM users WHERE id = ?").get(request.requestedBy);
+    const rejecter = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+
+    // Create notification for the requester
+    await createNotification({
+      userId: request.requestedBy,
+      type: 'approval_rejected',
+      title: 'Approval Request Rejected',
+      message: `Your ${request.requestType} request for ${request.entityType} #${request.entityId} has been rejected by ${rejecter?.name || 'Admin'}.${rejectionReason ? ' Reason: ' + rejectionReason : ''}`,
+      entityType: request.entityType,
+      entityId: request.entityId,
+      actionUrl: `/approval-requests`,
+    });
 
     res.json({
       success: true,

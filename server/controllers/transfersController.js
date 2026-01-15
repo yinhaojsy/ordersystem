@@ -1,4 +1,6 @@
 import { db } from "../db.js";
+import { getUserIdFromHeader } from "../utils/auth.js";
+import { createNotification } from "../services/notification/notificationService.js";
 
 export const listTransfers = (req, res) => {
   const {
@@ -256,7 +258,7 @@ export const exportTransfers = (req, res) => {
   res.json(transfers);
 };
 
-export const createTransfer = (req, res, next) => {
+export const createTransfer = async (req, res, next) => {
   try {
     const { fromAccountId, toAccountId, amount, description, transactionFee, createdBy, tagIds } = req.body || {};
 
@@ -477,6 +479,23 @@ export const createTransfer = (req, res, next) => {
          ORDER BY t.name ASC;`
       )
       .all(transferId);
+
+    // Send notification to all users about new transfer
+    const allUsers = db.prepare("SELECT id FROM users").all();
+    const allUserIds = allUsers.map(u => u.id);
+    const creatorUser = db.prepare("SELECT name FROM users WHERE id = ?").get(transfer.createdBy);
+    const fromAccountName = db.prepare("SELECT name FROM accounts WHERE id = ?").get(transfer.fromAccountId);
+    const toAccountName = db.prepare("SELECT name FROM accounts WHERE id = ?").get(transfer.toAccountId);
+    
+    await createNotification({
+      userId: allUserIds,
+      type: 'transfer_created',
+      title: 'New Transfer Created',
+      message: `Transfer #${transferId} created by ${creatorUser?.name || 'User'} - ${transfer.amount} ${transfer.currencyCode} from ${fromAccountName?.name || 'Account'} to ${toAccountName?.name || 'Account'}`,
+      entityType: 'transfer',
+      entityId: transferId,
+      actionUrl: `/transfers`,
+    });
 
     res.status(201).json({
       ...transfer,
@@ -802,10 +821,11 @@ export const getTransferChanges = (req, res, next) => {
   }
 };
 
-export const deleteTransfer = (req, res, next) => {
+export const deleteTransfer = async (req, res, next) => {
   try {
     const { id } = req.params;
-    
+    const userId = getUserIdFromHeader(req);
+
     // Check if transfer exists
     const transfer = db.prepare("SELECT * FROM internal_transfers WHERE id = ?;").get(id);
     if (!transfer) {
@@ -888,6 +908,21 @@ export const deleteTransfer = (req, res, next) => {
     });
 
     transaction();
+
+    // Send notification to all users about transfer deletion
+    const allUsers = db.prepare("SELECT id FROM users").all();
+    const allUserIds = allUsers.map(u => u.id);
+    const userName = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+    
+    await createNotification({
+      userId: allUserIds,
+      type: 'transfer_deleted',
+      title: 'Transfer Deleted',
+      message: `Transfer #${id} - ${transfer.amount} ${transfer.currencyCode} from ${fromAccount.name} to ${toAccount.name} deleted by ${userName?.name || 'User'}`,
+      entityType: 'transfer',
+      entityId: id,
+      actionUrl: `/transfers`,
+    });
     
     res.json({ success: true });
   } catch (error) {

@@ -130,6 +130,16 @@ import {
   approveRequest,
   rejectRequest,
 } from "../controllers/approvalsController.js";
+import {
+  getNotifications,
+  getUnreadCount,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+  getPreferences,
+  updatePreferences,
+  subscribeToNotifications,
+} from "../controllers/notificationsController.js";
 
 const router = Router();
 
@@ -258,6 +268,16 @@ router.get("/approval-requests", listApprovalRequests);
 router.get("/approval-requests/:id", getApprovalRequest);
 router.post("/approval-requests/:id/approve", approveRequest);
 router.post("/approval-requests/:id/reject", rejectRequest);
+
+// Notification routes
+router.get("/notifications/subscribe", subscribeToNotifications);
+router.get("/notifications", getNotifications);
+router.get("/notifications/unread-count", getUnreadCount);
+router.patch("/notifications/:id/read", markAsRead);
+router.patch("/notifications/read-all", markAllAsRead);
+router.delete("/notifications/:id", deleteNotification);
+router.get("/notifications/preferences", getPreferences);
+router.put("/notifications/preferences", updatePreferences);
 
 export default router;
 
