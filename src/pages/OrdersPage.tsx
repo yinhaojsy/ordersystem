@@ -1647,6 +1647,7 @@ export default function OrdersPage() {
           accounts={accounts}
           onClose={closeViewModal}
           showActions={false}
+          setViewerModal={setViewerModal}
         />
       )}
 
@@ -2038,13 +2039,14 @@ export default function OrdersPage() {
         requestType={requestApprovalType}
         accounts={accounts}
         currencies={currencies}
+        handleNumberInputWheel={handleNumberInputWheel}
         onClose={() => {
           setIsRequestApprovalModalOpen(false);
           setRequestApprovalOrderId(null);
         }}
         onSubmit={async (reason, amendedData) => {
           if (!requestApprovalOrderId) return;
-          
+
           try {
             const amendedDataWithFiles = amendedData as Partial<Order> & { receiptFiles?: File[]; paymentFiles?: File[] };
             await createApprovalRequest({
@@ -2056,7 +2058,7 @@ export default function OrdersPage() {
               receiptFiles: requestApprovalType === "edit" && amendedDataWithFiles?.receiptFiles ? amendedDataWithFiles.receiptFiles : undefined,
               paymentFiles: requestApprovalType === "edit" && amendedDataWithFiles?.paymentFiles ? amendedDataWithFiles.paymentFiles : undefined,
             }).unwrap();
-            
+
             setIsRequestApprovalModalOpen(false);
             setRequestApprovalOrderId(null);
             setAlertModal({

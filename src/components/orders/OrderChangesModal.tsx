@@ -13,6 +13,7 @@ interface OrderChangesModalProps {
   isApproving?: boolean;
   isRejecting?: boolean;
   showActions?: boolean; // Whether to show approve/reject buttons
+  setViewerModal?: (modal: { isOpen: boolean; src: string; type: 'image' | 'pdf'; title: string } | null) => void;
 }
 
 export function OrderChangesModal({
@@ -27,6 +28,7 @@ export function OrderChangesModal({
   isApproving = false,
   isRejecting = false,
   showActions = false,
+  setViewerModal,
 }: OrderChangesModalProps) {
   const { t } = useTranslation();
 
@@ -88,6 +90,7 @@ export function OrderChangesModal({
               accounts={accounts}
               originalReceipts={originalReceipts}
               originalPayments={originalPayments}
+              setViewerModal={setViewerModal}
             />
           </div>
           <div>
@@ -115,6 +118,7 @@ export function OrderChangesModal({
               amendedPayments={amendedPayments}
               originalReceipts={originalReceipts}
               originalPayments={originalPayments}
+              setViewerModal={setViewerModal}
             />
           </div>
           </div>
@@ -166,6 +170,7 @@ function OrderComparisonView({
   originalPayments = [],
   amendedReceipts = [],
   amendedPayments = [],
+  setViewerModal,
 }: { 
   order: any; 
   accounts?: any[]; 
@@ -175,6 +180,7 @@ function OrderComparisonView({
   originalPayments?: any[];
   amendedReceipts?: any[];
   amendedPayments?: any[];
+  setViewerModal?: (modal: { isOpen: boolean; src: string; type: 'image' | 'pdf'; title: string } | null) => void;
 }) {
   const { t } = useTranslation();
   
@@ -241,7 +247,11 @@ function OrderComparisonView({
       const orig = compareReceipts[idx];
       return !orig || 
         Math.abs((r.amount || 0) - (orig.amount || 0)) > 0.01 || 
-        (r.accountId || null) !== (orig.accountId || null);
+        (r.accountId || null) !== (orig.accountId || null) ||
+        // Check if image has changed
+        r.hasNewImage === true ||
+        r.newImagePath ||
+        ((r.currentImagePath || r.imagePath) !== (orig.currentImagePath || orig.imagePath));
     }) ||
     compareReceipts.some((orig: any, idx: number) => {
       const r = receipts[idx];
@@ -257,7 +267,11 @@ function OrderComparisonView({
       const orig = comparePayments[idx];
       return !orig || 
         Math.abs((p.amount || 0) - (orig.amount || 0)) > 0.01 || 
-        (p.accountId || null) !== (orig.accountId || null);
+        (p.accountId || null) !== (orig.accountId || null) ||
+        // Check if image has changed
+        p.hasNewImage === true ||
+        p.newImagePath ||
+        ((p.currentImagePath || p.imagePath) !== (orig.currentImagePath || orig.imagePath));
     }) ||
     comparePayments.some((orig: any, idx: number) => {
       const p = payments[idx];
@@ -378,26 +392,50 @@ function OrderComparisonView({
                 (receipt.accountId || null) === (orig.accountId || null)
               );
               
-              const isReceiptChanged = isAmended && !hasExactMatch;
+              // Check if the image has changed
+              const hasImageChanged = isAmended && (
+                receipt.hasNewImage === true || 
+                receipt.newImagePath ||
+                (compareReceipts[idx] && (
+                  (receipt.currentImagePath || receipt.imagePath) !== (compareReceipts[idx].currentImagePath || compareReceipts[idx].imagePath)
+                ))
+              );
+              
+              const isReceiptChanged = isAmended && (!hasExactMatch || hasImageChanged);
               
               return (
                 <div key={idx} className={`${isReceiptChanged ? "bg-red-50 border border-red-200" : "bg-slate-50 border border-slate-200"} rounded-lg p-2`}>
                   <div className="flex gap-3">
                     {imageUrl && fileType === 'image' ? (
-                      <img
-                        src={imageUrl}
-                        alt="Receipt"
-                        className="w-24 h-32 object-cover rounded border border-slate-300 flex-shrink-0"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
+                      <div className="relative w-24 h-32 flex-shrink-0">
+                        <img
+                          src={imageUrl}
+                          alt="Receipt"
+                          className="w-full h-full object-cover rounded border border-slate-300 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setViewerModal?.({ isOpen: true, src: imageUrl, type: 'image', title: t("orders.receiptUploads") || "Receipt" })}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                        {hasImageChanged && (
+                          <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[9px] font-bold text-center py-0.5 rounded-t">
+                            NEW IMAGE
+                          </div>
+                        )}
+                      </div>
                     ) : imageUrl && fileType === 'pdf' ? (
-                      <div className="w-24 h-32 flex flex-col items-center justify-center bg-slate-100 border-2 border-slate-300 rounded flex-shrink-0">
-                        <svg className="w-6 h-6 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                        <p className="text-xs text-slate-600">PDF</p>
+                      <div className="relative w-24 h-32 flex-shrink-0">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 border-2 border-slate-300 rounded cursor-pointer hover:bg-slate-200 transition-colors">
+                          <svg className="w-6 h-6 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          <p className="text-xs text-slate-600">PDF</p>
+                        </div>
+                        {hasImageChanged && (
+                          <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[9px] font-bold text-center py-0.5 rounded-t">
+                            NEW IMAGE
+                          </div>
+                        )}
                       </div>
                     ) : null}
                     
@@ -445,26 +483,50 @@ function OrderComparisonView({
                 (payment.accountId || null) === (orig.accountId || null)
               );
               
-              const isPaymentChanged = isAmended && !hasExactMatch;
+              // Check if the image has changed
+              const hasImageChanged = isAmended && (
+                payment.hasNewImage === true || 
+                payment.newImagePath ||
+                (comparePayments[idx] && (
+                  (payment.currentImagePath || payment.imagePath) !== (comparePayments[idx].currentImagePath || comparePayments[idx].imagePath)
+                ))
+              );
+              
+              const isPaymentChanged = isAmended && (!hasExactMatch || hasImageChanged);
               
               return (
                 <div key={idx} className={`${isPaymentChanged ? "bg-red-50 border border-red-200" : "bg-slate-50 border border-slate-200"} rounded-lg p-2`}>
                   <div className="flex gap-3">
                     {imageUrl && fileType === 'image' ? (
-                      <img
-                        src={imageUrl}
-                        alt="Payment"
-                        className="w-24 h-32 object-cover rounded border border-slate-300 flex-shrink-0"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
+                      <div className="relative w-24 h-32 flex-shrink-0">
+                        <img
+                          src={imageUrl}
+                          alt="Payment"
+                          className="w-full h-full object-cover rounded border border-slate-300 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setViewerModal?.({ isOpen: true, src: imageUrl, type: 'image', title: t("orders.paymentUploads") || "Payment" })}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                        {hasImageChanged && (
+                          <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[9px] font-bold text-center py-0.5 rounded-t">
+                            NEW IMAGE
+                          </div>
+                        )}
+                      </div>
                     ) : imageUrl && fileType === 'pdf' ? (
-                      <div className="w-24 h-32 flex flex-col items-center justify-center bg-slate-100 border-2 border-slate-300 rounded flex-shrink-0">
-                        <svg className="w-6 h-6 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                        <p className="text-xs text-slate-600">PDF</p>
+                      <div className="relative w-24 h-32 flex-shrink-0">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 border-2 border-slate-300 rounded cursor-pointer hover:bg-slate-200 transition-colors">
+                          <svg className="w-6 h-6 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          <p className="text-xs text-slate-600">PDF</p>
+                        </div>
+                        {hasImageChanged && (
+                          <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[9px] font-bold text-center py-0.5 rounded-t">
+                            NEW IMAGE
+                          </div>
+                        )}
                       </div>
                     ) : null}
                     

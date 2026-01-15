@@ -535,6 +535,7 @@
     "receiptsTotalMismatch": "总收款金额（{{total}} {{currency}}）必须等于买入金额（{{expected}} {{currency}}）",
     "paymentsTotalMismatch": "总付款金额（{{total}} {{currency}}）必须等于卖出金额（{{expected}} {{currency}}）",
     "submitRequest": "提交请求",
+    "approvalRequestSubmitted": "审批请求已成功提交",
     "reason": "原因",
     "reasonPlaceholder": "请提供此请求的原因...",
     "reasonHelp": "此原因将对审批者可见。",

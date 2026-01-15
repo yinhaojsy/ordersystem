@@ -28,6 +28,7 @@ interface RequestApprovalModalProps {
   isSubmitting?: boolean;
   accounts?: Account[];
   currencies?: Currency[];
+  handleNumberInputWheel?: (e: React.WheelEvent<HTMLInputElement>) => void;
 }
 
 export function RequestApprovalModal({
@@ -39,6 +40,7 @@ export function RequestApprovalModal({
   isSubmitting = false,
   accounts = [],
   currencies = [],
+  handleNumberInputWheel,
 }: RequestApprovalModalProps) {
   const { t } = useTranslation();
   const [reason, setReason] = useState("");
@@ -170,6 +172,10 @@ export function RequestApprovalModal({
       return !orig || Math.abs(p.amount - Number(orig.amount)) > 0.01 || p.accountId !== orig.accountId;
     });
   
+  // Check if any new images have been uploaded (even if amounts/accounts haven't changed)
+  const hasNewReceiptImages = receipts.some(r => r.newImageFile !== null && r.newImageFile !== undefined);
+  const hasNewPaymentImages = payments.some(p => p.newImageFile !== null && p.newImageFile !== undefined);
+  
   const hasChanges = 
     (amendedData.amountBuy !== undefined && Math.abs((amendedData.amountBuy ?? 0) - order.amountBuy) > 0.01) ||
     (amendedData.amountSell !== undefined && Math.abs((amendedData.amountSell ?? 0) - order.amountSell) > 0.01) ||
@@ -184,7 +190,9 @@ export function RequestApprovalModal({
     (amendedData.serviceChargeCurrency !== undefined && (amendedData.serviceChargeCurrency === null ? order.serviceChargeCurrency !== null : amendedData.serviceChargeCurrency !== order.serviceChargeCurrency)) ||
     (amendedData.serviceChargeAccountId !== undefined && (amendedData.serviceChargeAccountId === null ? order.serviceChargeAccountId !== null : amendedData.serviceChargeAccountId !== order.serviceChargeAccountId)) ||
     receiptsChanged ||
-    paymentsChanged;
+    paymentsChanged ||
+    hasNewReceiptImages ||
+    hasNewPaymentImages;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -455,10 +463,11 @@ export function RequestApprovalModal({
                     type="number"
                     step="0.01"
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    value={amendedData.amountBuy ?? order.amountBuy}
+                    value={amendedData.amountBuy !== undefined ? (amendedData.amountBuy ?? "") : order.amountBuy}
                     onChange={(e) =>
-                      setAmendedData({ ...amendedData, amountBuy: parseFloat(e.target.value) || 0 })
+                      setAmendedData({ ...amendedData, amountBuy: e.target.value ? parseFloat(e.target.value) : 0 })
                     }
+                    onWheel={handleNumberInputWheel}
                   />
                 </div>
                 <div>
@@ -469,10 +478,11 @@ export function RequestApprovalModal({
                     type="number"
                     step="0.01"
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    value={amendedData.amountSell ?? order.amountSell}
+                    value={amendedData.amountSell !== undefined ? (amendedData.amountSell ?? "") : order.amountSell}
                     onChange={(e) =>
-                      setAmendedData({ ...amendedData, amountSell: parseFloat(e.target.value) || 0 })
+                      setAmendedData({ ...amendedData, amountSell: e.target.value ? parseFloat(e.target.value) : 0 })
                     }
+                    onWheel={handleNumberInputWheel}
                   />
                 </div>
                 <div>
@@ -483,10 +493,11 @@ export function RequestApprovalModal({
                     type="number"
                     step="0.0001"
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    value={amendedData.rate ?? order.rate}
+                    value={amendedData.rate !== undefined ? (amendedData.rate ?? "") : order.rate}
                     onChange={(e) =>
-                      setAmendedData({ ...amendedData, rate: parseFloat(e.target.value) || 0 })
+                      setAmendedData({ ...amendedData, rate: e.target.value ? parseFloat(e.target.value) : 0 })
                     }
+                    onWheel={handleNumberInputWheel}
                   />
                 </div>
                 <div>
@@ -532,8 +543,9 @@ export function RequestApprovalModal({
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             value={receipt.amount || ""}
                             onChange={(e) =>
-                              updateReceipt(index, "amount", parseFloat(e.target.value) || 0)
+                              updateReceipt(index, "amount", e.target.value ? parseFloat(e.target.value) : 0)
                             }
+                            onWheel={handleNumberInputWheel}
                           />
                         </div>
                         <div>
@@ -659,8 +671,9 @@ export function RequestApprovalModal({
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             value={payment.amount || ""}
                             onChange={(e) =>
-                              updatePayment(index, "amount", parseFloat(e.target.value) || 0)
+                              updatePayment(index, "amount", e.target.value ? parseFloat(e.target.value) : 0)
                             }
+                            onWheel={handleNumberInputWheel}
                           />
                         </div>
                         <div>
@@ -800,6 +813,7 @@ export function RequestApprovalModal({
                           profitAmount: e.target.value ? parseFloat(e.target.value) : null 
                         })
                       }
+                      onWheel={handleNumberInputWheel}
                     />
                   </div>
                   <div>
@@ -905,6 +919,7 @@ export function RequestApprovalModal({
                           serviceChargeAmount: e.target.value ? parseFloat(e.target.value) : null 
                         })
                       }
+                      onWheel={handleNumberInputWheel}
                     />
                   </div>
                   <div>

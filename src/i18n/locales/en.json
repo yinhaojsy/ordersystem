@@ -544,6 +544,7 @@
     "receiptsTotalMismatch": "Total receipts ({{total}} {{currency}}) must equal Amount Buy ({{expected}} {{currency}})",
     "paymentsTotalMismatch": "Total payments ({{total}} {{currency}}) must equal Amount Sell ({{expected}} {{currency}})",
     "submitRequest": "Submit Request",
+    "approvalRequestSubmitted": "Approval request submitted successfully",
     "reason": "Reason",
     "reasonPlaceholder": "Please provide a reason for this request...",
     "reasonHelp": "This reason will be visible to approvers.",

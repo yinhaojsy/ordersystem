@@ -13,6 +13,12 @@ export default function ApprovalRequestsPage() {
   const [entityTypeFilter, setEntityTypeFilter] = useState<"order" | "expense" | "transfer" | "all">("all");
   const [requestTypeFilter, setRequestTypeFilter] = useState<"delete" | "edit" | "all">("all");
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
+  const [viewerModal, setViewerModal] = useState<{
+    isOpen: boolean;
+    src: string;
+    type: 'image' | 'pdf';
+    title: string;
+  } | null>(null);
 
   // Check if user has approval permissions
   const canApproveDeleteRequests = canApproveDelete(authUser);
@@ -227,8 +233,48 @@ export default function ApprovalRequestsPage() {
           onReject={(reason) => handleReject(selectedRequestId, reason)}
           isApproving={isApproving}
           isRejecting={isRejecting}
+          setViewerModal={setViewerModal}
           t={t}
         />
+      )}
+
+      {/* Image Viewer Modal */}
+      {viewerModal && (
+        <div
+          className="fixed top-0 left-0 right-0 bottom-0 w-full h-full z-[10000] flex items-center justify-center bg-black bg-opacity-75"
+          style={{ margin: 0, padding: 0 }}
+          onClick={() => setViewerModal(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setViewerModal(null)}
+              className="absolute top-2 right-2 z-10 bg-white hover:bg-slate-100 rounded-full p-2 shadow-lg transition-colors"
+              aria-label={t("common.close")}
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+            <img
+              src={viewerModal.src}
+              alt={viewerModal.title}
+              className="max-w-full max-h-[95vh] w-auto h-auto mx-auto object-contain rounded-lg shadow-2xl"
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -242,6 +288,7 @@ function RequestDetailsModal({
   onReject,
   isApproving,
   isRejecting,
+  setViewerModal,
   t,
 }: {
   request: any;
@@ -251,6 +298,7 @@ function RequestDetailsModal({
   onReject: (reason?: string) => void;
   isApproving: boolean;
   isRejecting: boolean;
+  setViewerModal: (modal: { isOpen: boolean; src: string; type: 'image' | 'pdf'; title: string } | null) => void;
   t: (key: string) => string;
 }) {
   const [rejectionReason, setRejectionReason] = useState("");
@@ -318,6 +366,7 @@ function RequestDetailsModal({
                   accounts={accounts}
                   originalReceipts={Array.isArray(request.entity.originalReceipts) ? request.entity.originalReceipts : []}
                   originalPayments={Array.isArray(request.entity.originalPayments) ? request.entity.originalPayments : []}
+                  setViewerModal={setViewerModal}
                 />
               )}
             </div>
@@ -348,6 +397,7 @@ function RequestDetailsModal({
                   amendedPayments={Array.isArray(request.requestData.payments) ? request.requestData.payments : []}
                   originalReceipts={Array.isArray(request.entity.originalReceipts) ? request.entity.originalReceipts : []}
                   originalPayments={Array.isArray(request.entity.originalPayments) ? request.entity.originalPayments : []}
+                  setViewerModal={setViewerModal}
                 />
               )}
             </div>
@@ -488,6 +538,7 @@ function OrderComparisonView({
   originalPayments = [],
   amendedReceipts = [],
   amendedPayments = [],
+  setViewerModal,
 }: { 
   order: any; 
   accounts?: any[]; 
@@ -497,6 +548,7 @@ function OrderComparisonView({
   originalPayments?: any[];
   amendedReceipts?: any[];
   amendedPayments?: any[];
+  setViewerModal?: (modal: { isOpen: boolean; src: string; type: 'image' | 'pdf'; title: string } | null) => void;
 }) {
   const { t } = useTranslation();
   
@@ -578,7 +630,11 @@ function OrderComparisonView({
       const orig = compareReceipts[idx];
       return !orig || 
         Math.abs((r.amount || 0) - (orig.amount || 0)) > 0.01 || 
-        (r.accountId || null) !== (orig.accountId || null);
+        (r.accountId || null) !== (orig.accountId || null) ||
+        // Check if image has changed
+        r.hasNewImage === true ||
+        r.newImagePath ||
+        ((r.currentImagePath || r.imagePath) !== (orig.currentImagePath || orig.imagePath));
     }) ||
     compareReceipts.some((orig: any, idx: number) => {
       const r = receipts[idx];
@@ -594,7 +650,11 @@ function OrderComparisonView({
       const orig = comparePayments[idx];
       return !orig || 
         Math.abs((p.amount || 0) - (orig.amount || 0)) > 0.01 || 
-        (p.accountId || null) !== (orig.accountId || null);
+        (p.accountId || null) !== (orig.accountId || null) ||
+        // Check if image has changed
+        p.hasNewImage === true ||
+        p.newImagePath ||
+        ((p.currentImagePath || p.imagePath) !== (orig.currentImagePath || orig.imagePath));
     }) ||
     comparePayments.some((orig: any, idx: number) => {
       const p = payments[idx];
@@ -716,29 +776,53 @@ function OrderComparisonView({
                 (receipt.accountId || null) === (orig.accountId || null)
               );
               
-              // Highlight if it's amended and doesn't have an exact match (new, changed, or part of split/merge)
-              const isReceiptChanged = isAmended && !hasExactMatch;
+              // Check if the image has changed (new image uploaded or hasNewImage flag set)
+              const hasImageChanged = isAmended && (
+                receipt.hasNewImage === true || 
+                receipt.newImagePath ||
+                (compareReceipts[idx] && (
+                  (receipt.currentImagePath || receipt.imagePath) !== (compareReceipts[idx].currentImagePath || compareReceipts[idx].imagePath)
+                ))
+              );
+              
+              // Highlight if it's amended and (doesn't have an exact match OR has a new image)
+              const isReceiptChanged = isAmended && (!hasExactMatch || hasImageChanged);
               
               return (
                 <div key={idx} className={`${isReceiptChanged ? "bg-red-50 border border-red-200" : "bg-slate-50 border border-slate-200"} rounded-lg p-2`}>
                   <div className="flex gap-3">
                     {/* Image Display */}
                     {imageUrl && fileType === 'image' ? (
-                      <img
-                        src={imageUrl}
-                        alt="Receipt"
-                        className="w-24 h-32 object-cover rounded border border-slate-300 flex-shrink-0"
-                        onError={(e) => {
-                          // Hide broken image
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
+                      <div className="relative w-24 h-32 flex-shrink-0">
+                        <img
+                          src={imageUrl}
+                          alt="Receipt"
+                          className="w-full h-full object-cover rounded border border-slate-300 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setViewerModal?.({ isOpen: true, src: imageUrl, type: 'image', title: t("orders.receiptUploads") || "Receipt" })}
+                          onError={(e) => {
+                            // Hide broken image
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                        {hasImageChanged && (
+                          <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[9px] font-bold text-center py-0.5 rounded-t">
+                            NEW IMAGE
+                          </div>
+                        )}
+                      </div>
                     ) : imageUrl && fileType === 'pdf' ? (
-                      <div className="w-24 h-32 flex flex-col items-center justify-center bg-slate-100 border-2 border-slate-300 rounded flex-shrink-0">
-                        <svg className="w-6 h-6 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                        <p className="text-xs text-slate-600">PDF</p>
+                      <div className="relative w-24 h-32 flex-shrink-0">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 border-2 border-slate-300 rounded cursor-pointer hover:bg-slate-200 transition-colors">
+                          <svg className="w-6 h-6 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          <p className="text-xs text-slate-600">PDF</p>
+                        </div>
+                        {hasImageChanged && (
+                          <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[9px] font-bold text-center py-0.5 rounded-t">
+                            NEW IMAGE
+                          </div>
+                        )}
                       </div>
                     ) : null}
                     
@@ -789,29 +873,53 @@ function OrderComparisonView({
                 (payment.accountId || null) === (orig.accountId || null)
               );
               
-              // Highlight if it's amended and doesn't have an exact match (new, changed, or part of split/merge)
-              const isPaymentChanged = isAmended && !hasExactMatch;
+              // Check if the image has changed (new image uploaded or hasNewImage flag set)
+              const hasImageChanged = isAmended && (
+                payment.hasNewImage === true || 
+                payment.newImagePath ||
+                (comparePayments[idx] && (
+                  (payment.currentImagePath || payment.imagePath) !== (comparePayments[idx].currentImagePath || comparePayments[idx].imagePath)
+                ))
+              );
+              
+              // Highlight if it's amended and (doesn't have an exact match OR has a new image)
+              const isPaymentChanged = isAmended && (!hasExactMatch || hasImageChanged);
               
               return (
                 <div key={idx} className={`${isPaymentChanged ? "bg-red-50 border border-red-200" : "bg-slate-50 border border-slate-200"} rounded-lg p-2`}>
                   <div className="flex gap-3">
                     {/* Image Display */}
                     {imageUrl && fileType === 'image' ? (
-                      <img
-                        src={imageUrl}
-                        alt="Payment"
-                        className="w-24 h-32 object-cover rounded border border-slate-300 flex-shrink-0"
-                        onError={(e) => {
-                          // Hide broken image
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
+                      <div className="relative w-24 h-32 flex-shrink-0">
+                        <img
+                          src={imageUrl}
+                          alt="Payment"
+                          className="w-full h-full object-cover rounded border border-slate-300 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setViewerModal?.({ isOpen: true, src: imageUrl, type: 'image', title: t("orders.paymentUploads") || "Payment" })}
+                          onError={(e) => {
+                            // Hide broken image
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                        {hasImageChanged && (
+                          <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[9px] font-bold text-center py-0.5 rounded-t">
+                            NEW IMAGE
+                          </div>
+                        )}
+                      </div>
                     ) : imageUrl && fileType === 'pdf' ? (
-                      <div className="w-24 h-32 flex flex-col items-center justify-center bg-slate-100 border-2 border-slate-300 rounded flex-shrink-0">
-                        <svg className="w-6 h-6 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                        <p className="text-xs text-slate-600">PDF</p>
+                      <div className="relative w-24 h-32 flex-shrink-0">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 border-2 border-slate-300 rounded cursor-pointer hover:bg-slate-200 transition-colors">
+                          <svg className="w-6 h-6 text-red-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          <p className="text-xs text-slate-600">PDF</p>
+                        </div>
+                        {hasImageChanged && (
+                          <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-[9px] font-bold text-center py-0.5 rounded-t">
+                            NEW IMAGE
+                          </div>
+                        )}
                       </div>
                     ) : null}
                     
