@@ -60,6 +60,18 @@ export function OrderActionsMenu({
           {t("common.edit")}
         </button>
       );
+    } else if (order.orderType === "otc") {
+      // For pending OTC orders, show view button if user cannot modify
+      // This allows other users to see the order details in read-only mode
+      buttons.push(
+        <button
+          key="view"
+          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 first:rounded-t-lg"
+          onClick={() => onEdit(order.id)}
+        >
+          {t("orders.view")}
+        </button>
+      );
     }
     // Don't show Process button for OTC orders - they already have a handler and can be edited directly
     // Process button is only for regular online orders that need handler assignment

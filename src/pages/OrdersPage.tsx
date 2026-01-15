@@ -1406,6 +1406,7 @@ export default function OrdersPage() {
             {hasActionPermission(authUser, "createOtcOrder") && (
               <button
                 onClick={() => {
+                  setOtcEditingOrderId(null); // Clear any previous editing order
                   setIsOtcOrderModalOpen(true);
                 }}
                 className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-green-700 transition-colors"

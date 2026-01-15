@@ -6,7 +6,9 @@ import { CustomerSelect } from "../common/CustomerSelect";
 import { saveDefaultOtcHandler, getDefaultOtcHandler, clearDefaultOtcHandler } from "../../utils/otcHandlerPreference";
 import { useListApprovalRequestsQuery, useGetApprovalRequestQuery } from "../../services/api";
 import { useTranslation } from "react-i18next";
-import type { Account } from "../../types";
+import type { Account, Order, AuthResponse, OrderStatus } from "../../types";
+import { canModifyOrder, isAdmin } from "../../utils/orderPermissions";
+import { getStatusTone } from "../../utils/orders/orderFormatters";
 
 type BasicEntity = { id: number; name: string };
 type UserEntity = { id: number; name: string; role?: string };
@@ -347,7 +349,7 @@ const OtcOrderView = ({ accounts, customers, users, otcOrderDetails, onClose, t 
           <div>
             <label className="text-sm font-medium text-slate-600">{t("orders.status")}</label>
             <p className="mt-1">
-              <Badge tone={order.status === "completed" ? "emerald" : "rose"}>
+              <Badge tone={getStatusTone(order.status as OrderStatus)}>
                 {t(`orders.${order.status}`)}
               </Badge>
             </p>
@@ -1305,7 +1307,23 @@ export default function OtcOrderModal({
   onRemoveRemarks,
   t,
 }: OtcOrderModalProps) {
-  const heading = isOtcCompleted
+  // Check if user can modify the order (for pending orders)
+  // Admins or creator/handler can modify
+  const userCanModify = useMemo(() => {
+    if (!authUser) return false;
+    if (isAdmin(authUser as AuthResponse)) return true;
+    if (!otcOrderDetails?.order) return false;
+    return canModifyOrder(otcOrderDetails.order as Order, authUser as AuthResponse);
+  }, [otcOrderDetails?.order, authUser]);
+
+  // For pending orders, if user cannot modify, show as view-only
+  // Important: Only check this if we're actually editing an order (otcEditingOrderId is set)
+  const shouldShowViewMode = otcEditingOrderId && (
+    isOtcCompleted || 
+    (otcOrderDetails?.order?.status === "pending" && !userCanModify)
+  );
+
+  const heading = shouldShowViewMode
     ? t("orders.viewOtcOrder")
     : otcEditingOrderId
       ? t("orders.editOtcOrder")
@@ -1349,7 +1367,7 @@ export default function OtcOrderModal({
         </div>
 
         <div className="overflow-y-auto px-6 py-4">
-          {isOtcCompleted && otcOrderDetails?.order ? (
+          {shouldShowViewMode && otcOrderDetails?.order ? (
             otcOrderDetails.order.status === "pending_amend" ? (
               <OtcOrderComparisonViewWrapper
                 order={otcOrderDetails.order}
