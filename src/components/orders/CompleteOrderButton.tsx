@@ -49,7 +49,7 @@ interface CompleteOrderButtonProps {
   t: (key: string) => string | undefined;
 }
 
-export const CompleteOrderButton: React.FC<CompleteOrderButtonProps> = ({
+const CompleteOrderButtonComponent: React.FC<CompleteOrderButtonProps> = ({
   orderId,
   orderDetails,
   currencies,
@@ -137,17 +137,6 @@ export const CompleteOrderButton: React.FC<CompleteOrderButtonProps> = ({
     }
 
     const actualPaymentAmount = currentOrderDetails.totalPaymentAmount;
-
-    // Debug logging for flex orders
-    if (isFlexOrder) {
-      console.log("Completion check:", {
-        actualAmountBuy,
-        effectiveRate,
-        expectedPaymentAmount,
-        actualPaymentAmount,
-        difference: Math.abs(actualPaymentAmount - expectedPaymentAmount),
-      });
-    }
 
     // Allow small rounding difference (0.01)
     const difference = Math.abs(actualPaymentAmount - expectedPaymentAmount);
@@ -267,4 +256,7 @@ export const CompleteOrderButton: React.FC<CompleteOrderButtonProps> = ({
     </div>
   );
 };
+
+// Wrap with React.memo to prevent unnecessary re-renders when props haven't changed
+export const CompleteOrderButton = React.memo(CompleteOrderButtonComponent);
 

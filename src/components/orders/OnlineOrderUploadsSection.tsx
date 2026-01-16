@@ -69,7 +69,7 @@ interface OnlineOrderUploadsSectionProps {
   t: (key: string) => string | undefined;
 }
 
-export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps> = ({
+const OnlineOrderUploadsSectionComponent: React.FC<OnlineOrderUploadsSectionProps> = ({
   orderDetails,
   accounts,
   orders,
@@ -121,21 +121,6 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
 }) => {
   const isDisabled = orderDetails.order.status === "completed" || orderDetails.order.status === "cancelled";
   const canPerformActions = canPerformOrderActions(orderDetails.order, authUser);
-  
-  // Temporary debug logging
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[OnlineOrderUploadsSection] Permission Debug:', {
-      orderId: orderDetails.order.id,
-      orderCreatedBy: orderDetails.order.createdBy,
-      orderHandlerId: orderDetails.order.handlerId,
-      authUserId: authUser?.id,
-      authUserRole: authUser?.role,
-      canPerformActions,
-      isDisabled,
-      showReceiptUpload,
-      showPaymentUpload,
-    });
-  }
   
   const containerClassName = layout === "grid" ? "lg:col-span-2 space-y-4" : "space-y-4";
   const receiptTitleSuffix = isFlexOrder ? ` (${t("orders.flexOrder")})` : "";
@@ -350,4 +335,7 @@ export const OnlineOrderUploadsSection: React.FC<OnlineOrderUploadsSectionProps>
     </div>
   );
 };
+
+// Wrap with React.memo to prevent unnecessary re-renders when props haven't changed
+export const OnlineOrderUploadsSection = React.memo(OnlineOrderUploadsSectionComponent);
 

@@ -1261,7 +1261,7 @@ export const updateOrderStatus = async (req, res, next) => {
     
     // Get the current status before updating
     const currentOrder = db
-      .prepare("SELECT id, createdBy, handlerId, status, buyAccountId, sellAccountId, orderType FROM orders WHERE id = ?;")
+      .prepare("SELECT id, createdBy, handlerId, status, buyAccountId, sellAccountId, orderType, isFlexOrder FROM orders WHERE id = ?;")
       .get(id);
     if (!currentOrder) {
       return res.status(404).json({ message: "Order not found" });
@@ -1316,6 +1316,25 @@ export const updateOrderStatus = async (req, res, next) => {
     
     // When order is completed, confirm all draft profit and service charge entries
     if (status === "completed" && currentOrder.status !== "completed") {
+      // For flex orders, update amountBuy and amountSell to match actual receipt and payment totals
+      if (currentOrder.isFlexOrder === 1) {
+        const receipts = db.prepare("SELECT * FROM order_receipts WHERE orderId = ? AND status = 'confirmed';").all(id);
+        const payments = db.prepare("SELECT * FROM order_payments WHERE orderId = ? AND status = 'confirmed';").all(id);
+        
+        const totalReceiptAmount = receipts.reduce((sum, r) => sum + r.amount, 0);
+        const totalPaymentAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+        
+        // Update amountBuy and amountSell to match the actual totals
+        if (receipts.length > 0 || payments.length > 0) {
+          db.prepare(
+            `UPDATE orders 
+             SET amountBuy = ?,
+                 amountSell = ?
+             WHERE id = ?;`
+          ).run(totalReceiptAmount, totalPaymentAmount, id);
+        }
+      }
+      
       // Confirm all draft profit entries
       const draftProfits = db.prepare("SELECT * FROM order_profits WHERE orderId = ? AND status = 'draft';").all(id);
       for (const profit of draftProfits) {
