@@ -701,6 +701,116 @@ export default function OrdersPage() {
       </>
     );
   };
+
+  const renderRemarks = () => {
+    if (!orderDetails) return null;
+    const order = orderDetails.order;
+    const summaryClass = "lg:col-span-2 border-t pt-4 mt-4";
+    const canEdit = order.status !== "completed" && order.status !== "cancelled";
+
+    // If remarks exist in the database, show as readonly preview
+    if (order.remarks && order.remarks.trim() !== "") {
+      return (
+        <div className={summaryClass}>
+          <div className="p-3 border border-slate-200 rounded-lg bg-slate-50 mb-2 relative">
+            <div className="flex items-start gap-2 mb-2">
+              <div className="flex-1">
+                <h3 className="font-semibold text-slate-900 mb-2">
+                  {t("orders.remarks")}
+                </h3>
+                <div className="text-sm text-slate-600 whitespace-pre-wrap">
+                  {order.remarks}
+                </div>
+              </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (window.confirm(t("orders.removeRemarksQuestion") || "Remove remarks?")) {
+                      try {
+                        await updateOrder({
+                          id: order.id,
+                          data: { remarks: null },
+                        }).unwrap();
+                        setRemarks("");
+                        setShowRemarks(false);
+                      } catch (error: any) {
+                        console.error("Error removing remarks:", error);
+                        const errorMessage = error?.data?.message || error?.message || t("orders.failedToRemoveRemarks");
+                        alert(errorMessage);
+                      }
+                    }
+                  }}
+                  className="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
+                >
+                  {t("common.remove")}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // If editing remarks (showRemarks is true), show textarea
+    if (canEdit && showRemarks) {
+      return (
+        <div className={summaryClass}>
+          <div className="p-3 border border-slate-200 rounded-lg bg-slate-50">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-slate-700">
+                {t("orders.remarks")}
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setRemarks("");
+                  setShowRemarks(false);
+                }}
+                className="text-slate-600 hover:text-slate-800 text-sm"
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
+            <textarea
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder={t("orders.remarksPlaceholder") || "Add any notes or remarks about this order..."}
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              rows={4}
+            />
+            <div className="flex justify-end mt-2">
+              <button
+                type="button"
+                onClick={handleSaveRemarks}
+                disabled={isSavingRemarks}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSavingRemarks ? t("common.saving") || "Saving..." : t("common.save")}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // If no remarks and not editing, show "Add Remarks" button
+    if (canEdit) {
+      return (
+        <div className={summaryClass}>
+          <button
+            type="button"
+            onClick={() => setShowRemarks(true)}
+            className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+          >
+            {t("orders.addRemarks")}
+          </button>
+        </div>
+      );
+    }
+
+    return null;
+  };
   
   const previousOrderStatusRef = useRef<string | null>(null);
   
@@ -1736,21 +1846,7 @@ export default function OrdersPage() {
                     {renderProfitServiceCharges()}
 
                     {/* Remarks Section for Flex Orders (under_process) */}
-                    {isUnderProcess && (
-                      <div className="lg:col-span-2">
-                        <RemarksSection
-                          remarks={remarks}
-                          setRemarks={setRemarks}
-                          showRemarks={showRemarks}
-                          setShowRemarks={setShowRemarks}
-                          onSave={handleSaveRemarks}
-                          showSaveButton={true}
-                          isSaving={isSavingRemarks}
-                          canEdit={orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled"}
-                          t={t}
-                        />
-                      </div>
-                    )}
+                    {isUnderProcess && renderRemarks()}
 
                     {/* Complete Order Button for Flex Orders (under_process) */}
                     <CompleteOrderButton
@@ -1901,19 +1997,7 @@ export default function OrdersPage() {
               {!orderDetails.order.isFlexOrder && renderProfitServiceCharges()}
 
               {/* Remarks Section for Regular Orders (under_process) */}
-              {isUnderProcess && !orderDetails.order.isFlexOrder && (
-                <RemarksSection
-                  remarks={remarks}
-                  setRemarks={setRemarks}
-                  showRemarks={showRemarks}
-                  setShowRemarks={setShowRemarks}
-                  onSave={handleSaveRemarks}
-                  showSaveButton={true}
-                  isSaving={isSavingRemarks}
-                  canEdit={orderDetails.order.status !== "completed" && orderDetails.order.status !== "cancelled"}
-                  t={t}
-                />
-              )}
+              {isUnderProcess && !orderDetails.order.isFlexOrder && renderRemarks()}
 
               {/* Complete Order Button for Regular Orders */}
               {!orderDetails.order.isFlexOrder && (
