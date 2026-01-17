@@ -76,9 +76,13 @@ export function renderOrderCell({
           {order.isFlexOrder && order.actualAmountBuy ? (
             <span>
               <span className="text-purple-600 font-semibold">{Math.round(order.actualAmountBuy)}</span>
+              <span className="ml-1 text-slate-500 text-sm">{order.fromCurrency}</span>
             </span>
           ) : (
-            Math.round(order.amountBuy)
+            <span>
+              {Math.round(order.amountBuy)}
+              <span className="ml-1 text-slate-500 text-sm">{order.fromCurrency}</span>
+            </span>
           )}
         </td>
       );
@@ -88,9 +92,13 @@ export function renderOrderCell({
           {order.isFlexOrder && order.actualAmountSell ? (
             <span>
               -<span className="text-purple-600 font-semibold">{Math.round(order.actualAmountSell)}</span>
+              <span className="ml-1 text-slate-500 text-sm">{order.toCurrency}</span>
             </span>
           ) : (
-            `-${Math.round(order.amountSell)}`
+            <span>
+              -{Math.round(order.amountSell)}
+              <span className="ml-1 text-slate-500 text-sm font-semibold">{order.toCurrency}</span>
+            </span>
           )}
         </td>
       );
@@ -190,6 +198,7 @@ export function renderOrderCell({
               serviceChargeCurrency={showServiceChargeInBuy ? order.serviceChargeCurrency : null}
               serviceChargeAccountName={serviceChargeAccountName}
               accountCount={accountCount}
+              currency={order.fromCurrency}
             >
               <div className="flex items-center gap-2 cursor-pointer">
                 <span>{accountName}</span>
@@ -275,6 +284,7 @@ export function renderOrderCell({
               serviceChargeAccountName={serviceChargeAccountName}
               isSellAccount={true}
               accountCount={accountCount}
+              currency={order.toCurrency}
             >
               <div className="flex items-center gap-2 cursor-pointer">
                 <span>{accountName}</span>

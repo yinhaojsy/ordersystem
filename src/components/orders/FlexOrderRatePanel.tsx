@@ -183,46 +183,46 @@ export const FlexOrderRatePanel: React.FC<FlexOrderRatePanelProps> = ({
             {/* Receipt Section */}
             <div className="flex justify-between">
               <span className="text-purple-700 font-medium">{t("orders.amountBuy")}:</span>
-              <span className="text-purple-900 font-semibold">{orderDetails.order.amountBuy}</span>
+              <span className="text-purple-900 font-semibold">{orderDetails.order.amountBuy} {orderDetails.order.fromCurrency}</span>
             </div>
             <div className="flex justify-between pl-4">
               <span className="text-purple-600 text-xs">Expected Amount Receipt:</span>
-              <span className="text-purple-800 text-xs">{expectedAmountBuy}</span>
+              <span className="text-purple-800 text-xs">{expectedAmountBuy} {orderDetails.order.fromCurrency}</span>
             </div>
             <div className="flex justify-between pl-4">
               <span className="text-purple-600 text-xs">Actual Amount Receipt:</span>
               <span className="text-purple-800 text-xs">
-                {orderDetails.totalReceiptAmount.toFixed(2)}
+                {orderDetails.totalReceiptAmount.toFixed(2)} {orderDetails.order.fromCurrency}
               </span>
             </div>
             <div className="flex justify-between pl-4">
               <span className="text-purple-600 text-xs">Balance Amount:</span>
               <span className="text-purple-800 text-xs">
-                {orderDetails.receiptBalance.toFixed(2)}
+                {orderDetails.receiptBalance.toFixed(2)} {orderDetails.order.fromCurrency}
               </span>
             </div>
 
             {/* Payment Section */}
             <div className="flex justify-between mt-3 pt-3 border-t border-purple-200">
               <span className="text-purple-700 font-medium">{t("orders.amountSell")}:</span>
-              <span className="text-purple-900 font-semibold">-{orderDetails.order.amountSell}</span>
+              <span className="text-purple-900 font-semibold">-{orderDetails.order.amountSell} {orderDetails.order.toCurrency}</span>
             </div>
             <div className="flex justify-between pl-4">
               <span className="text-purple-600 text-xs">Expected Payment Amount:</span>
               <span className="text-purple-800 text-xs">
-                {expectedPaymentFromReceipts.toFixed(2)}
+                {expectedPaymentFromReceipts.toFixed(2)} {orderDetails.order.toCurrency}
               </span>
             </div>
             <div className="flex justify-between pl-4">
               <span className="text-purple-600 text-xs">Actual Payment Amount:</span>
               <span className="text-purple-800 text-xs">
-                {orderDetails.totalPaymentAmount.toFixed(2)}
+                {orderDetails.totalPaymentAmount.toFixed(2)} {orderDetails.order.toCurrency}
               </span>
             </div>
             <div className="flex justify-between pl-4">
               <span className="text-purple-600 text-xs">Payment Balance:</span>
               <span className="text-purple-800 text-xs">
-                {orderDetails.paymentBalance.toFixed(2)}
+                {orderDetails.paymentBalance.toFixed(2)} {orderDetails.order.toCurrency}
               </span>
             </div>
           </div>

@@ -223,8 +223,8 @@ const OtcOrderComparisonView = ({
             <div className="bg-slate-50 rounded-lg p-4 text-sm space-y-2">
               <div><strong>{t("orders.customer") || "Customer"}:</strong> {originalOrder.customerName || originalOrder.customerId || "-"}</div>
               <div><strong>{t("orders.currencyPair") || "Currency Pair"}:</strong> {originalOrder.fromCurrency || ""} / {originalOrder.toCurrency || ""}</div>
-              <div><strong>{t("orders.amountBuy") || "Amount Buy"}:</strong> {originalOrder.amountBuy}</div>
-              <div><strong>{t("orders.amountSell") || "Amount Sell"}:</strong> {originalOrder.amountSell}</div>
+              <div><strong>{t("orders.amountBuy") || "Amount Buy"}:</strong> {originalOrder.amountBuy} {originalOrder.fromCurrency || ""}</div>
+              <div><strong>{t("orders.amountSell") || "Amount Sell"}:</strong> {originalOrder.amountSell} {originalOrder.toCurrency || ""}</div>
               <div><strong>{t("orders.rate") || "Rate"}:</strong> {originalOrder.rate}</div>
               {(originalOrder.profitAmount !== null && originalOrder.profitAmount !== undefined) && (
                 <div>
@@ -260,8 +260,8 @@ const OtcOrderComparisonView = ({
             <div className="bg-slate-50 rounded-lg p-4 text-sm space-y-2">
               <div><strong>{t("orders.customer") || "Customer"}:</strong> {amendedOrder.customerName || amendedOrder.customerId || "-"}</div>
               <div><strong>{t("orders.currencyPair") || "Currency Pair"}:</strong> {amendedOrder.fromCurrency || ""} / {amendedOrder.toCurrency || ""}</div>
-              <div><strong>{t("orders.amountBuy") || "Amount Buy"}:</strong> {amendedOrder.amountBuy}</div>
-              <div><strong>{t("orders.amountSell") || "Amount Sell"}:</strong> {amendedOrder.amountSell}</div>
+              <div><strong>{t("orders.amountBuy") || "Amount Buy"}:</strong> {amendedOrder.amountBuy} {amendedOrder.fromCurrency || ""}</div>
+              <div><strong>{t("orders.amountSell") || "Amount Sell"}:</strong> {amendedOrder.amountSell} {amendedOrder.toCurrency || ""}</div>
               <div><strong>{t("orders.rate") || "Rate"}:</strong> {amendedOrder.rate}</div>
               {(amendedOrder.profitAmount !== null && amendedOrder.profitAmount !== undefined) && (
                 <div>

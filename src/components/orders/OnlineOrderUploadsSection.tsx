@@ -150,18 +150,18 @@ const OnlineOrderUploadsSectionComponent: React.FC<OnlineOrderUploadsSectionProp
           {t("orders.receiptUploads")}{receiptTitleSuffix}
         </h3>
         <div className="text-sm text-slate-600 mb-2">
-          {t("orders.amountBuy")}: {orderDetails.order.amountBuy}
+          {t("orders.amountBuy")}: {orderDetails.order.amountBuy} {orderDetails.order.fromCurrency}
           {isFlexOrder && orderDetails.order.actualAmountBuy && (
             <span className="ml-2 text-purple-600">
-              (Actual: {orderDetails.order.actualAmountBuy})
+              (Actual: {orderDetails.order.actualAmountBuy} {orderDetails.order.fromCurrency})
             </span>
           )}
         </div>
         <div className="text-sm text-slate-600 mb-2">
-          {t("orders.amountReceived")}: {totalReceiptAmount.toFixed(2)}
+          {t("orders.amountReceived")}: {totalReceiptAmount.toFixed(2)} {orderDetails.order.fromCurrency}
         </div>
         <div className="text-sm text-slate-600 mb-4">
-          {t("orders.balance")}: {receiptBalance.toFixed(2)}
+          {t("orders.balance")}: {receiptBalance.toFixed(2)} {orderDetails.order.fromCurrency}
         </div>
 
         <div className={`grid ${isFlexOrder ? "grid-cols-3" : "grid-cols-4"} gap-4`}>
@@ -255,13 +255,13 @@ const OnlineOrderUploadsSectionComponent: React.FC<OnlineOrderUploadsSectionProp
           </div>
         )}
         <div className="text-sm text-slate-600 mb-2">
-          {t("orders.amountSell")}: -{paymentAmountSell}
+          {t("orders.amountSell")}: -{paymentAmountSell} {orderDetails.order.toCurrency}
         </div>
         <div className="text-sm text-slate-600 mb-2">
-          {t("orders.amountPaid")}: {totalPaymentAmount.toFixed(2)}
+          {t("orders.amountPaid")}: {totalPaymentAmount.toFixed(2)} {orderDetails.order.toCurrency}
         </div>
         <div className="text-sm text-slate-600 mb-4">
-          {t("orders.balance")}: {paymentBalance.toFixed(2)}
+          {t("orders.balance")}: {paymentBalance.toFixed(2)} {orderDetails.order.toCurrency}
         </div>
 
         <div className={`grid ${isFlexOrder ? "grid-cols-3" : "grid-cols-4"} gap-4`}>

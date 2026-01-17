@@ -99,13 +99,13 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
             <div>
               <span className="text-slate-500">{t("orders.amountBuy")}:</span>
               <span className="ml-2 font-semibold text-slate-900">
-                {orderDetails.order.amountBuy}
+                {orderDetails.order.amountBuy} {orderDetails.order.fromCurrency}
               </span>
             </div>
             <div>
               <span className="text-slate-500">{t("orders.amountSell")}:</span>
               <span className="ml-2 font-semibold text-slate-900">
-                -{orderDetails.order.amountSell}
+                -{orderDetails.order.amountSell} {orderDetails.order.toCurrency}
               </span>
             </div>
             {orderDetails.order.handlerName && (
@@ -172,7 +172,7 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
             {t("orders.receiptUploads")}
           </h3>
           <div className="text-sm text-slate-600 mb-3">
-            {t("orders.amountReceived")}: {orderDetails.totalReceiptAmount.toFixed(2)}
+            {t("orders.amountReceived")}: {orderDetails.totalReceiptAmount.toFixed(2)} {orderDetails.order.fromCurrency}
           </div>
           <div className="grid grid-cols-4 gap-4">
             {orderDetails.receipts.map((receipt) => (
@@ -206,7 +206,7 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
                   </div>
                 ) : null}
                 <p className="text-xs text-slate-700 font-medium">
-                  {t("orders.amount")}: {receipt.amount}
+                  {t("orders.amount")}: {receipt.amount} {orderDetails.order.fromCurrency}
                 </p>
                 {receipt.accountName && (
                   <p className="text-xs text-slate-500">
@@ -226,7 +226,7 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
             {t("orders.paymentUploads")}
           </h3>
           <div className="text-sm text-slate-600 mb-3">
-            {t("orders.amountPaid")}: {orderDetails.totalPaymentAmount.toFixed(2)}
+            {t("orders.amountPaid")}: {orderDetails.totalPaymentAmount.toFixed(2)} {orderDetails.order.toCurrency}
           </div>
           <div className="grid grid-cols-4 gap-4">
             {orderDetails.payments.map((payment) => (
@@ -260,7 +260,7 @@ export const OnlineOrderSummary: React.FC<OnlineOrderSummaryProps> = ({
                   </div>
                 ) : null}
                 <p className="text-xs text-slate-700 font-medium">
-                  {t("orders.amount")}: {payment.amount}
+                  {t("orders.amount")}: {payment.amount} {orderDetails.order.toCurrency}
                 </p>
                 {payment.accountName && (
                   <p className="text-xs text-slate-500">

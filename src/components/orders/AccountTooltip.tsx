@@ -13,6 +13,7 @@ interface AccountTooltipProps {
   serviceChargeAccountName?: string | null;
   isSellAccount?: boolean;
   accountCount?: number;
+  currency?: string;
 }
 
 /**
@@ -30,6 +31,7 @@ export const AccountTooltip = memo(function AccountTooltip({
   serviceChargeAccountName,
   isSellAccount = false,
   accountCount,
+  currency,
 }: AccountTooltipProps) {
   const { t } = useTranslation();
   const [position, setPosition] = useState<'above' | 'below'>('below');
@@ -111,7 +113,7 @@ export const AccountTooltip = memo(function AccountTooltip({
             <div key={idx} className="text-xs text-slate-600 flex justify-between items-center gap-3">
               <span className="truncate">{acc.accountName}</span>
               <span className="font-medium text-slate-800 whitespace-nowrap">
-                {isSellAccount ? `-${acc.amount.toFixed(2)}` : acc.amount.toFixed(2)}
+                {isSellAccount ? `-${acc.amount.toFixed(2)}` : acc.amount.toFixed(2)} {currency || ""}
               </span>
             </div>
           ))}

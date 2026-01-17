@@ -332,7 +332,7 @@ function OrderComparisonView({
         <div>
           <strong>{t("orders.amountBuy") || "Amount Buy"}:</strong>{" "}
           <span className={getValueStyle("amountBuy", order.amountBuy)}>
-            {order.amountBuy}
+            {order.amountBuy} {order.fromCurrency}
           </span>
         </div>
         {amountBuyChanged && (
@@ -346,7 +346,7 @@ function OrderComparisonView({
         <div>
           <strong>{t("orders.amountSell") || "Amount Sell"}:</strong>{" "}
           <span className={getValueStyle("amountSell", order.amountSell)}>
-            {order.amountSell}
+            {order.amountSell} {order.toCurrency}
           </span>
         </div>
         {amountSellChanged && (
