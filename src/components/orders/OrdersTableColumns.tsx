@@ -76,12 +76,12 @@ export function renderOrderCell({
           {order.isFlexOrder && order.actualAmountBuy ? (
             <span>
               <span className="text-purple-600 font-semibold">{Math.round(order.actualAmountBuy)}</span>
-              <span className="ml-1 text-slate-500 text-sm">{order.fromCurrency}</span>
+              <span className="ml-1 text-slate-500 text-sm font-semibold">{order.fromCurrency}</span>
             </span>
           ) : (
             <span>
               {Math.round(order.amountBuy)}
-              <span className="ml-1 text-slate-500 text-sm">{order.fromCurrency}</span>
+              <span className="ml-1 text-slate-500 text-sm font-semibold">{order.fromCurrency}</span>
             </span>
           )}
         </td>
@@ -92,7 +92,7 @@ export function renderOrderCell({
           {order.isFlexOrder && order.actualAmountSell ? (
             <span>
               -<span className="text-purple-600 font-semibold">{Math.round(order.actualAmountSell)}</span>
-              <span className="ml-1 text-slate-500 text-sm">{order.toCurrency}</span>
+              <span className="ml-1 text-slate-500 text-sm font-semibold">{order.toCurrency}</span>
             </span>
           ) : (
             <span>
