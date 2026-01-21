@@ -730,14 +730,18 @@ export default function OrdersPage() {
                       try {
                         await updateOrder({
                           id: order.id,
-                          data: { remarks: null },
+                          data: { remarks: "" },
                         }).unwrap();
                         setRemarks("");
                         setShowRemarks(false);
                       } catch (error: any) {
                         console.error("Error removing remarks:", error);
                         const errorMessage = error?.data?.message || error?.message || t("orders.failedToRemoveRemarks");
-                        alert(errorMessage);
+                        setAlertModal({
+                          isOpen: true,
+                          message: errorMessage,
+                          type: "error",
+                        });
                       }
                     }
                   }}

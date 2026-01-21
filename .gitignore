@@ -32,3 +32,7 @@ dist-ssr
 server/data/*.db
 server/data/*.db-shm
 server/data/*.db-wal
+
+# 我 BOT INTEGRATION COMMENTED OUT - Local docs - ADDED TO GITIGNORE TO PREVENT COMMITING THE FILE
+BOT_SETUP.md
+CHANGES_SUMMARY.md

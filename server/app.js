@@ -1,8 +1,12 @@
+import dotenv from "dotenv";
+dotenv.config(); // Load environment variables from .env file
+
 import cors from "cors";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import apiRouter from "./routes/api.js";
+import botRouter from "./routes/botRoutes.js";
 import { initDatabase } from "./db.js";
 import { getUploadsDir } from "./utils/fileStorage.js";
 
@@ -35,6 +39,7 @@ app.use((req, res, next) => {
 });
 
 app.use("/api", apiRouter);
+app.use("/api/bot", botRouter);
 
 // Serve static files from React app in production only
 if (process.env.NODE_ENV === "production") {

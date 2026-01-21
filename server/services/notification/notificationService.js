@@ -3,12 +3,53 @@ import { db } from '../../db.js';
 // Import broadcastNotification dynamically to avoid circular dependency
 let broadcastNotification = null;
 
+// 我 BOT INTEGRATION COMMENTED OUT
+// Telegram Bot Webhook Configuration (lazy-read so dotenv can load first)
+// function getTelegramConfig() {
+//   const enabled = (process.env.ENABLE_TELEGRAM_NOTIFICATIONS || '').trim() === 'true';
+//   const url = process.env.TELEGRAM_BOT_WEBHOOK_URL || 'http://localhost:3001/webhook/notification';
+//   const secret = process.env.TELEGRAM_BOT_WEBHOOK_SECRET || 'your-secret-key-here';
+//   return { enabled, url, secret };
+// }
+
 /**
  * Set the broadcast function (called from controller to avoid circular dependency)
  */
 export function setBroadcastFunction(fn) {
   broadcastNotification = fn;
 }
+
+// 我 BOT INTEGRATION COMMENTED OUT
+/**
+ * Push notification to Telegram bot via webhook
+ */
+// async function pushToTelegramBot(notificationData) {
+//   const { enabled, url, secret } = getTelegramConfig();
+//   if (!enabled) {
+//     return; // Telegram notifications disabled
+//   }
+//
+//   try {
+//     const response = await fetch(url, {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//         'X-Webhook-Secret': secret
+//       },
+//       body: JSON.stringify(notificationData),
+//       signal: AbortSignal.timeout(5000) // 5 second timeout
+//     });
+//
+//     if (!response.ok) {
+//       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+//     }
+//
+//     console.log('✅ Notification pushed to Telegram bot:', notificationData.type);
+//   } catch (error) {
+//     // Log error but don't throw - notification system should be resilient
+//     console.error('⚠️  Failed to push notification to Telegram bot:', error.message);
+//   }
+// }
 
 /**
  * Create and send notification through all enabled channels
@@ -38,6 +79,7 @@ export async function createNotification(options) {
   const userIds = Array.isArray(userId) ? userId : [userId];
   
   const createdNotifications = [];
+  let roomNotification = null;
 
   for (const uid of userIds) {
     // Check user preferences - should we send this notification?
@@ -77,6 +119,9 @@ export async function createNotification(options) {
     };
 
     createdNotifications.push(notificationData);
+    if (!roomNotification) {
+      roomNotification = notificationData;
+    }
 
     // Broadcast via SSE if available
     if (broadcastNotification) {
@@ -87,6 +132,14 @@ export async function createNotification(options) {
       }
     }
   }
+
+  // 我 BOT INTEGRATION COMMENTED OUT
+  // Push a single notification to Telegram room (not per-user)
+  // if (roomNotification) {
+  //   pushToTelegramBot(roomNotification).catch(() => {
+  //     // Already logged in pushToTelegramBot, just catch to prevent unhandled rejection
+  //   });
+  // }
 
   return createdNotifications;
 }
@@ -144,8 +197,13 @@ function getDefaultPreference(notificationType) {
     'approval_pending': true,
     'order_assigned': true,
     'order_unassigned': true,
+    'order_created': true,
+    'order_completed': true,
+    'order_cancelled': true,
     'order_deleted': true,
+    'expense_created': true,
     'expense_deleted': true,
+    'transfer_created': true,
     'transfer_deleted': true,
     // Everything else defaults to false
   };
