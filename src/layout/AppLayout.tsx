@@ -440,8 +440,8 @@ export default function AppLayout() {
         </svg>
       </button>
 
-      <aside className={`fixed lg:relative top-0 left-0 h-full flex flex-col gap-6 border-b border-slate-200 bg-slate-900 text-slate-50 lg:border-b-0 lg:border-r transition-all duration-300 z-40 ${
-        isSidebarCollapsed ? 'lg:w-0 lg:px-0 lg:overflow-visible lg:border-r-0' : 'px-6 py-6 overflow-hidden'
+      <aside className={`fixed lg:sticky lg:top-0 top-0 left-0 h-screen flex flex-col gap-6 border-b border-slate-200 bg-slate-900 text-slate-50 lg:border-b-0 lg:border-r transition-all duration-300 z-40 ${
+        isSidebarCollapsed ? 'lg:w-0 lg:px-0 lg:overflow-visible lg:border-r-0' : 'px-6 py-6 overflow-y-auto'
       } ${
         isMobileMenuOpen 
           ? 'w-64 translate-x-0' 
