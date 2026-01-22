@@ -87,6 +87,17 @@ export default function AppLayout() {
             { type: 'Notification', id: 'LIST' },
             { type: 'Notification', id: 'UNREAD_COUNT' }
           ]));
+          
+          // If wallet-related notification, also invalidate Wallet cache
+          const notification = data.notification;
+          if (notification.type === 'wallet_transaction' || notification.type === 'wallet_balance_change') {
+            console.log('Wallet notification detected, invalidating Wallet cache');
+            dispatch(api.util.invalidateTags([
+              { type: 'Wallet', id: 'LIST' },
+              { type: 'Wallet', id: 'SUMMARY' },
+              'Wallet' // Invalidate all wallet-related queries including transactions
+            ]));
+          }
         } else if (data.type === 'unreadCount') {
           // Initial unread count received
           setRealtimeUnreadCount(data.count);
@@ -268,6 +279,7 @@ export default function AppLayout() {
     { to: "/roles", labelKey: "nav.roles", section: "roles" },
     { to: "/tags", labelKey: "nav.tags", section: "tags" },
     { to: "/profit", labelKey: "nav.profit", section: "profit" },
+    { to: "/wallets", labelKey: "nav.wallets", section: "wallets" },
     { to: "/approval-requests", labelKey: "nav.approvalRequests", section: "approval_requests" },
     { to: "/settings", labelKey: "nav.settings", adminOnly: true },
   ];

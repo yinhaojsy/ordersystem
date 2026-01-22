@@ -16,7 +16,7 @@ import { useAppSelector, useAppDispatch } from "../app/hooks";
 import { setUser } from "../app/authSlice";
 import type { RolePermissions } from "../types";
 
-const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit", "tags", "approval_requests"];
+const SECTION_OPTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit", "wallets", "tags", "approval_requests"];
 
 // Group actions by their related pages/sections
 const ACTION_GROUPS = [
@@ -100,6 +100,15 @@ const ACTION_GROUPS = [
       { key: "importExpense", labelKey: "roles.importExpense" },
       { key: "exportExpense", labelKey: "roles.exportExpense" },
       { key: "assignUnassignExpenseTag", labelKey: "roles.assignUnassignExpenseTag" },
+    ],
+  },
+  {
+    section: "wallets",
+    actions: [
+      { key: "createWallet", labelKey: "roles.createWallet" },
+      { key: "updateWallet", labelKey: "roles.updateWallet" },
+      { key: "deleteWallet", labelKey: "roles.deleteWallet" },
+      { key: "viewWalletTransactions", labelKey: "roles.viewWalletTransactions" },
     ],
   },
   {

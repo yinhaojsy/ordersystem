@@ -140,6 +140,19 @@ import {
   updatePreferences,
   subscribeToNotifications,
 } from "../controllers/notificationsController.js";
+import {
+  listWallets,
+  getWalletsSummary,
+  createWallet,
+  updateWallet,
+  deleteWallet,
+  refreshWalletBalance,
+  getWalletTransactions,
+  refreshAllWallets,
+  stopPolling,
+  startPolling,
+  getPollingStatus,
+} from "../controllers/walletsController.js";
 
 const router = Router();
 
@@ -278,6 +291,21 @@ router.patch("/notifications/read-all", markAllAsRead);
 router.delete("/notifications/:id", deleteNotification);
 router.get("/notifications/preferences", getPreferences);
 router.put("/notifications/preferences", updatePreferences);
+
+// Wallet routes
+router.get("/wallets", listWallets);
+router.get("/wallets/summary", getWalletsSummary);
+router.post("/wallets", createWallet);
+router.put("/wallets/:id", updateWallet);
+router.delete("/wallets/:id", deleteWallet);
+router.post("/wallets/:id/refresh", refreshWalletBalance);
+router.get("/wallets/:id/transactions", getWalletTransactions);
+router.post("/wallets/refresh-all", refreshAllWallets);
+
+// Wallet polling control routes
+router.get("/wallets/polling/status", getPollingStatus);
+router.post("/wallets/polling/stop", stopPolling);
+router.post("/wallets/polling/start", startPolling);
 
 export default router;
 

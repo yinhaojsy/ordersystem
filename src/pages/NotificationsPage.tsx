@@ -15,10 +15,12 @@ export default function NotificationsPage() {
   const navigate = useNavigate();
   const [filterType, setFilterType] = useState<string>("all");
   const [filterRead, setFilterRead] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 20;
 
   const { data: notificationsData, isLoading } = useGetNotificationsQuery({
-    limit: 50,
-    offset: 0,
+    limit: itemsPerPage,
+    offset: (currentPage - 1) * itemsPerPage,
   });
   
   const [markAsRead] = useMarkNotificationAsReadMutation();
@@ -26,6 +28,8 @@ export default function NotificationsPage() {
   const [deleteNotification] = useDeleteNotificationMutation();
 
   const notifications = notificationsData?.notifications || [];
+  const totalCount = notificationsData?.total || 0;
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
 
   // Filter notifications
   const filteredNotifications = notifications.filter((notif) => {
@@ -37,6 +41,12 @@ export default function NotificationsPage() {
     if (filterRead === "read" && !notif.isRead) return false;
     return true;
   });
+
+  // Reset to page 1 when filters change
+  const handleFilterChange = (filterSetter: (value: string) => void, value: string) => {
+    filterSetter(value);
+    setCurrentPage(1);
+  };
 
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.isRead) {
@@ -106,6 +116,24 @@ export default function NotificationsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
         );
+      case 'wallet_incoming':
+        return (
+          <svg className={`${iconClass} text-green-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18M13 8l4 4m0 0l-4 4" />
+          </svg>
+        );
+      case 'wallet_outgoing':
+        return (
+          <svg className={`${iconClass} text-orange-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3M11 16l-4-4m0 0l4-4" />
+          </svg>
+        );
+      case 'wallet_transaction':
+        return (
+          <svg className={`${iconClass} text-purple-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          </svg>
+        );
       default:
         return (
           <svg className={`${iconClass} text-slate-600`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -147,7 +175,7 @@ export default function NotificationsPage() {
             {/* Filter by type */}
             <select
               value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
+              onChange={(e) => handleFilterChange(setFilterType, e.target.value)}
               className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
             >
               <option value="all">{t("notifications.allTypes") || "All Types"}</option>
@@ -160,7 +188,7 @@ export default function NotificationsPage() {
             {/* Filter by read status */}
             <select
               value={filterRead}
-              onChange={(e) => setFilterRead(e.target.value)}
+              onChange={(e) => handleFilterChange(setFilterRead, e.target.value)}
               className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
             >
               <option value="all">{t("notifications.allStatus") || "All"}</option>
@@ -241,6 +269,77 @@ export default function NotificationsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {!isLoading && notifications.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200">
+            <div className="text-sm text-slate-600">
+              {t("common.showing") || "Showing"} {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalCount)} {t("common.of") || "of"} {totalCount}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {/* Previous Button */}
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  currentPage === 1
+                    ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                        currentPage === pageNum
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Next Button */}
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  currentPage === totalPages
+                    ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
       </SectionCard>

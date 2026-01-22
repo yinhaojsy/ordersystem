@@ -16,6 +16,9 @@ export function NotificationSettings() {
 
   // Check if user has approval permissions
   const hasApprovalPermissions = user && (canApproveDelete(user) || canApproveEdit(user));
+  
+  // Check if user is admin (only admins can control Telegram notifications)
+  const isAdmin = user?.role === "admin";
 
   const [prefs, setPrefs] = useState({
     notifyApprovalApproved: true,
@@ -31,8 +34,11 @@ export function NotificationSettings() {
     notifyExpenseDeleted: true,
     notifyTransferCreated: false,
     notifyTransferDeleted: true,
+    notifyWalletIncoming: true,
+    notifyWalletOutgoing: true,
     enableEmailNotifications: false,
     enablePushNotifications: false,
+    enableTelegramNotifications: true,
   });
 
   useEffect(() => {
@@ -241,11 +247,47 @@ export function NotificationSettings() {
         />
       </div>
 
+      {/* Wallet Notifications */}
+      <div className="bg-white rounded-lg border border-slate-200 p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">
+          {t("notifications.walletNotifications") || "Wallet Notifications"}
+        </h3>
+        <PreferenceToggle
+          label={t("notifications.notifyWalletIncoming") || "Incoming Transactions"}
+          description={
+            t("notifications.notifyWalletIncomingDesc") ||
+            "Get notified when tracked wallets receive incoming transactions"
+          }
+          checked={prefs.notifyWalletIncoming}
+          onChange={() => handleToggle("notifyWalletIncoming")}
+        />
+        <PreferenceToggle
+          label={t("notifications.notifyWalletOutgoing") || "Outgoing Transactions"}
+          description={
+            t("notifications.notifyWalletOutgoingDesc") ||
+            "Get notified when tracked wallets send outgoing transactions"
+          }
+          checked={prefs.notifyWalletOutgoing}
+          onChange={() => handleToggle("notifyWalletOutgoing")}
+        />
+      </div>
+
       {/* Advanced Settings */}
       <div className="bg-white rounded-lg border border-slate-200 p-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">
           {t("notifications.advancedSettings") || "Advanced Settings"}
         </h3>
+        {isAdmin && (
+          <PreferenceToggle
+            label={t("notifications.enableTelegramNotifications") || "Telegram Bot Notifications (System-Wide)"}
+            description={
+              t("notifications.enableTelegramNotificationsDesc") ||
+              "Enable Telegram notifications for all users. When enabled, all notifications will be sent to the configured Telegram group chat. (Admin Only)"
+            }
+            checked={prefs.enableTelegramNotifications}
+            onChange={() => handleToggle("enableTelegramNotifications")}
+          />
+        )}
         <PreferenceToggle
           label={t("notifications.enableEmailNotifications") || "Email Notifications"}
           description={

@@ -427,8 +427,11 @@ export interface NotificationPreferences {
   notifyExpenseDeleted: boolean;
   notifyTransferCreated: boolean;
   notifyTransferDeleted: boolean;
+  notifyWalletIncoming: boolean;
+  notifyWalletOutgoing: boolean;
   enableEmailNotifications: boolean;
   enablePushNotifications: boolean;
+  enableTelegramNotifications: boolean;
   updatedAt?: string;
 }
 

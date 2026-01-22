@@ -111,9 +111,9 @@ export const getNotifications = (req, res, next) => {
     const limit = parseInt(req.query.limit) || 20;
     const offset = parseInt(req.query.offset) || 0;
 
-    const notifications = notificationService.getUserNotifications(userId, limit, offset);
+    const result = notificationService.getUserNotifications(userId, limit, offset);
 
-    res.json({ notifications });
+    res.json(result);
   } catch (error) {
     next(error);
   }
@@ -237,3 +237,11 @@ export const updatePreferences = (req, res, next) => {
 
 // Initialize broadcast function in notification service to avoid circular dependency
 notificationService.setBroadcastFunction(broadcastNotification);
+
+/**
+ * Helper function to create notifications for all users
+ * Can be imported by other controllers
+ */
+export const createNotificationForAllUsers = async (options) => {
+  return await notificationService.createNotificationForAllUsers(options);
+};

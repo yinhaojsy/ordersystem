@@ -66,7 +66,7 @@ const baseQuery = fetchBaseQuery({
 export const api = createApi({
   reducerPath: "api",
   baseQuery,
-  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting", "Tag", "ApprovalRequest", "Notification"],
+  tagTypes: ["Currency", "Customer", "CustomerBeneficiary", "User", "Role", "Order", "Auth", "Account", "Transfer", "Expense", "ProfitCalculation", "Setting", "Tag", "ApprovalRequest", "Notification", "Wallet"],
   refetchOnReconnect: true,
   endpoints: (builder) => ({
     getCurrencies: builder.query<Currency[], void>({
@@ -1621,12 +1621,107 @@ export const api = createApi({
     }),
     getNotificationPreferences: builder.query<{ preferences: NotificationPreferences }, void>({
       query: () => "notifications/preferences",
+      providesTags: [{ type: "Notification", id: "PREFERENCES" }],
     }),
     updateNotificationPreferences: builder.mutation<{ success: boolean; preferences: NotificationPreferences }, Partial<NotificationPreferences>>({
       query: (preferences) => ({
         url: "notifications/preferences",
         method: "PUT",
         body: preferences,
+      }),
+      invalidatesTags: [{ type: "Notification", id: "PREFERENCES" }],
+    }),
+
+    // Wallet endpoints
+    getWallets: builder.query<any[], void>({
+      query: () => "wallets",
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: "Wallet" as const, id })),
+              { type: "Wallet" as const, id: "LIST" },
+            ]
+          : [{ type: "Wallet" as const, id: "LIST" }],
+    }),
+    getWalletsSummary: builder.query<any[], void>({
+      query: () => "wallets/summary",
+      providesTags: [{ type: "Wallet" as const, id: "SUMMARY" }],
+    }),
+    createWallet: builder.mutation<any, { nickname: string; walletAddress: string; remarks?: string }>({
+      query: (body) => ({
+        url: "wallets",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [
+        { type: "Wallet", id: "LIST" },
+        { type: "Wallet", id: "SUMMARY" },
+      ],
+    }),
+    updateWallet: builder.mutation<any, { id: number; nickname: string; remarks?: string }>({
+      query: ({ id, ...body }) => ({
+        url: `wallets/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: "Wallet", id },
+        { type: "Wallet", id: "LIST" },
+        { type: "Wallet", id: "SUMMARY" },
+      ],
+    }),
+    deleteWallet: builder.mutation<{ success: boolean }, number>({
+      query: (id) => ({
+        url: `wallets/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Wallet", id },
+        { type: "Wallet", id: "LIST" },
+        { type: "Wallet", id: "SUMMARY" },
+      ],
+    }),
+    refreshWalletBalance: builder.mutation<any, number>({
+      query: (id) => ({
+        url: `wallets/${id}/refresh`,
+        method: "POST",
+      }),
+      invalidatesTags: (_res, _err, id) => [
+        { type: "Wallet", id },
+        { type: "Wallet", id: "LIST" },
+        { type: "Wallet", id: "SUMMARY" },
+      ],
+    }),
+    getWalletTransactions: builder.query<any[], { id: number; refresh?: boolean }>({
+      query: ({ id, refresh = false }) => `wallets/${id}/transactions?refresh=${refresh}`,
+      providesTags: (_result, _error, { id }) => [
+        { type: "Wallet" as const, id: `TRANSACTIONS_${id}` },
+        { type: "Wallet" as const, id },
+      ],
+    }),
+    refreshAllWallets: builder.mutation<any, void>({
+      query: () => ({
+        url: "wallets/refresh-all",
+        method: "POST",
+      }),
+      invalidatesTags: [
+        { type: "Wallet", id: "LIST" },
+        { type: "Wallet", id: "SUMMARY" },
+      ],
+    }),
+    getPollingStatus: builder.query<{ isActive: boolean; interval: number; enabled: boolean }, void>({
+      query: () => "wallets/polling/status",
+    }),
+    stopWalletPolling: builder.mutation<{ success: boolean; message: string }, void>({
+      query: () => ({
+        url: "wallets/polling/stop",
+        method: "POST",
+      }),
+    }),
+    startWalletPolling: builder.mutation<{ success: boolean; message: string; interval?: number }, void>({
+      query: () => ({
+        url: "wallets/polling/start",
+        method: "POST",
       }),
     }),
   }),
@@ -1738,6 +1833,17 @@ export const {
   useDeleteNotificationMutation,
   useGetNotificationPreferencesQuery,
   useUpdateNotificationPreferencesMutation,
+  useGetWalletsQuery,
+  useGetWalletsSummaryQuery,
+  useCreateWalletMutation,
+  useUpdateWalletMutation,
+  useDeleteWalletMutation,
+  useRefreshWalletBalanceMutation,
+  useGetWalletTransactionsQuery,
+  useRefreshAllWalletsMutation,
+  useGetPollingStatusQuery,
+  useStopWalletPollingMutation,
+  useStartWalletPollingMutation,
 } = api;
 
 

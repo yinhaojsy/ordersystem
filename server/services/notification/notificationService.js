@@ -19,12 +19,40 @@ export function setBroadcastFunction(fn) {
 }
 
 /**
+ * Check if Telegram notifications are enabled system-wide (by admin)
+ */
+function isTelegramEnabledSystemWide() {
+  // Find the first admin user and check their Telegram preference
+  const adminUser = db.prepare(`
+    SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1
+  `).get();
+
+  if (!adminUser) {
+    // No admin found, default to disabled
+    return false;
+  }
+
+  const prefs = db.prepare(`
+    SELECT enableTelegramNotifications FROM user_notification_preferences WHERE userId = ?
+  `).get(adminUser.id);
+
+  // If no preferences set, default to enabled (1)
+  // If preferences exist, check the value
+  return !prefs || prefs.enableTelegramNotifications !== 0;
+}
+
+/**
  * Push notification to Telegram bot via webhook
  */
 async function pushToTelegramBot(notificationData) {
   const { enabled, url, secret } = getTelegramConfig();
   if (!enabled) {
-    return; // Telegram notifications disabled
+    return; // Telegram notifications disabled globally in config
+  }
+
+  // Check system-wide Telegram setting (controlled by admin)
+  if (!isTelegramEnabledSystemWide()) {
+    return; // Admin has disabled Telegram notifications system-wide
   }
 
   try {
@@ -47,6 +75,27 @@ async function pushToTelegramBot(notificationData) {
     // Log error but don't throw - notification system should be resilient
     console.error('⚠️  Failed to push notification to Telegram bot:', error.message);
   }
+}
+
+/**
+ * Create notification for all users in the system
+ * @param {Object} options - Notification options (same as createNotification, but without userId)
+ */
+export async function createNotificationForAllUsers(options) {
+  // Get all user IDs from the database
+  const users = db.prepare('SELECT id FROM users').all();
+  const userIds = users.map(user => user.id);
+  
+  if (userIds.length === 0) {
+    console.log('No users found to notify');
+    return [];
+  }
+  
+  // Create notification for all users
+  return await createNotification({
+    ...options,
+    userId: userIds
+  });
 }
 
 /**
@@ -131,7 +180,7 @@ export async function createNotification(options) {
     }
   }
 
-  // Push a single notification to Telegram room (not per-user)
+  // Push a single notification to Telegram (system-wide, controlled by admin)
   if (roomNotification) {
     pushToTelegramBot(roomNotification).catch(() => {
       // Already logged in pushToTelegramBot, just catch to prevent unhandled rejection
@@ -180,6 +229,8 @@ function getPreferenceField(notificationType) {
     'expense_deleted': 'notifyExpenseDeleted',
     'transfer_created': 'notifyTransferCreated',
     'transfer_deleted': 'notifyTransferDeleted',
+    'wallet_incoming': 'notifyWalletIncoming',
+    'wallet_outgoing': 'notifyWalletOutgoing',
   };
   return mapping[notificationType] || null;
 }
@@ -202,13 +253,15 @@ function getDefaultPreference(notificationType) {
     'expense_deleted': true,
     'transfer_created': true,
     'transfer_deleted': true,
+    'wallet_incoming': true,
+    'wallet_outgoing': true,
     // Everything else defaults to false
   };
   return defaults[notificationType] !== undefined ? defaults[notificationType] : false;
 }
 
 /**
- * Get user's notifications
+ * Get user's notifications with total count
  */
 export function getUserNotifications(userId, limit = 20, offset = 0) {
   const notifications = db.prepare(`
@@ -218,10 +271,19 @@ export function getUserNotifications(userId, limit = 20, offset = 0) {
     LIMIT ? OFFSET ?
   `).all(userId, limit, offset);
 
-  return notifications.map(n => ({
-    ...n,
-    isRead: n.isRead === 1
-  }));
+  const totalResult = db.prepare(`
+    SELECT COUNT(*) as count 
+    FROM notifications 
+    WHERE userId = ?
+  `).get(userId);
+
+  return {
+    notifications: notifications.map(n => ({
+      ...n,
+      isRead: n.isRead === 1
+    })),
+    total: totalResult.count
+  };
 }
 
 /**

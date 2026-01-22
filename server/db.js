@@ -33,7 +33,7 @@ export const resetDbInstance = () => {
   return db;
 };
 
-const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit", "approval_requests"];
+const SECTIONS = ["dashboard", "currencies", "customers", "users", "roles", "orders", "transfers", "accounts", "expenses", "profit", "approval_requests", "wallets"];
 
 const ensureSchema = () => {
   db.prepare(
@@ -490,6 +490,48 @@ const ensureSchema = () => {
     );`,
   ).run();
 
+  // TRON Wallets table
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS tron_wallets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nickname TEXT NOT NULL,
+      walletAddress TEXT NOT NULL UNIQUE,
+      remarks TEXT,
+      currentBalance REAL DEFAULT 0,
+      lastBalanceCheck TEXT,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT
+    );`,
+  ).run();
+
+  // TRON Wallet Transactions table
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS tron_wallet_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      walletId INTEGER NOT NULL,
+      transactionHash TEXT NOT NULL UNIQUE,
+      transactionType TEXT NOT NULL,
+      amount REAL NOT NULL,
+      fromAddress TEXT NOT NULL,
+      toAddress TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      blockNumber INTEGER,
+      createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(walletId) REFERENCES tron_wallets(id) ON DELETE CASCADE
+    );`,
+  ).run();
+
+  // Create indexes for wallet transactions
+  db.prepare(
+    `CREATE INDEX IF NOT EXISTS idx_wallet_transactions_walletId 
+     ON tron_wallet_transactions(walletId);`,
+  ).run();
+  
+  db.prepare(
+    `CREATE INDEX IF NOT EXISTS idx_wallet_transactions_timestamp 
+     ON tron_wallet_transactions(timestamp DESC);`,
+  ).run();
+
   // Create indexes for better performance
   db.prepare(
     `CREATE INDEX IF NOT EXISTS idx_notifications_user 
@@ -519,12 +561,31 @@ const ensureSchema = () => {
       notifyExpenseDeleted INTEGER DEFAULT 1,
       notifyTransferCreated INTEGER DEFAULT 0,
       notifyTransferDeleted INTEGER DEFAULT 1,
+      notifyWalletIncoming INTEGER DEFAULT 1,
+      notifyWalletOutgoing INTEGER DEFAULT 1,
       enableEmailNotifications INTEGER DEFAULT 0,
       enablePushNotifications INTEGER DEFAULT 0,
+      enableTelegramNotifications INTEGER DEFAULT 1,
       updatedAt TEXT,
       FOREIGN KEY(userId) REFERENCES users(id) ON DELETE CASCADE
     );`,
   ).run();
+
+  // Add wallet notification columns if they don't exist (for existing databases)
+  const prefsColumns = db.prepare("PRAGMA table_info(user_notification_preferences)").all();
+  const hasWalletIncoming = prefsColumns.some((col) => col.name === "notifyWalletIncoming");
+  const hasWalletOutgoing = prefsColumns.some((col) => col.name === "notifyWalletOutgoing");
+  const hasTelegramEnabled = prefsColumns.some((col) => col.name === "enableTelegramNotifications");
+
+  if (!hasWalletIncoming) {
+    db.prepare("ALTER TABLE user_notification_preferences ADD COLUMN notifyWalletIncoming INTEGER DEFAULT 1").run();
+  }
+  if (!hasWalletOutgoing) {
+    db.prepare("ALTER TABLE user_notification_preferences ADD COLUMN notifyWalletOutgoing INTEGER DEFAULT 1").run();
+  }
+  if (!hasTelegramEnabled) {
+    db.prepare("ALTER TABLE user_notification_preferences ADD COLUMN enableTelegramNotifications INTEGER DEFAULT 1").run();
+  }
 };
 
 const seedData = () => {
@@ -839,13 +900,24 @@ const migrateDatabase = () => {
       db.prepare("ALTER TABLE profit_calculations ADD COLUMN isDefault INTEGER NOT NULL DEFAULT 0").run();
     }
 
-    // Migrate existing roles to include "profit" section if not present
+    // Migrate existing roles to include "profit" and "wallets" sections if not present
     const roles = db.prepare("SELECT id, permissions FROM roles").all();
     roles.forEach((role) => {
       try {
         const permissions = JSON.parse(role.permissions);
+        let updated = false;
+        
         if (permissions.sections && !permissions.sections.includes("profit")) {
           permissions.sections.push("profit");
+          updated = true;
+        }
+        
+        if (permissions.sections && !permissions.sections.includes("wallets")) {
+          permissions.sections.push("wallets");
+          updated = true;
+        }
+        
+        if (updated) {
           db.prepare("UPDATE roles SET permissions = @permissions, updatedAt = @updatedAt WHERE id = @id").run({
             id: role.id,
             permissions: JSON.stringify(permissions),
