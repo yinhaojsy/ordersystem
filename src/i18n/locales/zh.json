@@ -980,6 +980,16 @@
       "resetComplete": "重置为 1",
       "resetFailed": "重置失败"
     },
+    "notifications": {
+      "title": "通知管理",
+      "description": "管理系统范围的通知设置",
+      "clearAll": "清除所有通知",
+      "clearing": "清除中...",
+      "clearAllWarning": "⚠️ 警告：清除通知将永久删除所有用户的所有通知。此操作无法撤销。",
+      "clearAllConfirm": "确定要清除所有用户的所有通知吗？此操作无法撤销。",
+      "clearAllSuccess": "成功清除 {{count}} 条通知",
+      "clearAllError": "清除通知失败"
+    },
     "debug": {
       "title": "数据库调试",
       "description": "查看数据库架构并执行只读 SQL 查询",

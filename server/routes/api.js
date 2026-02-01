@@ -139,6 +139,7 @@ import {
   getPreferences,
   updatePreferences,
   subscribeToNotifications,
+  clearAllNotifications,
 } from "../controllers/notificationsController.js";
 import {
   listWallets,
@@ -288,6 +289,7 @@ router.get("/notifications", getNotifications);
 router.get("/notifications/unread-count", getUnreadCount);
 router.patch("/notifications/:id/read", markAsRead);
 router.patch("/notifications/read-all", markAllAsRead);
+router.delete("/notifications/clear-all", clearAllNotifications); // Must come before :id route
 router.delete("/notifications/:id", deleteNotification);
 router.get("/notifications/preferences", getPreferences);
 router.put("/notifications/preferences", updatePreferences);

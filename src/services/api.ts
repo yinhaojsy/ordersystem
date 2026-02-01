@@ -1619,6 +1619,16 @@ export const api = createApi({
         { type: "Notification", id: "UNREAD_COUNT" },
       ],
     }),
+    clearAllNotifications: builder.mutation<{ success: boolean; count: number; message: string }, void>({
+      query: () => ({
+        url: "notifications/clear-all",
+        method: "DELETE",
+      }),
+      invalidatesTags: [
+        { type: "Notification", id: "LIST" },
+        { type: "Notification", id: "UNREAD_COUNT" },
+      ],
+    }),
     getNotificationPreferences: builder.query<{ preferences: NotificationPreferences }, void>({
       query: () => "notifications/preferences",
       providesTags: [{ type: "Notification", id: "PREFERENCES" }],
@@ -1831,6 +1841,7 @@ export const {
   useMarkNotificationAsReadMutation,
   useMarkAllNotificationsAsReadMutation,
   useDeleteNotificationMutation,
+  useClearAllNotificationsMutation,
   useGetNotificationPreferencesQuery,
   useUpdateNotificationPreferencesMutation,
   useGetWalletsQuery,

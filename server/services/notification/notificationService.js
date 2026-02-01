@@ -419,3 +419,14 @@ export function updateUserPreferences(userId, preferences) {
 
   return getUserPreferences(userId);
 }
+
+/**
+ * Clear all notifications for all users (Admin only)
+ */
+export function clearAllNotifications() {
+  const result = db.prepare(`
+    DELETE FROM notifications
+  `).run();
+
+  return result.changes;
+}

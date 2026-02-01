@@ -245,3 +245,29 @@ notificationService.setBroadcastFunction(broadcastNotification);
 export const createNotificationForAllUsers = async (options) => {
   return await notificationService.createNotificationForAllUsers(options);
 };
+
+/**
+ * Clear all notifications for all users (Admin only)
+ */
+export const clearAllNotifications = async (req, res, next) => {
+  try {
+    const userId = getUserIdFromHeader(req);
+    if (!userId) {
+      return res.status(401).json({ message: 'User ID is required' });
+    }
+
+    // Check if user is admin
+    const { db } = await import('../db.js');
+    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId);
+    
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only admins can clear all notifications' });
+    }
+
+    const count = notificationService.clearAllNotifications();
+
+    res.json({ success: true, count, message: `${count} notification(s) cleared for all users` });
+  } catch (error) {
+    next(error);
+  }
+};

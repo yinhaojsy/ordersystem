@@ -1042,6 +1042,16 @@
       "resetComplete": "Reset to 1",
       "resetFailed": "Reset failed"
     },
+    "notifications": {
+      "title": "Notifications Management",
+      "description": "Manage system-wide notification settings",
+      "clearAll": "Clear All Notifications",
+      "clearing": "Clearing Notifications...",
+      "clearAllWarning": "⚠️ Warning: Clearing notifications will permanently delete all notifications for all users. This action cannot be undone.",
+      "clearAllConfirm": "Are you sure you want to clear ALL notifications for ALL users? This action cannot be undone.",
+      "clearAllSuccess": "Successfully cleared {{count}} notification(s)",
+      "clearAllError": "Failed to clear notifications"
+    },
     "debug": {
       "title": "Database Debugging",
       "description": "View database schema and execute read-only SQL queries",

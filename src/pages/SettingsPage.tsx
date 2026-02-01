@@ -11,6 +11,7 @@ import {
   useResetTableIdsMutation,
   useGetDbSchemaQuery,
   useExecuteQueryMutation,
+  useClearAllNotificationsMutation,
 } from "../services/api";
 
 export default function SettingsPage() {
@@ -45,6 +46,7 @@ export default function SettingsPage() {
   const { data: schemaData } = useGetDbSchemaQuery(undefined, { skip: !showSchema });
   const [executeQuery, { isLoading: isExecuting }] = useExecuteQueryMutation();
   const { data: safetyListData, isFetching: isLoadingSafetyList, refetch: refetchSafetyList } = useListSafetyBackupsQuery(undefined, { skip: !showSafetyModal });
+  const [clearAllNotifications, { isLoading: isClearingNotifications }] = useClearAllNotificationsMutation();
 
   // Backup handlers
   const handleCreateBackup = async () => {
@@ -204,6 +206,31 @@ export default function SettingsPage() {
         success: false,
         message: error.data?.message || error.message || "Query failed",
       });
+    }
+  };
+
+  // Notification handlers
+  const handleClearAllNotifications = async () => {
+    const confirmed = window.confirm(
+      t("settings.notifications.clearAllConfirm") || 
+      "Are you sure you want to clear ALL notifications for ALL users? This action cannot be undone."
+    );
+    if (!confirmed) return;
+
+    try {
+      const result = await clearAllNotifications().unwrap();
+      alert(
+        t("settings.notifications.clearAllSuccess", { count: result.count }) ||
+        `Successfully cleared ${result.count} notifications`
+      );
+    } catch (error: any) {
+      console.error("Clear notifications error:", error);
+      alert(
+        error?.data?.message || 
+        error?.message || 
+        t("settings.notifications.clearAllError") ||
+        "Failed to clear notifications"
+      );
     }
   };
 
@@ -391,6 +418,28 @@ export default function SettingsPage() {
             {isResetting
               ? t("settings.resetIds.resetting")
               : t("settings.resetIds.resetSelected")}
+          </button>
+        </div>
+      </SectionCard>
+
+      {/* Notifications Management Section */}
+      <SectionCard
+        title={t("settings.notifications.title") || "Notifications Management"}
+        description={t("settings.notifications.description") || "Manage system notifications"}
+      >
+        <div className="space-y-4">
+          <div className="text-sm text-orange-600">
+            {t("settings.notifications.clearAllWarning") || 
+            "⚠️ Clearing notifications will permanently delete all notifications for all users. This action cannot be undone."}
+          </div>
+          <button
+            onClick={handleClearAllNotifications}
+            disabled={isClearingNotifications}
+            className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {isClearingNotifications
+              ? t("settings.notifications.clearing") || "Clearing Notifications..."
+              : t("settings.notifications.clearAll") || "Clear All Notifications"}
           </button>
         </div>
       </SectionCard>
