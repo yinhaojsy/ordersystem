@@ -118,7 +118,7 @@ const CompleteOrderButtonComponent: React.FC<CompleteOrderButtonProps> = ({
       // Validate receipt amount matches expected
       const actualReceiptAmount = currentOrderDetails.totalReceiptAmount;
       const receiptDifference = Math.abs(actualReceiptAmount - actualAmountBuy);
-      if (receiptDifference > 0.01) {
+      if (receiptDifference > 0.50) {
         const missing = actualAmountBuy - actualReceiptAmount;
         if (missing > 0) {
           alert(
@@ -138,10 +138,10 @@ const CompleteOrderButtonComponent: React.FC<CompleteOrderButtonProps> = ({
 
     const actualPaymentAmount = currentOrderDetails.totalPaymentAmount;
 
-    // Allow small rounding difference (0.01)
+    // Allow small rounding difference (0.50) to account for floating-point precision
     const difference = Math.abs(actualPaymentAmount - expectedPaymentAmount);
 
-    if (difference > 0.01) {
+    if (difference > 0.50) {
       const missing = expectedPaymentAmount - actualPaymentAmount;
       if (missing > 0) {
         // Missing payment

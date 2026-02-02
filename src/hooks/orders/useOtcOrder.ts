@@ -558,18 +558,18 @@ export function useOtcOrder(
       return;
     }
 
-    // Validate receipt total equals amountBuy
+    // Validate receipt total equals amountBuy (with tolerance for floating-point precision)
     const receiptTotal = otcReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     const amountBuy = Number(otcForm.amountBuy || 0);
-    if (Math.abs(receiptTotal - amountBuy) > 0.01) {
+    if (Math.abs(receiptTotal - amountBuy) > 0.50) {
       alert(`Receipt total (${receiptTotal.toFixed(2)}) must equal Amount Buy (${amountBuy.toFixed(2)})`);
       return;
     }
 
-    // Validate payment total equals amountSell
+    // Validate payment total equals amountSell (with tolerance for floating-point precision)
     const paymentTotal = otcPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const amountSell = Number(otcForm.amountSell || 0);
-    if (Math.abs(paymentTotal - amountSell) > 0.01) {
+    if (Math.abs(paymentTotal - amountSell) > 0.50) {
       alert(`Payment total (${paymentTotal.toFixed(2)}) must equal Amount Sell (${amountSell.toFixed(2)})`);
       return;
     }

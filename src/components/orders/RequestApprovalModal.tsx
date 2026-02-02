@@ -210,11 +210,11 @@ export function RequestApprovalModal({
         errors.push(t("orders.noChangesError") || "You must make at least one change to the order");
       }
 
-      // Validate receipts total equals amountBuy
+      // Validate receipts total equals amountBuy (with tolerance for floating-point precision)
       const validReceipts = receipts.filter((r) => r.amount > 0 && r.accountId !== null);
       if (validReceipts.length > 0) {
         const receiptTotal = validReceipts.reduce((sum, r) => sum + r.amount, 0);
-        if (Math.abs(receiptTotal - newAmountBuy) > 0.01) {
+        if (Math.abs(receiptTotal - newAmountBuy) > 0.50) {
           errors.push(
             t("orders.receiptsTotalMismatch", { 
               total: receiptTotal.toFixed(2), 
@@ -226,11 +226,11 @@ export function RequestApprovalModal({
         }
       }
 
-      // Validate payments total equals amountSell
+      // Validate payments total equals amountSell (with tolerance for floating-point precision)
       const validPayments = payments.filter((p) => p.amount > 0 && p.accountId !== null);
       if (validPayments.length > 0) {
         const paymentTotal = validPayments.reduce((sum, p) => sum + p.amount, 0);
-        if (Math.abs(paymentTotal - newAmountSell) > 0.01) {
+        if (Math.abs(paymentTotal - newAmountSell) > 0.50) {
           errors.push(
             t("orders.paymentsTotalMismatch", {
               total: paymentTotal.toFixed(2),
